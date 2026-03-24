@@ -31,7 +31,6 @@ import CookiePolicy from './pages/CookiePolicy';
 import About from './pages/About';
 import Blog from './pages/Blog';
 import Contact from './pages/Contact';
-import VersionGuard from './components/VersionGuard';
 
 
 // Guard component to protect routes and check profile existence
@@ -188,9 +187,7 @@ const App: React.FC = () => {
     <AuthProvider>
       <ThemeProvider>
         <Router>
-          <VersionGuard>
-            <AppRoutes />
-          </VersionGuard>
+          <AppRoutes />
         </Router>
 
       </ThemeProvider>

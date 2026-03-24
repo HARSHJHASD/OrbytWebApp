@@ -39,8 +39,6 @@ const getBaseUrl = () => {
 
 
 const API_BASE = getBaseUrl();
-export const CURRENT_APP_VERSION = "1.0.0";
-
 
 
 // const API_BASE = getBaseUrl();

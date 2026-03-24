@@ -459,8 +459,8 @@ app.post('/api/cleanup', async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.0.0",
-  updateUrl: "https://play.google.com/store/apps/details?id=com.socially.orbyt" // Placeholder Play Store link
+  minAppVersion: "1.0.1",
+  updateUrl: "https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk" // Placeholder Play Store link
 };
 
 app.get('/api/config/version', (req, res) => {

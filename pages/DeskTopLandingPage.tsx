@@ -149,7 +149,7 @@ const DesktopLanding: React.FC = () => {
               {/* Download APK */}
               <button
                 onClick={() => {
-                  navigate("");
+                  window.location.href = "https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk";
                 }}
                 className="group flex items-center gap-4 
     px-8 py-5 min-w-[220px]
@@ -641,12 +641,14 @@ const DesktopLanding: React.FC = () => {
                   </a>
                 </li>
                 <li>
-                  {/* <a
-                    href="https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Credential=ASIAUSPVPRC5OSVNAQJ4%2F20260314%2Fap-south-1%2Fs3%2Faws4_request&X-Amz-Date=20260314T101601Z&X-Amz-Expires=300&X-Amz-Security-Token=IQoJb3JpZ2luX2VjENr%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCmFwLXNvdXRoLTEiSDBGAiEAvmk9qmxF0JPvRBFDmIcnwyIuDgxiYAONHrWLPwmVDBsCIQCwVJvMBHc3O0oV%2BPp2F2Uy%2B8%2FAuyId2ACcLv74yCxsqSrfAgij%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDMxNDU4NDMwMzgwMiIM1FDYnZ%2F%2FDRbIKNsEKrMCJZrmg%2BLShkRcN4zGAVAL4YDfQJ%2FQbMY9UaQKswloH%2FKqgR0EuGcqNIUcuW70%2Fe56RAyigI%2BubvWj5TwkNW9uPjFIEyVyAKLaKuBXuRXNfxvji6WTRxC5G%2BUeUHsdIQ2oIdhQK6X4Q3Qcx%2FgPbktsbl%2BrsWU2K%2Fs873xjurnpJRQ68OX98XMSBb9celw9LVfPUs5bQW7A%2F64JKzTVQ1J3uU8Eoyykb3MdbMb6%2Bs2p88AbnmWQ6aWBypdfGDS0D%2Bwc7uxtzoU9o8vIwnhiEoBAfZoVWCurODOSycoG0GWxvy8bf4ubtSXry%2FpTWsSglHJaN0i%2FAap4yPsF5Zrt5Oq%2Bym0ak3vppzyosRtlPaeq3XVwtBVI1qS95TUP0Gz9ZSwjdzNUoObtIAMy6acbINgXNfAdfDCO59TNBjqsAvhXDZ44Mgelk7Mld9WLk9Zi02aMI5hRJCIpDxYb%2F3KbZDlxS48p3QgsqMzK0dF4VFiQlVk6UhyyOPa%2FnHVHl5bOmNFeWH9nrvSaGF%2FVbd0DTGsqwDtNxHs%2BU25%2BsxWAsXiFUS3vVeiC4G81LgjtQ0ehH1iLqIFscM4ymyvjda90YwskH6SpGxu4UptTQQ1Ut0KDqD%2Fv161SmP5JdqWm99Lc7GV5Ci1NH4KHhWy9eODAXzisqLa%2BeHM6bY3D50SghBqDmoeQF9Y8zS6jpGQ1ctEKhgcNGUgj3Hdwow0%2BEY9HTPgKVM0PTlbqtNT7dSgSsWjqb%2Bhei10IyUi3ZMj%2B%2Fv49GGTzlrtNWzxzKbpQRiSUX5iBXYiQJLnNwEaZU5xuirZOOykIgH6DkEv6rg%3D%3D&X-Amz-Signature=5472cc48eed57d5adf4cd83ebd5011f354d2eb20d8b515c7f88b52109da9bea3&X-Amz-SignedHeaders=host&target=_blank"
+                  <a
+                    href="https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Download App
-                  </a> */}
+                  </a>
                 </li>
               </ul>
             </div>

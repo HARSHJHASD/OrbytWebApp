@@ -1,4 +1,4 @@
-import { ArrowLeft, Briefcase, Code, Coffee, Heart, Instagram, Linkedin } from 'lucide-react';
+import { ArrowLeft, Briefcase, Code, Copy, Heart, Instagram, Linkedin, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DeveloperProfile() {
@@ -99,21 +99,31 @@ export default function DeveloperProfile() {
 
         {/* Support */}
         <div>
-          <h3 className="text-xs font-bold text-slate-500 tracking-widest mb-3 uppercase px-2">Support</h3>
+          <h3 className="text-xs font-bold text-slate-500 tracking-widest mb-3 uppercase px-2">Support Development</h3>
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-             <a 
-              href="https://www.buymeacoffee.com/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-4 py-3 hover:bg-slate-800/50 transition-colors rounded-lg px-2"
-            >
-              <Coffee className="w-6 h-6 text-yellow-400" />
+             <div className="flex items-center gap-4 py-3">
+              <Smartphone className="w-6 h-6 text-primary-500" />
               <div className="flex-1">
-                <span className="block font-medium text-slate-200">Buy me a coffee</span>
-                <span className="block text-sm text-slate-500">"Code is like coffee. It's better when it's hot and someone else made it."</span>
+                <span className="block font-medium text-slate-200">Support via UPI</span>
+                <span className="block text-sm text-slate-400 font-mono mt-1">harshjha@upi</span>
               </div>
-              <Heart className="w-5 h-5 text-red-500" />
-            </a>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText('harshjha@upi');
+                  alert('UPI ID copied to clipboard!');
+                }}
+                className="p-2 hover:bg-slate-800 rounded-lg transition-colors border border-slate-700 group"
+                title="Copy UPI ID"
+              >
+                <Copy className="w-4 h-4 text-slate-400 group-hover:text-primary-500" />
+              </button>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-800/50">
+              <p className="text-xs text-slate-500 italic flex items-center gap-2">
+                <Heart className="w-3 h-3 text-red-500/50" />
+                Your support keeps the caffeine flowing and the bugs (mostly) away.
+              </p>
+            </div>
           </div>
         </div>
 
