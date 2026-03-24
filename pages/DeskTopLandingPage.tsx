@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import AppModal from "../components/ui/AppModal";
 import Button from "../components/ui/Button";
 import { useAuth } from "../context/AuthContext";
 import { MainLogo } from "../util/Images";
@@ -24,6 +25,7 @@ import { MainLogo } from "../util/Images";
 const DesktopLanding: React.FC = () => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -181,6 +183,7 @@ const DesktopLanding: React.FC = () => {
 
               {/* QR Button */}
               <button
+                onClick={() => setIsQrModalOpen(true)}
                 className="group flex items-center gap-4 
     px-8 py-5 min-w-[220px]
     bg-slate-900/40 backdrop-blur-xl
@@ -732,6 +735,34 @@ const DesktopLanding: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      <AppModal
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        title="Download Android App"
+      >
+        <div className="flex flex-col items-center text-center space-y-6">
+          <div className="bg-white p-4 rounded-3xl shadow-2xl">
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent("https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk")}`}
+              alt="Scan QR Code to Download APK"
+              className="w-64 h-64"
+            />
+          </div>
+          <div className="space-y-2">
+            <p className="text-slate-200 font-bold text-lg">Scan to Download</p>
+            <p className="text-slate-400 text-sm">
+              Point your phone's camera at this QR code to download the latest Orbyt APK directly.
+            </p>
+          </div>
+          <a
+            href="https://my-app-downloads.s3.ap-south-1.amazonaws.com/app-release.apk"
+            className="w-full py-4 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-2xl transition-colors shadow-lg shadow-primary-500/20"
+          >
+            Download Directly
+          </a>
+        </div>
+      </AppModal>
     </div>
   );
 };

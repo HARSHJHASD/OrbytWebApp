@@ -105,11 +105,11 @@ export default function DeveloperProfile() {
               <Smartphone className="w-6 h-6 text-primary-500" />
               <div className="flex-1">
                 <span className="block font-medium text-slate-200">Support via UPI</span>
-                <span className="block text-sm text-slate-400 font-mono mt-1">harshjha@upi</span>
+                <span className="block text-sm text-slate-400 font-mono mt-1">6394581304@ptsbi</span>
               </div>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText('harshjha@upi');
+                  navigator.clipboard.writeText('6394581304@ptsbi');
                   alert('UPI ID copied to clipboard!');
                 }}
                 className="p-2 hover:bg-slate-800 rounded-lg transition-colors border border-slate-700 group"
