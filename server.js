@@ -203,31 +203,13 @@ async function createNotification(type, fromUid, toUid, postId = null) {
         data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
       });
 
-      if (typeof receiver.pushSubscription === 'string' && Expo.isExpoPushToken(receiver.pushSubscription)) {
-        try {
-          await expo.sendPushNotificationsAsync([{
-            to: receiver.pushSubscription,
-            sound: 'default',
-            priority: 'high',
-            channelId: 'default',
-            title,
-            body,
-            data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
-          }]);
-        } catch (err) {
-          console.error("Expo Push Notification failed:", err);
-        }
-      } else {
-        try {
-          await webpush.sendNotification(receiver.pushSubscription, payload);
-        } catch (err) {
-          console.error("Push Notification failed:", err);
-          // If subscription is invalid/expired, remove it from the profile
-          if (err.statusCode === 410 || err.statusCode === 404) {
-            await profiles.updateOne({ uid: toUid }, { $unset: { pushSubscription: "" } });
-          }
-        }
-      }
+      const expoPayload = {
+        title,
+        body,
+        data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
+      };
+
+      await sendPushNotification(toUid, payload, expoPayload);
     }
 
   } catch (e) {
@@ -1147,11 +1129,19 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload) {
 
     if (typeof receiver.pushSubscription === 'string' && Expo.isExpoPushToken(receiver.pushSubscription)) {
       try {
+        // Calculate total unread count for the badge
+        const [msgCount, notifCount] = await Promise.all([
+          db.collection('messages').countDocuments({ toUid: receiverUid, read: false }),
+          db.collection('notifications').countDocuments({ toUid: receiverUid, read: false })
+        ]);
+        const totalBadge = msgCount + notifCount;
+
         await expo.sendPushNotificationsAsync([{
           to: receiver.pushSubscription,
           sound: 'default',
           priority: 'high',
           channelId: 'default',
+          badge: totalBadge,
           ...expoPayload
         }]);
       } catch (err) {
