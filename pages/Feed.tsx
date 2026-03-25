@@ -9,7 +9,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useUserLocation } from "../components/LocationGuard";
 import PostItem from "../components/PostItem";
@@ -23,6 +23,7 @@ import StoryViewer from "../components/StoryViewer";
 import { compressImage } from "../util/ImageCompression";
 import { triggerHaptic } from "../util/haptics";
 import { MainLogo } from "../util/Images";
+import ConfirmModal from "../components/ui/ConfirmModal";
 
 const getDistanceMeters = (
   lat1: number,
@@ -68,6 +69,7 @@ const Feed: React.FC = () => {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStoryGroup, setSelectedStoryGroup] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Notification State
@@ -83,6 +85,8 @@ const Feed: React.FC = () => {
 
   // Scroll to top state
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -150,13 +154,17 @@ const Feed: React.FC = () => {
     }
   };
 
+  const filteredPostsByTab = useMemo(() => {
+    return posts.filter((p) => p.type === activeTab);
+  }, [posts, activeTab]);
+
   const handleAddStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user || !userProfile) return;
 
     try {
       setLoading(true);
-      const base64 = await compressImage(file, 1080, 0.7);
+      const base64 = await compressImage(file, 1080, 0.7, 9 / 16);
       await api.util.createStory({
         uid: user?.uid,
         authorName: userProfile?.displayName,
@@ -290,6 +298,25 @@ const Feed: React.FC = () => {
     } catch (error) {
       console.error("Failed to add comment", error);
       throw error;
+    }
+  };
+
+  const handleDeletePost = (postId: string) => {
+    setConfirmDeleteId(postId);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!user || !confirmDeleteId) return;
+    setDeleting(true);
+    try {
+      await api.posts.deletePost(confirmDeleteId, user.uid);
+      setPosts((prev) => prev.filter((p) => p._id !== confirmDeleteId));
+      setConfirmDeleteId(null);
+    } catch (error) {
+      console.error("Failed to delete post", error);
+      alert("Failed to delete post. Please try again.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -513,21 +540,49 @@ const Feed: React.FC = () => {
           accept="image/*"
         />
 
+        {/* Tabs Navigation */}
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xl font-bold text-white pl-1">
+            {activeTab === "regular" ? "Recent Posts" : "Upcoming Meetups"}
+          </h2>
+          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+            {["regular", "meetup"].map((type) => (
+              <button
+                key={type}
+                onClick={() => {
+                  setActiveTab(type as any);
+                  triggerHaptic(5);
+                }}
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+                  activeTab === type
+                    ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                {type === "regular" ? "Posts" : "Events"}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {loading ? (
           <div className="space-y-6 animate-fade-in">
             <PostSkeleton />
             <PostSkeleton />
             <PostSkeleton />
           </div>
-        ) : posts.length === 0 ? (
-          <div className="text-center py-20 text-slate-500 animate-fade-in">
-            <p>
-              No posts found nearby. Try increasing your discovery radius in
-              settings!
+        ) : filteredPostsByTab.length === 0 ? (
+          <div className="text-center py-20 bg-slate-900/50 rounded-3xl border border-slate-800/50 border-dashed animate-fade-in">
+            <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
+              <RefreshCw className="w-8 h-8 text-slate-700" />
+            </div>
+            <p className="text-slate-500 font-medium px-6">
+              No {activeTab === "regular" ? "posts" : "events"} found nearby. 
+              Try increasing your discovery radius in settings!
             </p>
           </div>
         ) : (
-          posts.map((post, index) => (
+          filteredPostsByTab.map((post, index) => (
             <div
               key={post._id}
               className="animate-slide-up"
@@ -538,6 +593,8 @@ const Feed: React.FC = () => {
                 currentUserId={user?.uid}
                 onLike={handleLike}
                 onAddComment={handleAddComment}
+                onEdit={post.uid === user?.uid ? (id: string) => navigate(`/app/edit-post/${id}`) : undefined}
+                onDelete={post.uid === user?.uid ? handleDeletePost : undefined}
               />
             </div>
           ))
@@ -644,8 +701,17 @@ const Feed: React.FC = () => {
           </svg>
         </button>
       )}
+      <ConfirmModal
+        isOpen={!!confirmDeleteId}
+        onClose={() => setConfirmDeleteId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Post"
+        description="Are you sure you want to delete this post? This action cannot be undone."
+        confirmText="Delete"
+        danger
+        loading={deleting}
+      />
     </div>
-
   );
 };
 

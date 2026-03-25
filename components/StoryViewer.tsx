@@ -68,7 +68,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ group, onClose, currentUserId
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center backdrop-blur-2xl">
-      <div className="relative w-full max-w-lg h-full max-h-[90vh] md:aspect-[9/16] bg-[#030B18] md:rounded-3xl overflow-hidden shadow-2xl flex flex-col">
+      <div className="relative w-full max-w-md aspect-[9/16] bg-[#030B18] rounded-3xl overflow-hidden shadow-2xl flex flex-col border border-white/5">
         {/* Progress Bars */}
         <div className="absolute top-4 left-0 right-0 z-10 flex gap-1 px-4">
           {group.stories.map((_: any, i: number) => (

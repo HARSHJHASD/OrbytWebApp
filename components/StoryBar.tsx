@@ -16,7 +16,7 @@ const StoryBar: React.FC<StoryBarProps> = ({ stories, userProfile, onAddStory, o
         className="flex flex-col items-center flex-shrink-0 cursor-pointer"
         onClick={onAddStory}
       >
-        <div className="relative p-1 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600">
+        <div className="relative p-[3px] rounded-full bg-slate-700">
           <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[#030B18]">
             {userProfile?.photoURL ? (
               <img src={userProfile.photoURL} className="w-full h-full object-cover" alt="My Story" />
@@ -40,7 +40,7 @@ const StoryBar: React.FC<StoryBarProps> = ({ stories, userProfile, onAddStory, o
           className="flex flex-col items-center flex-shrink-0 cursor-pointer"
           onClick={() => onViewStory(group)}
         >
-          <div className="p-[2px] rounded-full bg-gradient-to-tr from-blue-500 via-purple-500 to-pink-500">
+          <div className="p-[3px] rounded-full bg-gradient-to-tr from-blue-500 via-purple-500 to-pink-500">
             <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-[#030B18]">
               {group.authorPhoto ? (
                 <img src={group.authorPhoto} className="w-full h-full object-cover" alt={group.authorName} />

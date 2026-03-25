@@ -94,6 +94,14 @@ const MapPage: React.FC = () => {
 
   type FilterType = "all" | "friends" | "interests";
   const [filter, setFilter] = useState<FilterType>("all");
+  const [radiusFilter, setRadiusFilter] = useState<number>(10);
+  const [genderFilter, setGenderFilter] = useState<string>("all");
+
+  useEffect(() => {
+    if (currentUserProfile?.discoveryRadius) {
+      setRadiusFilter(currentUserProfile.discoveryRadius);
+    }
+  }, [currentUserProfile]);
 
   /* ---------------- FETCH USERS ---------------- */
 
@@ -142,7 +150,12 @@ const MapPage: React.FC = () => {
         return { ...u, distMeters, distDisplay };
       })
       .filter((u) => {
-        if (u.distMeters > maxDistanceMeters) return false;
+        if (u.distMeters > radiusFilter * 1000) return false;
+
+        // Gender Filter
+        if (genderFilter !== "all" && u.gender !== genderFilter) {
+          return false;
+        }
 
         // Apply Filters
         if (filter === "friends") {
@@ -163,6 +176,8 @@ const MapPage: React.FC = () => {
     currentUser,
     currentUserProfile,
     filter,
+    radiusFilter,
+    genderFilter,
     currentUserFriends,
     currentUserInterests,
   ]);
@@ -250,7 +265,7 @@ const MapPage: React.FC = () => {
 
         <Circle
           center={[myLocation.lat, myLocation.lng]}
-          radius={(currentUserProfile?.discoveryRadius || 10) * 1000}
+          radius={radiusFilter * 1000}
           pathOptions={{
             color: "#8b5cf6",
             fillColor: "#8b5cf6",
@@ -382,7 +397,44 @@ const MapPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="overflow-y-auto p-4 space-y-4 bg-slate-50 dark:bg-slate-950/50">
+            {/* FILTERS BAR */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950/50 border-b border-slate-100 dark:border-slate-800 space-y-4">
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Search Radius</span>
+                  <span className="text-xs font-bold text-primary-500 bg-primary-500/10 px-2 py-0.5 rounded-full border border-primary-500/20">{radiusFilter} km</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="1" 
+                  max="50" 
+                  value={radiusFilter} 
+                  onChange={(e) => setRadiusFilter(parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Gender</span>
+                <div className="flex gap-2">
+                  {["all", "male", "female", "other"].map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => setGenderFilter(g)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${
+                        genderFilter === g
+                          ? "bg-primary-500 border-primary-500 text-white shadow-lg shadow-primary-500/20"
+                          : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto p-4 space-y-4">
               {nearbyUsers.map((u) => (
                 <div
                   key={u.uid}

@@ -4,7 +4,8 @@
 export const compressImage = (
   file: File,
   maxWidth: number = 1200,
-  quality: number = 0.8
+  quality: number = 0.8,
+  targetAspectRatio?: number // Width / Height
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -18,14 +19,37 @@ export const compressImage = (
         let width = img.width;
         let height = img.height;
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
+        // Calculate dimensions after potential crop
+        let sourceX = 0;
+        let sourceY = 0;
+        let sourceWidth = width;
+        let sourceHeight = height;
+
+        if (targetAspectRatio) {
+          const currentAspectRatio = width / height;
+          if (currentAspectRatio > targetAspectRatio) {
+            // Wider than target - crop sides
+            sourceWidth = height * targetAspectRatio;
+            sourceX = (width - sourceWidth) / 2;
+          } else if (currentAspectRatio < targetAspectRatio) {
+            // Taller than target - crop top/bottom
+            sourceHeight = width / targetAspectRatio;
+            sourceY = (height - sourceHeight) / 2;
+          }
+        }
+
+        // Apply maxWidth scaling after crop
+        let outputWidth = sourceWidth;
+        let outputHeight = sourceHeight;
+
+        if (outputWidth > maxWidth) {
+          outputHeight = Math.round((outputHeight * maxWidth) / outputWidth);
+          outputWidth = maxWidth;
         }
 
         const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
 
         const ctx = canvas.getContext("2d");
         if (!ctx) {
@@ -33,7 +57,17 @@ export const compressImage = (
           return;
         }
 
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(
+          img,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          outputWidth,
+          outputHeight
+        );
 
         const dataUrl = canvas.toDataURL("image/jpeg", quality);
         resolve(dataUrl);
