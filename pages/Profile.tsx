@@ -631,18 +631,25 @@ export default function Profile() {
             </h1>
 
             {/* Location & Job */}
-            <div className="flex flex-col items-center gap-1 mt-2">
-              {profile?.jobRole && (
-                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors">
-                  <Briefcase className="w-3.5 h-3.5" />
-                  <span>{profile?.jobRole}</span>
+              <div className="flex flex-col items-center gap-1 mt-2">
+                <div className="flex items-center gap-3">
+                  {profile?.jobRole && (
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors">
+                      <Briefcase className="w-3.5 h-3.5" />
+                      <span>{profile?.jobRole}</span>
+                    </div>
+                  )}
+                  {profile?.gender && (
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                      <span className="capitalize">{profile.gender.replace(/_/g, ' ')}</span>
+                    </div>
+                  )}
                 </div>
-              )}
-              <div className="flex items-center gap-1.5 text-slate-400 font-medium text-sm">
-                <MapPin className="w-3.5 h-3.5 text-primary-500" />
-                <span>{locationName}</span>
+                <div className="flex items-center gap-1.5 text-slate-400 font-medium text-sm">
+                  <MapPin className="w-3.5 h-3.5 text-primary-500" />
+                  <span>{locationName}</span>
+                </div>
               </div>
-            </div>
 
             {!isOwnProfile && distance && (
               <div className="flex items-center justify-center gap-1.5 mt-1 text-primary-400 font-bold text-sm bg-primary-500/10 inline-flex px-3 py-1 rounded-full mx-auto mt-3 border border-primary-500/20">

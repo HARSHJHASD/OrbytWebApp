@@ -26,6 +26,7 @@ const EditProfile: React.FC = () => {
   const [jobRole, setJobRole] = useState('');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [thatsMePhotos, setThatsMePhotos] = useState<string[]>([]);
+  const [gender, setGender] = useState<UserProfile['gender'] | ''>('');
 
   const [cropModalOpen, setCropModalOpen] = useState(false);
   const [tempImageSrc, setTempImageSrc] = useState<string | null>(null);
@@ -44,6 +45,7 @@ const EditProfile: React.FC = () => {
             setJobRole(profile.jobRole || '');
             setSelectedInterests(profile.interests || []);
             setThatsMePhotos(profile.thatsMePhotos || []);
+            setGender(profile.gender || '');
           }
         } catch (err) {
           console.error(err);
@@ -275,6 +277,23 @@ const EditProfile: React.FC = () => {
               value={dob}
               onChange={(e) => setDob(e.target.value)}
             />
+
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-slate-300 ml-1">
+                Gender <span className="text-slate-500 font-normal text-xs ml-1">(Non-editable)</span>
+              </label>
+              <div className="w-full rounded-2xl border-2 border-slate-800 bg-slate-900/50 px-4 py-4 text-slate-400 outline-none flex items-center gap-3">
+                <span className="text-xl">
+                  {gender === 'male' ? '👨' : 
+                   gender === 'female' ? '👩' : 
+                   gender === 'other' ? '🏳️‍🌈' : 
+                   gender === 'prefer_not_to_say' ? '🔒' : '❓'}
+                </span>
+                <span className="capitalize font-medium">
+                  {gender ? gender.replace(/_/g, ' ') : 'Not set'}
+                </span>
+              </div>
+            </div>
 
             <div className="w-full space-y-2">
               <label className="block text-sm font-semibold text-slate-300 ml-1">

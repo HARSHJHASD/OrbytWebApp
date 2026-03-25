@@ -39,6 +39,7 @@ export interface UserProfile {
   isDiscoverable?: boolean;
   discoveryRadius?: number; // in km
   thatsMePhotos?: string[];
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
 }
 
 export interface Comment {

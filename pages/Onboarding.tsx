@@ -35,6 +35,7 @@ const Onboarding: React.FC = () => {
   const [bio, setBio] = useState('');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [thatsMePhotos, setThatsMePhotos] = useState<string[]>([]);
+  const [gender, setGender] = useState<UserProfile['gender'] | ''>('');
 
   useEffect(() => {
     if (user?.email && !displayName) {
@@ -141,6 +142,10 @@ const Onboarding: React.FC = () => {
         setError("You must be at least 18 years old to use Orbyt.");
         return;
       }
+      if (!gender) {
+        setError("Please select your gender.");
+        return;
+      }
     }
 
     // Step 2: That's Me
@@ -192,6 +197,7 @@ const Onboarding: React.FC = () => {
         bio: bio.trim(),
         interests: selectedInterests,
         thatsMePhotos: thatsMePhotos,
+        gender: gender as UserProfile['gender'],
         createdAt: Date.now(),
       };
 
@@ -336,6 +342,36 @@ const Onboarding: React.FC = () => {
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                 />
+              </div>
+
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-slate-300 ml-1">
+                  Gender
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { id: 'male', label: 'Male', emoji: '👨' },
+                    { id: 'female', label: 'Female', emoji: '👩' },
+                    { id: 'other', label: 'Other', emoji: '🏳️‍🌈' },
+                    { id: 'prefer_not_to_say', label: 'Private', emoji: '🔒' }
+                  ].map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => setGender(option.id as any)}
+                      className={`
+                        px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-200 border-2
+                        flex items-center gap-3
+                        ${gender === option.id
+                          ? 'bg-primary-500/10 border-primary-500 text-primary-400 shadow-md scale-[1.02]'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:bg-slate-800'}
+                      `}
+                    >
+                      <span className="text-xl">{option.emoji}</span>
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
