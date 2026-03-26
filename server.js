@@ -1142,6 +1142,8 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload) {
           priority: 'high',
           channelId: 'default',
           badge: totalBadge,
+          ttl: 2419200, // 4 weeks
+          _displayInForeground: true, // For certain versions of expo-notifications
           ...expoPayload
         }]);
       } catch (err) {
