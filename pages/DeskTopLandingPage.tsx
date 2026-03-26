@@ -15,7 +15,9 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../services/api";
+import { UserProfile } from "../types";
 import { useNavigate } from "react-router-dom";
 import AppModal from "../components/ui/AppModal";
 import Button from "../components/ui/Button";
@@ -26,6 +28,7 @@ const DesktopLanding: React.FC = () => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [realUsers, setRealUsers] = useState<UserProfile[]>([]);
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -40,6 +43,22 @@ const DesktopLanding: React.FC = () => {
   const toggleFaq = (index: number) => {
     setActiveFaq(activeFaq === index ? null : index);
   };
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const users = await api.profile.getAllWithLocation();
+        // Take users with photos, up to 4
+        const withPhotos = users
+          .filter((u: UserProfile) => u.photoURL)
+          .slice(0, 4);
+        setRealUsers(withPhotos);
+      } catch (error) {
+        console.error("Failed to fetch real users for landing page:", error);
+      }
+    };
+    fetchUsers();
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-hidden selection:bg-primary-500/30 font-sans">
@@ -215,19 +234,33 @@ const DesktopLanding: React.FC = () => {
 
             <div className="flex flex-col justify-center text-left space-y-2">
               <div className="flex -space-x-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <div
-                    key={i}
-                    className={`w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden`}
-                  >
-                    <img
-                      draggable={false}
-                      src={`https://i.pravatar.cc/100?img=${10 + i}`}
-                      alt="User"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ))}
+                {realUsers.length > 0
+                  ? realUsers.map((u) => (
+                      <div
+                        key={u.uid}
+                        className={`w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden`}
+                      >
+                        <img
+                          draggable={false}
+                          src={u.photoURL}
+                          alt={u.displayName}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))
+                  : [1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className={`w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden`}
+                      >
+                        <img
+                          draggable={false}
+                          src={`https://i.pravatar.cc/100?img=${10 + i}`}
+                          alt="User"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
                 <div className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 flex items-center justify-center text-[8px] font-bold text-slate-400 leading-none px-1">
                   JOIN US
                 </div>
