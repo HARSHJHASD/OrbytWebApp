@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { Briefcase, Calendar, Camera, CheckCircle, ChevronLeft, Instagram, Shield, Sparkles, User as UserIcon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
-import { UserProfile, POPULAR_INTERESTS, InterestTag } from '../types';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
-import { Camera, Instagram, Sparkles, ChevronLeft, User as UserIcon, Calendar, Shield, MapPin, CheckCircle, FileText, Briefcase } from 'lucide-react';
-import { compressImage } from '../util/ImageCompression';
 import SearchableDropdown from '../components/ui/SearchableDropdown';
 import { PROFESSIONS } from '../constants/professions';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api';
+import { InterestTag, POPULAR_INTERESTS, UserProfile } from '../types';
+import { compressImage } from '../util/ImageCompression';
 
 
 

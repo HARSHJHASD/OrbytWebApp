@@ -108,7 +108,9 @@ const Layout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div className={`flex-1 ${isDesktop ? 'overflow-y-auto' : 'pb-20'}`}>
+      <div className={`flex-1 overflow-y-auto ${isDesktop ? '' : 'pb-24'}`} style={{ 
+        paddingBottom: isDesktop ? 0 : 'calc(5rem + env(safe-area-inset-bottom))' 
+      }}>
         <Outlet />
       </div>
 
