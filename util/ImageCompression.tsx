@@ -3,8 +3,8 @@
  */
 export const compressImage = (
   file: File,
-  maxWidth: number = 1200,
-  quality: number = 0.8,
+  maxWidth: number = 640,
+  quality: number = 0.5,
   targetAspectRatio?: number // Width / Height
 ): Promise<string> => {
   return new Promise((resolve, reject) => {

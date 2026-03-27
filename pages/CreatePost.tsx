@@ -96,7 +96,7 @@ const CreatePost: React.FC = () => {
       setLoading(true);
       setError(null);
       const file = new File([croppedBlob], "cropped.jpg", { type: "image/jpeg" });
-      const compressed = await compressImage(file, 1600, 0.85);
+      const compressed = await compressImage(file, 640, 0.5);
       setImage(compressed);
     } catch (err: any) {
       console.error(err);

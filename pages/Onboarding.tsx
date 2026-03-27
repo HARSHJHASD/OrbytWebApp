@@ -203,9 +203,10 @@ const Onboarding: React.FC = () => {
 
       await api.profile.createOrUpdate(user.uid, profileData);
       window.location.reload();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError("Failed to save profile. Check connection.");
+      const msg = err?.response?.data?.error || err?.message || "Check connection";
+      setError(`Failed to save profile: ${msg}`);
     } finally {
       setLoading(false);
     }

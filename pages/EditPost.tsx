@@ -57,8 +57,8 @@ const EditPost: React.FC = () => {
       try {
         setLoading(true);
         setError(null);
-        // Optimize for feed: 1600px max width
-        const compressed = await compressImage(file, 1600, 0.85);
+        // Optimize for feed: Balanced compression
+        const compressed = await compressImage(file, 640, 0.5);
         setImage(compressed);
       } catch (err: any) {
         setError(err.message || "Failed to process image.");

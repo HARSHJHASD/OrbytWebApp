@@ -165,7 +165,7 @@ const Feed: React.FC = () => {
 
     try {
       setLoading(true);
-      const base64 = await compressImage(file, 1080, 0.7, 9 / 16);
+      const base64 = await compressImage(file, 640, 0.5, 9 / 16);
       await api.util.createStory({
         uid: user?.uid,
         authorName: userProfile?.displayName,

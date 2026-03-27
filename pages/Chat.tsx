@@ -152,7 +152,7 @@ export default function Chat() {
         if (!file) return;
         try {
             setSending(true);
-            const compressed = await compressImage(file, 1024, 0.7);
+            const compressed = await compressImage(file, 640, 0.5);
             handleSend('image', compressed);
             setShowMediaMenu(false);
         } catch (err) {
