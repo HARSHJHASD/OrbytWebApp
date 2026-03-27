@@ -291,15 +291,24 @@ const PostItem: React.FC<any> = ({
                 )}
               </>
             ) : (
-              <button
-                onClick={() => navigate(`/app/post/${post?._id}`)}
-                className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors border border-slate-600"
-              >
-                Manage Guests{" "}
-                {post?.pendingRequests?.length
-                  ? `(${post?.pendingRequests?.length})`
-                  : ""}
-              </button>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={() => navigate(`/app/chat/group/${post?._id}`)}
+                  className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-500/20 active:scale-95"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  Open Group Chat
+                </button>
+                <button
+                  onClick={() => navigate(`/app/post/${post?._id}`)}
+                  className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors border border-slate-600"
+                >
+                  Manage Guests{" "}
+                  {post?.pendingRequests?.length
+                    ? `(${post?.pendingRequests?.length})`
+                    : ""}
+                </button>
+              </div>
             )}
           </div>
         </div>

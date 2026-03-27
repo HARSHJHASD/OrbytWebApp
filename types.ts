@@ -92,6 +92,8 @@ export interface Message {
   createdAt: number;
   authorName?: string; // For group chat display
   authorPhoto?: string; // For group chat display
+  mediaType?: 'image' | 'emoji' | 'audio';
+  mediaUrl?: string; // base64 or URL
 }
 
 export interface InterestTag {

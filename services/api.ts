@@ -293,11 +293,13 @@ export const api = {
       toUid: string | undefined,
       text: string,
       groupId?: string,
+      mediaType?: 'image' | 'emoji' | 'audio',
+      mediaUrl?: string,
     ): Promise<Message> => {
       const response = await fetch(`${API_BASE}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromUid, toUid, groupId, text }),
+        body: JSON.stringify({ fromUid, toUid, groupId, text, mediaType, mediaUrl }),
       });
       const data = await response.json();
       if (!response?.ok) throw new Error("Failed to send");

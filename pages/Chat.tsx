@@ -1,36 +1,45 @@
-import { Ban, ChevronLeft, Crown, Flag, Loader2, Send, Trash2, User as UserIcon, Users, X } from 'lucide-react';
+import { Ban, Camera, ChevronLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
+import { compressImage } from '../util/ImageCompression';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import ConfirmModal from '../components/ui/ConfirmModal';
-import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Message, Post, UserProfile } from '../types';
+import { useAuth } from '../context/AuthContext';
+import { Message, UserProfile, Post } from '../types';
 import { triggerHaptic } from '../util/haptics';
+import ConfirmModal from '../components/ui/ConfirmModal';
 
-const Chat: React.FC = () => {
-    const { uid, groupId } = useParams<{ uid?: string; groupId?: string }>();
+export default function Chat() {
     const { user } = useAuth();
+    const { uid, groupId } = useParams<{ uid: string, groupId: string }>();
     const navigate = useNavigate();
 
-    const [friend, setFriend] = useState<UserProfile | null>(null);
-    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
-    const [text, setText] = useState('');
+    const [text, setText] = useState("");
     const [loading, setLoading] = useState(true);
+    const [friend, setFriend] = useState<UserProfile | null>(null);
     const [sending, setSending] = useState(false);
-    const [groupTitle, setGroupTitle] = useState('');
 
-    // Group Info State
-    const [groupPost, setGroupPost] = useState<Post | null>(null);
+    // Group states
     const [members, setMembers] = useState<UserProfile[]>([]);
+    const [groupPost, setGroupPost] = useState<Post | null>(null);
     const [showGroupInfo, setShowGroupInfo] = useState(false);
+    const [showMenu, setShowMenu] = useState(false);
     const [reportModalOpen, setReportModalOpen] = useState(false);
-    const [reportingMsg, setReportingMsg] = useState<Message | null>(null);
     const [reportReason, setReportReason] = useState("");
+
+    const [groupTitle, setGroupTitle] = useState("");
+    const [reportingMsg, setReportingMsg] = useState<Message | null>(null);
+    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+    
+    // Media States
+    const [mediaType, setMediaType] = useState<'image' | 'emoji' | 'audio' | null>(null);
+    const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+    const [showMediaMenu, setShowMediaMenu] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const isGroup = !!groupId;
+    const id = (isGroup ? groupId : uid) as string;
 
     const scrollToBottom = (smooth = true) => {
         messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
@@ -55,6 +64,16 @@ const Chat: React.FC = () => {
                     setGroupPost(groupData);
 
                     if (groupData) {
+                        // Authorization Check
+                        const isHost = groupData.uid === user.uid;
+                        const isAttendee = groupData.attendees?.includes(user.uid);
+                        
+                        if (!isHost && !isAttendee) {
+                            console.error("Unauthorized access to group chat");
+                            navigate('/app');
+                            return;
+                        }
+
                         // Fetch members
                         const allMemberIds = [groupData?.uid, ...(groupData?.attendees || [])];
                         const uniqueIds = Array.from(new Set(allMemberIds));
@@ -128,15 +147,34 @@ const Chat: React.FC = () => {
         return () => unsubscribe();
     }, [user, uid, groupId, isGroup]);
 
-    const handleSend = async () => {
-        if (!text.trim() || !user) return;
+    const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            setSending(true);
+            const compressed = await compressImage(file, 1024, 0.7);
+            handleSend('image', compressed);
+            setShowMediaMenu(false);
+        } catch (err) {
+            console.error("Image compression failed", err);
+        } finally {
+            setSending(false);
+        }
+    };
 
+    const handleSend = async (mType?: 'image' | 'emoji' | 'audio', mUrl?: string) => {
+        if (!text.trim() && !mUrl) return;
         setSending(true);
         const msgText = text.trim();
+        const currentMediaType = mType || mediaType;
+        const currentMediaUrl = mUrl || mediaUrl;
+
         setText(''); // Optimistic clear
+        setMediaType(null);
+        setMediaUrl(null);
 
         try {
-            const sentMsg = await api.chat.send(user?.uid, uid, msgText, groupId);
+            const sentMsg = await api.chat.send(user?.uid, uid, msgText, groupId, currentMediaType || undefined, currentMediaUrl || undefined);
             setMessages(prev => {
                 if (prev?.some(m => m?._id === sentMsg?._id)) return prev;
                 return [...prev, sentMsg];
@@ -145,9 +183,15 @@ const Chat: React.FC = () => {
         } catch (e) {
             console.error("Failed to send", e);
             setText(msgText); // Restore text on fail
+            setMediaType(currentMediaType);
+            setMediaUrl(currentMediaUrl);
         } finally {
             setSending(false);
         }
+    };
+
+    const handleSendEmoji = (emoji: string) => {
+        setText(prev => prev + emoji);
     };
 
     const [confirmState, setConfirmState] = useState<{
@@ -343,7 +387,14 @@ const Chat: React.FC = () => {
                                                 ? 'bg-primary-600 text-white rounded-br-none'
                                                 : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}
                                       `}>
-                                            {msg?.text}
+                                            {msg.mediaType === 'image' && (
+                                                <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(msg.mediaUrl, '_blank')}>
+                                                    <img src={msg.mediaUrl} alt="Sent image" className="max-w-full h-auto object-cover max-h-64 sm:max-h-80" />
+                                                </div>
+                                            )}
+                                            <span className={/^[\p{Emoji}\s]+$/u.test(msg?.text || "") && (msg?.text?.length || 0) <= 6 ? "text-4xl block py-1" : ""}>
+                                                {msg?.text}
+                                            </span>
                                             
                                             {!isMe && (
                                                 <button
@@ -366,26 +417,95 @@ const Chat: React.FC = () => {
 
             {/* Input Area */}
             <div className="p-3 bg-slate-900 border-t border-slate-800 shrink-0 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
-                <div className="flex items-center gap-2 max-w-md mx-auto">
-                    <input
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        placeholder="Type a message..."
-                        className="flex-1 bg-slate-950 border border-slate-800 rounded-full px-5 py-3 text-white placeholder-slate-500 outline-none focus:border-primary-500 transition-colors"
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSend();
-                            }
-                        }}
-                    />
-                    <button
-                        onClick={handleSend}
-                        disabled={!text.trim() || sending}
-                        className="p-3 bg-primary-600 text-white rounded-full hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-500/20 active:scale-95"
-                    >
-                        {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
-                    </button>
+                <div className="max-w-md mx-auto relative">
+                    
+                    {/* Media Preview */}
+                    {mediaUrl && (
+                        <div className="absolute bottom-full left-0 right-0 mb-3 animate-slide-up">
+                            <div className="bg-slate-800 rounded-2xl p-2 border border-slate-700 shadow-2xl flex items-center gap-3">
+                                {mediaType === 'image' ? (
+                                    <div className="w-16 h-16 rounded-lg overflow-hidden border border-slate-600 shrink-0">
+                                        <img src={mediaUrl} className="w-full h-full object-cover" />
+                                    </div>
+                                ) : (
+                                    <div className="w-16 h-16 rounded-lg bg-primary-950 flex items-center justify-center text-primary-500 shrink-0 border border-primary-900">
+                                        <Smile className="w-8 h-8" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-white text-sm font-bold truncate">
+                                        Image selected
+                                    </p>
+                                    <p className="text-slate-500 text-xs">Ready to send</p>
+                                </div>
+                                <button 
+                                    onClick={() => { setMediaUrl(null); setMediaType(null); }}
+                                    className="p-2 bg-slate-700 text-white rounded-full hover:bg-slate-600"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Media Menu */}
+                    {showMediaMenu && (
+                        <div className="absolute bottom-full left-0 mb-3 animate-slide-up w-full max-w-[320px]">
+                            <div className="bg-slate-800 rounded-2xl border border-slate-700 shadow-2xl overflow-hidden flex flex-col">
+                                <label className="flex items-center gap-3 px-4 py-3 hover:bg-slate-700 cursor-pointer transition-colors text-slate-200 hover:text-white border-b border-slate-700/50">
+                                    <ImageIcon className="w-5 h-5 text-blue-400" />
+                                    <span className="text-sm font-medium">Send Image</span>
+                                    <input type="file" accept="image/*" className="hidden" onChange={handleImageSelect} />
+                                </label>
+                                <div className="p-3 bg-slate-800/50">
+                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-1">Emojis</div>
+                                    <div className="grid grid-cols-6 gap-2">
+                                        {['❤️', '🔥', '😂', '👍', '🙌', '✨', '🎉', '💡', '😊', '😍', '🤔', '😎', '😢', '🙏', '💯', '🚀', '🌟', '🌈'].map(emoji => (
+                                            <button
+                                                key={emoji}
+                                                onClick={() => handleSendEmoji(emoji)}
+                                                className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-900 border border-slate-700 hover:bg-primary-600 hover:border-primary-500 text-xl transition-all active:scale-90"
+                                            >
+                                                {emoji}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowMediaMenu(!showMediaMenu)}
+                            className={`p-3 rounded-full transition-all active:scale-95 ${showMediaMenu ? 'bg-primary-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}
+                        >
+                            <Plus className={`w-5 h-5 transition-transform duration-300 ${showMediaMenu ? 'rotate-45' : ''}`} />
+                        </button>
+
+                        <input
+                            value={text}
+                            onChange={(e) => {
+                                setText(e.target.value);
+                                if (showMediaMenu) setShowMediaMenu(false);
+                            }}
+                            placeholder="Type a message..."
+                            className="flex-1 bg-slate-950 border border-slate-800 rounded-full px-5 py-3 text-white placeholder-slate-500 outline-none focus:border-primary-500 transition-colors"
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSend();
+                                }
+                            }}
+                        />
+                        <button
+                            onClick={() => handleSend()}
+                            disabled={(!text.trim() && !mediaUrl) || sending}
+                            className="p-3 bg-primary-600 text-white rounded-full hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-500/20 active:scale-95"
+                        >
+                            {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5 ml-0.5" />}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -393,7 +513,7 @@ const Chat: React.FC = () => {
             {showGroupInfo && groupPost && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
                     <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowGroupInfo(false)}></div>
-                    <div className="bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-800">
+                    <div className="bg-slate-900 w-full max-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-800">
 
                         {/* Modal Header */}
                         <div className="p-6 border-b border-slate-800 flex items-center justify-between">
@@ -415,7 +535,7 @@ const Chat: React.FC = () => {
                                             {host.photoURL ? (
                                                 <img draggable={false} src={host.photoURL} className="w-full h-full object-cover" />
                                             ) : (
-                                                <div className="w-full h-full flex items-center justify-center font-bold text-slate-500">{host.displayName[0]}</div>
+                                                <div className="w-full h-full flex items-center justify-center font-bold text-slate-500">{host.displayName?.[0]}</div>
                                             )}
                                         </div>
                                         <div className="flex-1">
@@ -452,7 +572,7 @@ const Chat: React.FC = () => {
                                                     {member.photoURL ? (
                                                         <img draggable={false} src={member.photoURL} className="w-full h-full object-cover" />
                                                     ) : (
-                                                        <div className="w-full h-full flex items-center justify-center font-bold text-slate-500 text-xs">{member.displayName[0]}</div>
+                                                        <div className="w-full h-full flex items-center justify-center font-bold text-slate-500 text-xs">{member.displayName?.[0]}</div>
                                                     )}
                                                 </div>
                                                 <div className="flex-1 min-w-0">
@@ -531,6 +651,4 @@ const Chat: React.FC = () => {
             )}
         </div>
     );
-};
-
-export default Chat;
+}

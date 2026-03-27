@@ -1167,13 +1167,21 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload) {
 app.post('/api/chat/send', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, groupId, text } = req.body;
+    const { fromUid, toUid, groupId, text, mediaType, mediaUrl } = req.body;
     const messages = db.collection('messages');
     const profiles = db.collection('profiles');
     const sender = await profiles.findOne({ uid: fromUid });
     const authorName = sender?.displayName || "User";
     const authorPhoto = sender?.photoURL || "";
-    let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto };
+    
+    let displayBody = text || "";
+    if (!displayBody && mediaType) {
+      if (mediaType === 'image') displayBody = "sent a photo";
+      else if (mediaType === 'emoji') displayBody = "sent a big emoji";
+      else if (mediaType === 'audio') displayBody = "sent a voice note";
+    }
+
+    let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto, mediaType, mediaUrl };
 
     if (groupId) {
       const posts = db.collection('posts');
@@ -1196,8 +1204,8 @@ app.post('/api/chat/send', async (req, res) => {
       const recipients = new Set([...(post.attendees || []), post.uid]);
 
       // Dispatch WebSockets & Push
-      const expoPayload = { title: groupTitle, body: `${authorName}: ${text}`, data: { url: `/chat/group/${groupId}` } };
-      const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${text}`, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/group/${groupId}` } });
+      const expoPayload = { title: groupTitle, body: `${authorName}: ${displayBody}`, data: { url: `/chat/group/${groupId}` } };
+      const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${displayBody}`, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/group/${groupId}` } });
 
       recipients.forEach(uid => {
         sendToUser(uid, fullMessage);
@@ -1214,8 +1222,8 @@ app.post('/api/chat/send', async (req, res) => {
       sendToUser(fromUid, fullMessage);
 
       // Dispatch Push to receiver
-      const expoPayload = { title: authorName, body: text, data: { url: `/chat/${fromUid}` } };
-      const webPayloadStr = JSON.stringify({ title: authorName, body: text, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/${fromUid}` } });
+      const expoPayload = { title: authorName, body: displayBody, data: { url: `/chat/${fromUid}` } };
+      const webPayloadStr = JSON.stringify({ title: authorName, body: displayBody, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/${fromUid}` } });
       sendPushNotification(toUid, webPayloadStr, expoPayload);
 
       return res.json(fullMessage);
