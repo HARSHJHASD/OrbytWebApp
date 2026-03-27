@@ -1207,10 +1207,10 @@ app.post('/api/chat/send', async (req, res) => {
       const expoPayload = { title: groupTitle, body: `${authorName}: ${displayBody}`, data: { url: `/chat/group/${groupId}` } };
       const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${displayBody}`, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/group/${groupId}` } });
 
-      recipients.forEach(uid => {
+      for (const uid of recipients) {
         sendToUser(uid, fullMessage);
-        if (uid !== fromUid) sendPushNotification(uid, webPayloadStr, expoPayload);
-      });
+        if (uid !== fromUid) await sendPushNotification(uid, webPayloadStr, expoPayload);
+      }
 
       return res.json(fullMessage);
     } else {
@@ -1224,7 +1224,7 @@ app.post('/api/chat/send', async (req, res) => {
       // Dispatch Push to receiver
       const expoPayload = { title: authorName, body: displayBody, data: { url: `/chat/${fromUid}` } };
       const webPayloadStr = JSON.stringify({ title: authorName, body: displayBody, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/${fromUid}` } });
-      sendPushNotification(toUid, webPayloadStr, expoPayload);
+      await sendPushNotification(toUid, webPayloadStr, expoPayload);
 
       return res.json(fullMessage);
     }
