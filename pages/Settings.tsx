@@ -416,6 +416,8 @@ const Settings: React.FC = () => {
             <Link to="/terms" className="hover:text-slate-300">Terms of Service</Link>
             <span>•</span>
             <Link to="/child-policy" className="hover:text-slate-300">Child Safety</Link>
+            <span>•</span>
+            <Link to="/delete-account" className="hover:text-slate-300">Account Deletion</Link>
           </div>
         </div>
       </div>

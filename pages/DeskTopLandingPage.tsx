@@ -786,6 +786,14 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
+                    href="/#/delete-account"
+                    className="hover:text-primary-400 transition-colors"
+                  >
+                    Account Deletion
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="/#/guidelines"
                     className="hover:text-primary-400 transition-colors"
                   >
