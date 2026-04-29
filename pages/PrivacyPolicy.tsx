@@ -33,7 +33,7 @@ const PrivacyPolicy: React.FC = () => {
                         <Shield className="w-8 h-8 text-primary-500" />
                     </div>
                     <h1 className="text-3xl font-bold text-white mb-2">Privacy Policy</h1>
-                    <p className="text-slate-400 text-sm border-b border-slate-800 pb-6 inline-block">Last Updated: {new Date().toLocaleDateString()}</p>
+                    <p className="text-slate-400 text-sm border-b border-slate-800 pb-6 inline-block">Last Updated: March 2026</p>
                 </div>
 
                 <section className="space-y-6 text-slate-300 leading-relaxed text-sm md:text-base">
@@ -47,6 +47,7 @@ const PrivacyPolicy: React.FC = () => {
                         <li><strong>User Generated Content:</strong> We collect and store text, images, and other data you choose to post, comment, or message through the Service.</li>
                         <li><strong>Usage Data:</strong> We automatically log interactions with the app, device information, and IP addresses to improve performance and prevent abuse.</li>
                         <li><strong>Push Notification Token:</strong> A device token used solely to deliver push notifications to you. This is not shared with third parties.</li>
+                        <li><strong>Device Permissions:</strong> We request access to your camera, microphone, and storage when you use specific features like uploading a profile picture or recording content.</li>
                     </ul>
 
                     <h2 className="text-xl font-bold text-white text-left pt-4">3. How We Use Your Information</h2>
@@ -83,8 +84,27 @@ const PrivacyPolicy: React.FC = () => {
                     <h2 className="text-xl font-bold text-white text-left pt-4">8. Children's Privacy (Strict 18+)</h2>
                     <p>Orbyt is strictly intended for users aged 18 and above. We do not knowingly collect personal information from minors. For detailed information on our age verification and minor removal process, please read our <a href="/#/child-policy" className="text-primary-400 hover:underline">Child Safety Policy</a>.</p>
 
-                    <h2 className="text-xl font-bold text-white text-left pt-4">9. Contact Us</h2>
-                    <p>If you have questions about this Privacy Policy, please contact us at <a href="mailto:privacy@orbyt.app" className="text-primary-400 hover:underline">privacy@orbyt.app</a>.</p>
+                    <h2 className="text-xl font-bold text-white text-left pt-4">9. Camera Usage</h2>
+                    <p>Our app may request access to your device camera to allow you to capture photos or videos as part of app features (such as profile images or content sharing).</p>
+                    <p>We do not access your camera without your explicit permission. Any images or videos captured are only used within the app and are not stored or shared without your consent.</p>
+
+                    <h2 className="text-xl font-bold text-white text-left pt-4">10. Google Sign-In</h2>
+                    <p>We use Google Sign-In to allow users to authenticate securely. When you sign in using Google, we may receive basic profile information such as your name, email address, and profile picture.</p>
+                    <p>This data is used only for authentication and personalization purposes and is not shared with third parties.</p>
+
+                    <h2 className="text-xl font-bold text-white text-left pt-4">11. Third-Party Services</h2>
+                    <p>We may use trusted third-party services such as Google APIs to provide authentication, notifications, and core app functionality.</p>
+                    <p>These services may collect limited data as per their own privacy policies. We recommend reviewing Google’s privacy policy for more information.</p>
+
+                    <h2 className="text-xl font-bold text-white text-left pt-4">12. User Generated Content & Moderation</h2>
+                    <p>Orbyt allows users to share content. We implement tools to report objectionable content and block users. We reserve the right to remove content or suspend accounts that violate our community guidelines or terms of service.</p>
+
+                    <h2 className="text-xl font-bold text-white text-left pt-4">13. Contact Us & Data Protection</h2>
+                    <p>If you have questions about this Privacy Policy or our data practices, please contact our Data Protection Officer at:</p>
+                    <p>
+                        <strong>Email:</strong> <a href="mailto:privacy@orbyt.app" className="text-primary-400 hover:underline">privacy@orbyt.app</a><br />
+                        <strong>Address:</strong> Orbyt Inc., 16192 Coastal Highway, Lewes, Delaware 19958, USA
+                    </p>
                 </section>
 
                 <p className="text-center text-slate-600 text-xs pt-4 pb-10">© {new Date().getFullYear()} Orbyt Inc. All rights reserved.</p>
