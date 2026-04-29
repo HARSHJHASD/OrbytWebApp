@@ -103,12 +103,12 @@ export default function ImageCropperModal({
                 >
                     <X className="w-6 h-6" />
                 </button>
-                <div className="text-white font-bold">Crop Photo</div>
+                <div className="text-white font-bold">Crop</div>
                 <button
                     onClick={handleConfirm}
-                    className="p-2 text-primary-500 hover:text-primary-400 rounded-full hover:bg-slate-800 transition-colors"
+                    className="px-4 py-1.5 bg-primary-500 text-white text-sm font-bold rounded-full hover:bg-primary-600 transition-colors shadow-lg shadow-primary-500/20"
                 >
-                    <Check className="w-6 h-6" />
+                    Done
                 </button>
             </div>
 

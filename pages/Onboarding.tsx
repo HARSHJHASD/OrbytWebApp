@@ -51,46 +51,66 @@ const Onboarding: React.FC = () => {
         setError("Image too large (Max 10MB).");
         return;
       }
-      try {
-        setLoading(true);
-        setError(null);
-        const compressed = await compressImage(file, 800, 0.8);
-        setPhotoURL(compressed);
-      } catch (err: any) {
-        setError(err.message || "Failed to process image.");
-      } finally {
-        setLoading(false);
-      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          setLoading(true);
+          setError(null);
+          const compressed = await compressImage(file, 800, 0.8);
+          setPhotoURL(compressed);
+        } catch (err: any) {
+          setError(err.message || "Failed to process image.");
+        } finally {
+          setLoading(false);
+        }
+      };
+      reader.onerror = () => {
+        setError("Could not access gallery. Please check permissions in device settings.");
+      };
+      reader.readAsDataURL(file);
     }
   };
 
   const handleThatsMeUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError("Image too large (Max 10MB).");
-        return;
-      }
-      try {
-        setLoading(true);
-        setError(null);
-        // Optimize for profile display: 1080px height max (4:5 aspect ratio expected)
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const newPhotos = [...thatsMePhotos];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const targetIndex = index + i;
+        if (targetIndex >= 3) break;
+
+        if (file.size > 10 * 1024 * 1024) {
+          continue;
+        }
+
         const compressed = await compressImage(file, 1080, 0.7);
-        const newPhotos = [...thatsMePhotos];
-        newPhotos[index] = compressed;
-        setThatsMePhotos(newPhotos);
-      } catch (err: any) {
-        setError(err.message || "Failed to process image.");
-      } finally {
-        setLoading(false);
+        newPhotos[targetIndex] = compressed;
       }
+      setThatsMePhotos(newPhotos);
+    } catch (err: any) {
+      setError("Failed to process one or more images.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const toggleInterest = (id: string) => {
-    setSelectedInterests(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setSelectedInterests(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(i => i !== id);
+      }
+      if (prev.length >= 5) {
+        setError("You can only select up to 5 interests.");
+        return prev;
+      }
+      return [...prev, id];
+    });
   };
 
   const calculateAge = (dateString: string) => {
@@ -152,7 +172,7 @@ const Onboarding: React.FC = () => {
     if (currentStep === 2) {
       const photoCount = thatsMePhotos.filter(p => !!p).length;
       if (photoCount < 3) {
-        setError("Please upload all 3 pictures for 'That's me'.");
+        setError("Please upload at least 3 pictures for 'That's me'.");
         return;
       }
     }
@@ -402,7 +422,7 @@ const Onboarding: React.FC = () => {
                       <span className="text-xs font-bold text-slate-500">Photo {i + 1}</span>
                     </>
                   )}
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleThatsMeUpload(e, i)} />
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleThatsMeUpload(e, i)} />
                 </label>
               ))}
             </div>
@@ -450,7 +470,10 @@ const Onboarding: React.FC = () => {
           <div className="space-y-6 animate-fade-in">
             <div className="text-center mb-6">
               <h3 className="text-xl font-bold text-white">Your Vibe</h3>
-              <p className="text-slate-400 text-base">Select at least 3 interests</p>
+              <p className="text-slate-400 text-base">Select your Top 5 interests</p>
+              <p className="text-[10px] text-primary-400 font-bold uppercase mt-1">
+                {selectedInterests.length} / 5 Selected
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -534,7 +557,7 @@ const Onboarding: React.FC = () => {
               onClick={handleFinish}
               fullWidth
               isLoading={loading}
-              disabled={selectedInterests.length < 3}
+              disabled={selectedInterests.length !== 5}
               className="shadow-xl shadow-primary-500/20"
             >
               Complete Profile

@@ -58,9 +58,9 @@ const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
           ${error ? 'border-red-500 focus:border-red-500' : ''}
         `}
       >
-        <div className="flex items-center gap-3 flex-1 overflow-hidden">
+        <div className="flex items-center gap-3 flex-1">
           {icon && <div className="text-slate-500 shrink-0">{icon}</div>}
-          <span className={`truncate ${value ? 'text-white' : 'text-slate-500'}`}>
+          <span className={`text-sm font-medium leading-tight ${value ? 'text-white' : 'text-slate-500'}`}>
             {value || placeholder}
           </span>
         </div>
@@ -107,12 +107,12 @@ const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
                     setSearch("");
                   }}
                   className={`
-                    px-4 py-3 text-sm cursor-pointer transition-colors flex items-center justify-between
+                    px-4 py-3 text-sm cursor-pointer transition-colors flex items-start justify-between gap-3
                     ${value === option ? 'bg-primary-500/10 text-primary-400 font-bold' : 'text-slate-300 hover:bg-slate-800'}
                   `}
                 >
-                  <span>{option}</span>
-                  {value === option && <Check className="w-4 h-4 text-primary-500" />}
+                  <span className="flex-1 min-w-0 break-words">{option}</span>
+                  {value === option && <Check className="w-4 h-4 text-primary-500 shrink-0 mt-0.5" />}
                 </div>
               ))
             ) : (

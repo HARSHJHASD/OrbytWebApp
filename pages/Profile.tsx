@@ -632,16 +632,16 @@ export default function Profile() {
             </h1>
 
             {/* Location & Job */}
-              <div className="flex flex-col items-center gap-1 mt-2">
-                <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center gap-1.5 mt-2">
+                <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 px-4">
                   {profile?.jobRole && (
-                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors">
-                      <Briefcase className="w-3.5 h-3.5" />
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-semibold text-sm transition-colors text-center">
+                      <Briefcase className="w-3.5 h-3.5 text-primary-500" />
                       <span>{profile?.jobRole}</span>
                     </div>
                   )}
                   {profile?.gender && (
-                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-medium text-sm transition-colors bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300 font-bold text-[10px] uppercase tracking-wider transition-colors bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
                       <span className="capitalize">{profile.gender.replace(/_/g, ' ')}</span>
                     </div>
                   )}

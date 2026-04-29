@@ -73,6 +73,9 @@ const EditProfile: React.FC = () => {
         setTempImageSrc(reader.result?.toString() || null);
         setCropModalOpen(true);
       });
+      reader.addEventListener('error', () => {
+        setError("Could not read file. Please ensure you have granted gallery/storage permissions in your device settings.");
+      });
       reader.readAsDataURL(file);
     }
   };
@@ -97,29 +100,44 @@ const EditProfile: React.FC = () => {
   };
 
   const toggleInterest = (id: string) => {
-    setSelectedInterests(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setSelectedInterests(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(i => i !== id);
+      }
+      if (prev.length >= 5) {
+        setError("You can only select up to 5 interests.");
+        return prev;
+      }
+      return [...prev, id];
+    });
   };
   
   const handleThatsMeUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setError("Image too large (Max 10MB).");
-        return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      const newPhotos = [...thatsMePhotos];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const targetIndex = index + i;
+        if (targetIndex >= 3) break;
+
+        if (file.size > 10 * 1024 * 1024) {
+          continue;
+        }
+
+        const compressed = await compressImage(file, 1080, 0.7);
+        newPhotos[targetIndex] = compressed;
       }
-      try {
-        setLoading(true);
-        const compressed = await compressImage(file, 800, 0.8);
-        const newPhotos = [...thatsMePhotos];
-        newPhotos[index] = compressed;
-        setThatsMePhotos(newPhotos);
-      } catch (err) {
-        setError("Failed to process image.");
-      } finally {
-        setLoading(false);
-      }
+      setThatsMePhotos(newPhotos);
+    } catch (err: any) {
+      setError("Failed to process one or more images.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -354,7 +372,7 @@ const EditProfile: React.FC = () => {
                         <span className="text-[10px] font-bold text-slate-500 uppercase">Photo {i + 1}</span>
                       </>
                     )}
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleThatsMeUpload(e, i)} />
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleThatsMeUpload(e, i)} />
                   </label>
                 ))}
               </div>
