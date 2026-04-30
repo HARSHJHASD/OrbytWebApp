@@ -102,7 +102,7 @@ const PrivacyPolicy: React.FC = () => {
                     <h2 className="text-xl font-bold text-white text-left pt-4">13. Contact Us & Data Protection</h2>
                     <p>If you have questions about this Privacy Policy or our data practices, please contact our Data Protection Officer at:</p>
                     <p>
-                        <strong>Email:</strong> <a href="mailto:privacy@orbyt.app" className="text-primary-400 hover:underline">privacy@orbyt.app</a><br />
+                        <strong>Email:</strong> <a href="mailto:orbytapp@gmail.com" className="text-primary-400 hover:underline">orbytapp@gmail.com</a><br />
                         <strong>Address:</strong> Orbyt Inc., 16192 Coastal Highway, Lewes, Delaware 19958, USA
                     </p>
                 </section>
