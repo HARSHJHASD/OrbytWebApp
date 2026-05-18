@@ -1,13 +1,16 @@
+import bcrypt from 'bcrypt';
 import cors from "cors";
 import dotenv from "dotenv";
 import { Expo } from 'expo-server-sdk';
 import express from "express";
+import rateLimit from 'express-rate-limit';
 import http from "http";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import path from "path";
 import { fileURLToPath } from "url";
 import webpush from "web-push";
 import WebSocket, { WebSocketServer } from "ws";
+import { z } from 'zod';
 
 const expo = new Expo();
 
@@ -20,8 +23,9 @@ const app = express();
 // --- Web Push Configuration ---
 const publicVapidKey = process.env.VITE_VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
+const vapidEmail = process.env.VAPID_EMAIL || "orbytapp@gmail.com";
 webpush.setVapidDetails(
-  "mailto:harsh.j@sparrowrms.in",
+  vapidEmail,
   publicVapidKey,
   privateVapidKey
 );
@@ -39,24 +43,19 @@ const server = http.createServer(app);
 // Initialize WebSocket Server
 const wss = new WebSocketServer({ server });
 
-// Enable CORS
+// Enable CORS - FIXED: Only allow specific domains
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5000",
   "https://backend.strangerchat.space",
   "https://orbyt.strangerchat.space",
-  "https://sociall-sigma.vercel.app"   // ✅ ADD THIS
+  "https://sociall-sigma.vercel.app"
 ];
-
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (
-        !origin ||
-        origin.includes("vercel.app") ||
-        allowedOrigins.includes(origin)
-      ) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
@@ -65,6 +64,77 @@ app.use(
     credentials: true,
   })
 );
+
+// Rate Limiting - Prevent brute force attacks
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 requests per window
+  message: 'Too many authentication attempts, please try again later'
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute
+  message: 'Too many requests, please try again later'
+});
+
+app.use('/api/', apiLimiter);
+
+// --- AUDIT LOGGING MIDDLEWARE ---
+const auditLogs = [];
+function createAuditLog(req, res, next) {
+  const startTime = Date.now();
+  const originalJson = res.json;
+  
+  res.json = function(data) {
+    const duration = Date.now() - startTime;
+    const logEntry = {
+      timestamp: new Date().toISOString(),
+      method: req.method,
+      url: req.originalUrl,
+      path: req.path,
+      uid: req.body?.uid || req.query?.uid || req.params?.uid || 'anonymous',
+      statusCode: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip,
+      userAgent: req.get('user-agent')
+    };
+    
+    // Log to console for real-time monitoring
+    if (res.statusCode >= 400) {
+      console.warn(`[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`);
+    } else {
+      console.log(`[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`);
+    }
+    
+    // Keep last 1000 logs in memory for debugging
+    auditLogs.push(logEntry);
+    if (auditLogs.length > 1000) auditLogs.shift();
+    
+    return originalJson.call(this, data);
+  };
+  
+  next();
+}
+
+app.use(createAuditLog);
+
+// --- AUDIT LOG RETRIEVAL ENDPOINT ---
+app.get('/api/admin/audit-logs', (req, res) => {
+  // Note: In production, add proper authentication before exposing logs
+  res.json({ logs: auditLogs, total: auditLogs.length });
+});
+
+// Input Validation Schemas
+const signupSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters')
+});
+
+const loginSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(1, 'Password is required')
+});
 
 
 
@@ -86,6 +156,7 @@ const client = new MongoClient(uri, {
 let db;
 const DB_NAME = "socially_db";
 const clients = new Map(); // uid -> Set<WebSocket>
+const BCRYPT_ROUNDS = 10;
 
 // --- WebSocket Logic ---
 wss.on('connection', (ws, req) => {
@@ -98,7 +169,28 @@ wss.on('connection', (ws, req) => {
     }
     clients.get(uid).add(ws);
 
+    // Add cleanup timeout to prevent memory leaks
+    let disconnectTimeout = null;
+
     ws.on('close', () => {
+      if (clients.has(uid)) {
+        clients.get(uid).delete(ws);
+        if (clients.get(uid).size === 0) {
+          // Delay cleanup to allow reconnections
+          disconnectTimeout = setTimeout(() => {
+            if (clients.has(uid) && clients.get(uid).size === 0) {
+              clients.delete(uid);
+              console.log(`Cleaned up client: ${uid}`);
+            }
+          }, 30000); // 30 second timeout
+        }
+      }
+    });
+
+    ws.on('error', (error) => {
+      console.error(`WebSocket error for user ${uid}:`, error);
+      if (disconnectTimeout) clearTimeout(disconnectTimeout);
+      // Clean up on error
       if (clients.has(uid)) {
         clients.get(uid).delete(ws);
         if (clients.get(uid).size === 0) {
@@ -164,57 +256,64 @@ async function createNotification(type, fromUid, toUid, postId = null) {
       notification: { ...notifDoc, _id: notifResult.insertedId }
     });
 
-    // --- Send Web Push Notification ---
-    if (receiver.pushSubscription) {
-      let title = "New Notification";
-      let body = "You have a new notification on Orbyt.";
+    let title = "New Notification";
+    let body = "You have a new notification on Orbyt.";
 
-      switch (type) {
-        case 'like':
-          title = "New Like!";
-          body = `${sender.displayName} liked your post.`;
-          break;
-        case 'comment':
-          title = "New Comment!";
-          body = `${sender.displayName} commented on your post.`;
-          break;
-        case 'friend_request':
-          title = "Friend Request";
-          body = `${sender.displayName} sent you a friend request.`;
-          break;
-        case 'friend_accept':
-          title = "Friend Request Accepted";
-          body = `${sender.displayName} accepted your friend request.`;
-          break;
-        case 'meetup_request':
-          title = "Meetup Request";
-          body = `${sender.displayName} requested to join your meetup.`;
-          break;
-        case 'meetup_accept':
-          title = "Meetup Accepted";
-          body = `${sender.displayName} accepted your request to join the meetup!`;
-          break;
-      }
-
-      const payload = JSON.stringify({
-        title,
-        body,
-        icon: sender.photoURL || "/pwa-192x192.png",
-        data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
-      });
-
-      const expoPayload = {
-        title,
-        body,
-        data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
-      };
-
-      await sendPushNotification(toUid, payload, expoPayload);
+    switch (type) {
+      case 'like':
+        title = "New Like!";
+        body = `${sender.displayName} liked your post.`;
+        break;
+      case 'comment':
+        title = "New Comment!";
+        body = `${sender.displayName} commented on your post.`;
+        break;
+      case 'friend_request':
+        title = "Friend Request";
+        body = `${sender.displayName} sent you a friend request.`;
+        break;
+      case 'friend_accept':
+        title = "Friend Request Accepted";
+        body = `${sender.displayName} accepted your friend request.`;
+        break;
+      case 'meetup_request':
+        title = "Meetup Request";
+        body = `${sender.displayName} requested to join your meetup.`;
+        break;
+      case 'meetup_accept':
+        title = "Meetup Accepted";
+        body = `${sender.displayName} accepted your request to join the meetup!`;
+        break;
     }
+
+    const payload = JSON.stringify({
+      title,
+      body,
+      icon: sender.photoURL || "/pwa-192x192.png",
+      data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
+    });
+
+    const expoPayload = {
+      title,
+      body,
+      data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
+    };
+
+    await sendPushNotification(toUid, payload, expoPayload);
 
   } catch (e) {
     console.error("Error creating notification", e);
   }
+}
+
+// --- AUTHENTICATION MIDDLEWARE ---
+function requireAuth(req, res, next) {
+  const uid = req.body?.uid || req.query?.uid || req.params?.uid;
+  if (!uid) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  // In a real app, verify JWT token here
+  next();
 }
 
 // --- DATABASE CLEANUP UTILITY ---
@@ -329,10 +428,40 @@ async function cleanupOrphanedData() {
   }
 }
 
+async function createIndexes() {
+  if (!db) return;
+  try {
+    const collections = {
+      users: ['email'],
+      profiles: ['uid', 'email'],
+      posts: ['uid', 'createdAt', 'type'],
+      messages: ['fromUid', 'toUid', 'groupId', 'createdAt'],
+      notifications: ['toUid', 'createdAt'],
+      stories: ['uid', 'expiresAt'],
+      profile_views: ['viewerUid', 'targetUid'],
+    };
+
+    for (const [collName, fields] of Object.entries(collections)) {
+      const collection = db.collection(collName);
+      for (const field of fields) {
+        const index = {};
+        index[field] = 1;
+        await collection.createIndex(index).catch(() => {}); // Ignore if exists
+      }
+    }
+    console.log('Database indexes created successfully');
+  } catch (e) {
+    console.error('Error creating indexes:', e);
+  }
+}
+
 async function run() {
   try {
     await client.connect();
     db = client.db(DB_NAME);
+
+    // Create indexes for performance
+    await createIndexes();
 
     // Run cleanup on startup to sync state
     await cleanupOrphanedData();
@@ -452,32 +581,56 @@ app.get('/api/config/version', (req, res) => {
 app.post('/api/push/subscribe', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, subscription } = req.body;
-    if (!uid || !subscription) return res.status(400).json({ error: "Missing uid or subscription object" });
+    const { uid, subscription, platform } = req.body;
+    if (!uid || !subscription) {
+      return res.status(400).json({ error: "Missing uid or subscription" });
+    }
+
+    const isExpoToken = typeof subscription === 'string' && Expo.isExpoPushToken(subscription);
+    const resolvedPlatform = platform || (isExpoToken ? 'expo' : 'web');
+
+    if (resolvedPlatform !== 'expo' && resolvedPlatform !== 'web') {
+      return res.status(400).json({ error: "Invalid platform. Use 'expo' or 'web'." });
+    }
 
     const profiles = db.collection('profiles');
+    const update = resolvedPlatform === 'expo'
+      ? { $set: { expoPushToken: subscription } }
+      : { $set: { webPushSubscription: subscription } };
+
     await profiles.updateOne(
       { uid },
-      { $set: { pushSubscription: subscription } }
+      update
     );
-    res.json({ success: true, message: "Push subscription saved" });
+
+    // Keep backwards compatibility while migrating old clients.
+    if (resolvedPlatform === 'expo') {
+      await profiles.updateOne({ uid }, { $set: { pushSubscription: subscription } });
+    }
+
+    res.json({ success: true, message: `${resolvedPlatform} push subscription saved` });
   } catch (error) {
     console.error("Save subscription error:", error);
     res.status(500).json({ error: "Failed to save push subscription" });
   }
 });
 
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { email, password } = req.body;
+    // Validate input
+    const validated = signupSchema.parse(req.body);
+    const { email, password } = validated;
+    
     const users = db.collection('users');
     const profiles = db.collection('profiles');
 
     const existing = await users.findOne({ email });
     if (existing) return res.status(400).json({ error: "Email already in use" });
 
-    const newUser = { email, password, createdAt: new Date() };
+    // Hash password with bcrypt
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const newUser = { email, password: hashedPassword, createdAt: new Date() };
     const result = await users.insertOne(newUser);
     const uid = result.insertedId.toString();
 
@@ -496,19 +649,35 @@ app.post('/api/auth/signup', async (req, res) => {
 
     res.json({ user: { uid, email } });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+    console.error('Signup error:', error);
     res.status(500).json({ error: "Signup failed" });
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { email, password } = req.body;
+    // Validate input
+    const validated = loginSchema.parse(req.body);
+    const { email, password } = validated;
+    
     const users = db.collection('users');
-    const user = await users.findOne({ email, password });
+    const user = await users.findOne({ email });
     if (!user) return res.status(401).json({ error: "Invalid email or password" });
+    
+    // Compare password with hashed password using bcrypt
+    const passwordMatch = await bcrypt.compare(password, user.password);
+    if (!passwordMatch) return res.status(401).json({ error: "Invalid email or password" });
+    
     res.json({ user: { uid: user._id.toString(), email } });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.errors[0].message });
+    }
+    console.error('Login error:', error);
     res.status(500).json({ error: "Login failed" });
   }
 });
@@ -864,7 +1033,10 @@ app.post('/api/posts', async (req, res) => {
 app.get('/api/posts', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid } = req.query;
+    let { viewerUid, page = 1, limit = 10 } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+    
     // Fix: Handle 'undefined' or 'null' passed as strings
     if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
 
@@ -874,7 +1046,11 @@ app.get('/api/posts', async (req, res) => {
       const excludedUids = await getMutualBlockedUids(viewerUid);
       if (excludedUids.length > 0) filter.uid = { $nin: excludedUids };
     }
-    const allPosts = await posts.find(filter).sort({ createdAt: -1 }).limit(50).toArray();
+    const allPosts = await posts.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
     res.json(allPosts);
   } catch (error) {
     console.error("Error fetching posts:", error);
@@ -1119,15 +1295,37 @@ app.get('/api/notifications/unread-count/:uid', async (req, res) => {
   }
 });
 
-// --- HELPER: Send Push Notification (Expo & Web) ---
-async function sendPushNotification(receiverUid, payloadStr, expoPayload) {
+// --- HELPER: Send Push Notification (Expo & Web) with Retry Logic ---
+async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount = 0, maxRetries = 2) {
   if (!db) return;
   try {
     const profiles = db.collection('profiles');
     const receiver = await profiles.findOne({ uid: receiverUid });
-    if (!receiver || !receiver.pushSubscription) return;
+    if (!receiver) {
+      console.log(`[PUSH] Receiver profile not found: ${receiverUid}`);
+      return;
+    }
 
-    if (typeof receiver.pushSubscription === 'string' && Expo.isExpoPushToken(receiver.pushSubscription)) {
+    const expoPushToken =
+      (typeof receiver.expoPushToken === 'string' && receiver.expoPushToken) ||
+      (typeof receiver.pushSubscription === 'string' && Expo.isExpoPushToken(receiver.pushSubscription)
+        ? receiver.pushSubscription
+        : null);
+
+    const webPushSubscription = receiver.webPushSubscription ||
+      (receiver.pushSubscription && typeof receiver.pushSubscription === 'object'
+        ? receiver.pushSubscription
+        : null);
+
+    if (!expoPushToken && !webPushSubscription) {
+      console.log(`[PUSH] No push tokens found for user: ${receiverUid}`);
+      return;
+    }
+
+    let expoSuccess = false;
+    let webSuccess = false;
+
+    if (expoPushToken) {
       try {
         // Calculate total unread count for the badge
         const [msgCount, notifCount] = await Promise.all([
@@ -1136,31 +1334,93 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload) {
         ]);
         const totalBadge = msgCount + notifCount;
 
-        await expo.sendPushNotificationsAsync([{
-          to: receiver.pushSubscription,
+        const tickets = await expo.sendPushNotificationsAsync([{
+          to: expoPushToken,
           sound: 'default',
           priority: 'high',
           channelId: 'default',
           badge: totalBadge,
           ttl: 2419200, // 4 weeks
-          _displayInForeground: true, // For certain versions of expo-notifications
+          _displayInForeground: true,
           ...expoPayload
         }]);
+
+        const receiptIds = [];
+        for (const ticket of tickets || []) {
+          if (ticket?.status === 'error') {
+            const errorCode = ticket?.details?.error;
+            console.error(`[PUSH] Expo Push Ticket Error for ${receiverUid}:`, ticket);
+            if (errorCode === 'DeviceNotRegistered') {
+              console.log(`[PUSH] Removing invalid Expo token for ${receiverUid}`);
+              await profiles.updateOne(
+                { uid: receiverUid },
+                {
+                  $unset: { expoPushToken: "" },
+                  $set: { pushSubscription: null },
+                }
+              );
+            }
+          } else if (ticket?.status === 'ok') {
+            expoSuccess = true;
+          }
+          if (ticket?.id) receiptIds.push(ticket.id);
+        }
+
+        if (receiptIds.length) {
+          try {
+            const receipts = await expo.getPushNotificationReceiptsAsync(receiptIds);
+            for (const receiptId of Object.keys(receipts || {})) {
+              const receipt = receipts[receiptId];
+              if (receipt?.status === 'error') {
+                console.error(`[PUSH] Expo Receipt Error for ${receiverUid}:`, receiptId, receipt);
+              }
+            }
+          } catch (receiptErr) {
+            console.error(`[PUSH] Expo receipt fetch failed for ${receiverUid}:`, receiptErr);
+            if (retryCount < maxRetries) {
+              console.log(`[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
+              setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
+            }
+          }
+        }
+        console.log(`[PUSH] Expo notification sent successfully to ${receiverUid}`);
       } catch (err) {
-        console.error("Expo Push Notification failed:", err);
-      }
-    } else {
-      try {
-        await webpush.sendNotification(receiver.pushSubscription, payloadStr);
-      } catch (err) {
-        console.error("Web Push Notification failed:", err);
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          await profiles.updateOne({ uid: receiverUid }, { $unset: { pushSubscription: "" } });
+        console.error(`[PUSH] Expo Push failed for ${receiverUid}:`, err.message);
+        if (retryCount < maxRetries) {
+          console.log(`[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
+          setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
         }
       }
     }
+
+    if (webPushSubscription) {
+      try {
+        await webpush.sendNotification(webPushSubscription, payloadStr);
+        webSuccess = true;
+        console.log(`[PUSH] Web push notification sent successfully to ${receiverUid}`);
+      } catch (err) {
+        console.error(`[PUSH] Web Push failed for ${receiverUid}:`, err.message);
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          console.log(`[PUSH] Removing invalid web push subscription for ${receiverUid}`);
+          await profiles.updateOne(
+            { uid: receiverUid },
+            {
+              $unset: { webPushSubscription: "" },
+              $set: { pushSubscription: null },
+            }
+          );
+        } else if (retryCount < maxRetries && err.statusCode !== 410 && err.statusCode !== 404) {
+          console.log(`[PUSH] Retrying web push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
+          setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
+        }
+      }
+    }
+
+    if (!expoSuccess && !webSuccess) {
+      console.warn(`[PUSH] Both push methods failed for ${receiverUid}`);
+    }
   } catch (e) {
-    console.error("Error in sendPushNotification helper", e);
+    console.error(`[PUSH] Error in sendPushNotification helper for ${receiverUid}:`, e);
   }
 }
 
@@ -1185,7 +1445,14 @@ app.post('/api/chat/send', async (req, res) => {
 
     if (groupId) {
       const posts = db.collection('posts');
-      const post = await posts.findOne({ _id: new ObjectId(groupId) });
+      // Normalize groupId: try as ObjectId first, then as string
+      let query = {};
+      if (ObjectId.isValid(groupId)) {
+        query = { _id: new ObjectId(groupId) };
+      } else {
+        query = { _id: groupId };
+      }
+      const post = await posts.findOne(query);
       if (!post) return res.status(404).json({ error: "Group not found" });
 
       // Authorization check
@@ -1196,7 +1463,8 @@ app.post('/api/chat/send', async (req, res) => {
       }
 
       const groupTitle = post.meetupDetails?.title || "Meetup Group";
-      newMessage.groupId = String(groupId); // Force string for consistency
+      // STANDARDIZED: Always store groupId as string for consistency
+      newMessage.groupId = String(post._id); // Use normalized post ID
       newMessage.groupTitle = groupTitle;
 
       const result = await messages.insertOne(newMessage);

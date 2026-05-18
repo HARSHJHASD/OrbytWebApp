@@ -388,21 +388,51 @@ const Settings: React.FC = () => {
           </section>
         )}
 
-        {/* ABOUT */}
+        {/* LEGAL & ABOUT */}
         <section>
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 px-2">
-            About
+            Resources
           </h3>
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
             <button
-              onClick={() => navigate("/app/developer")}
-              className="w-full p-4 text-slate-700 dark:text-slate-300 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              onClick={() => navigate('/about')}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 transition-colors"
             >
               <div className="flex items-center gap-3">
-                <Code className="w-5 h-5 text-primary-500" />
-                <span>Developer Profile</span>
+                <Radar className="w-5 h-5 text-blue-500" />
+                <span className="text-slate-900 dark:text-white font-medium">About Orbyt</span>
               </div>
-              <ArrowRight className="w-4 h-4 text-slate-400 dark:text-slate-500" />
+              <ArrowRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => navigate('/blog')}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Bell className="w-5 h-5 text-purple-500" />
+                <span className="text-slate-900 dark:text-white font-medium">Orbyt Blog</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => navigate('/contact')}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <ArrowRight className="w-5 h-5 text-green-500" />
+                <span className="text-slate-900 dark:text-white font-medium">Contact Us</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400" />
+            </button>
+            <button
+              onClick={() => navigate('/developer-profile')}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Code className="w-5 h-5 text-amber-500" />
+                <span className="text-slate-900 dark:text-white font-medium">Developer Profile</span>
+              </div>
+              <ArrowRight className="w-4 h-4 text-slate-400" />
             </button>
           </div>
         </section>
@@ -410,12 +440,16 @@ const Settings: React.FC = () => {
         {/* Info */}
         <div className="text-center pt-8 pb-4">
           <p className="text-xs text-slate-600">Orbyt v1.0.0</p>
-          <div className="flex gap-4 justify-center mt-2 text-xs text-slate-500">
+          <div className="flex flex-wrap gap-x-4 gap-y-2 justify-center mt-2 text-xs text-slate-500">
             <Link to="/privacy" className="hover:text-slate-300">Privacy Policy</Link>
             <span>•</span>
             <Link to="/terms" className="hover:text-slate-300">Terms of Service</Link>
             <span>•</span>
+            <Link to="/guidelines" className="hover:text-slate-300">Guidelines</Link>
+            <span>•</span>
             <Link to="/child-policy" className="hover:text-slate-300">Child Safety</Link>
+            <span>•</span>
+            <Link to="/cookie-policy" className="hover:text-slate-300">Cookies</Link>
             <span>•</span>
             <Link to="/delete-account" className="hover:text-slate-300">Account Deletion</Link>
           </div>

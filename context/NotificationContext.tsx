@@ -3,6 +3,7 @@ import { Notification } from '../types';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
 import { X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Toast {
     id: string;
@@ -33,6 +34,7 @@ export const useNotifications = () => useContext(NotificationContext);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [toasts, setToasts] = useState<Toast[]>([]);
     const wsRef = useRef<WebSocket | null>(null);
@@ -80,6 +82,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         const unsubscribe = api.chat.subscribe(user.uid, (data: any) => {
             if (data?.type === 'notification' && data?.notification) {
+                if (data.notification.fromUid === user.uid) return;
+                
                 setNotifications(prev => {
                     if (prev.find(n => n._id === data?.notification?._id)) return prev;
                     
@@ -100,7 +104,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     return [data?.notification as Notification, ...prev];
                 });
             } else if (data?.text || data?.type === 'message') {
-                if (data?.fromUid !== user?.uid && data?.fromUid !== 'system') {
+                const fromUidStr = String(data?.fromUid || '');
+                const userUidStr = String(user?.uid || '');
+                
+                if (fromUidStr !== userUidStr && fromUidStr !== 'system') {
                     addToast({
                         title: data.authorName || 'New Message',
                         body: data.text,
@@ -145,7 +152,12 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 {toasts.map(toast => (
                     <div 
                         key={toast.id}
-                        onClick={() => toast.url && (window.location.href = toast.url)}
+                        onClick={() => {
+                            if (toast.url) {
+                                navigate(toast.url);
+                                setToasts(prev => prev.filter(t => t.id !== toast.id));
+                            }
+                        }}
                         className="pointer-events-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 cursor-pointer hover:bg-slate-800 transition-colors group"
                     >
                         {toast.icon ? (

@@ -24,7 +24,6 @@ import { compressImage } from "../util/ImageCompression";
 import { triggerHaptic } from "../util/haptics";
 import { MainLogo } from "../util/Images";
 import ConfirmModal from "../components/ui/ConfirmModal";
-import ProfileCompleteness from "../components/ProfileCompleteness";
 
 const getDistanceMeters = (
   lat1: number,
@@ -89,6 +88,15 @@ const Feed: React.FC = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Pagination state
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const POSTS_PER_PAGE = 10;
+
+  // Infinite scroll sentinel ref
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleScroll = () => {
       setShowScrollTop(window.scrollY > 400);
@@ -96,6 +104,23 @@ const Feed: React.FC = () => {
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries:any) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          fetchPosts(true);
+        }
+      },
+      { threshold: 0.1, rootMargin: "100px" }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -112,46 +137,42 @@ const Feed: React.FC = () => {
     setSubscribing(false);
   };
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (isLoadMore = false) => {
     try {
       if (!user) return;
 
-      const [allPosts, profile, moments] = await Promise.all([
-        api.posts.getAll(user?.uid),
-        api.profile.get(user?.uid),
-        api.util.getStories(user?.uid)
-      ]);
+      const currentPage = isLoadMore ? page + 1 : 1;
 
-      setUserProfile(profile);
-      setStories(moments);
-
-      // Filter based on discovery radius if location is available
-      let filteredPosts = allPosts;
-      if (myLocation && profile && profile?.discoveryRadius) {
-        const maxDistMeters = profile?.discoveryRadius * 1000;
-        filteredPosts = allPosts.filter((p: any) => {
-          // Always show own posts
-          if (p?.uid === user?.uid) return true;
-
-          // If post has location, we filter. If not, we show (e.g. global/remote posts).
-          if (p?.location) {
-            const dist = getDistanceMeters(
-              myLocation?.lat,
-              myLocation?.lng,
-              p?.location?.lat,
-              p?.location?.lng,
-            );
-            return dist <= maxDistMeters;
-          }
-          return true;
-        });
+      if (!isLoadMore) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
       }
 
-      setPosts(filteredPosts);
+      const [allPosts, profile, moments] = await Promise.all([
+        api.posts.getAll(user?.uid, currentPage, POSTS_PER_PAGE),
+        !isLoadMore ? api.profile.get(user?.uid) : Promise.resolve(userProfile),
+        !isLoadMore ? api.util.getStories(user?.uid) : Promise.resolve(stories)
+      ]);
+
+      if (!isLoadMore) {
+        setUserProfile(profile);
+        setStories(moments);
+        setPosts(allPosts);
+      } else {
+        setPosts((prev) => [...prev, ...allPosts]);
+      }
+
+      setPage(currentPage);
+      setHasMore(allPosts.length === POSTS_PER_PAGE);
     } catch (error) {
       console.error(error);
     } finally {
-      setLoading(false);
+      if (isLoadMore) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -214,19 +235,19 @@ const Feed: React.FC = () => {
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([fetchPosts(), fetchNotifications()]);
+    await Promise.all([fetchPosts(false), fetchNotifications()]);
     setRefreshing(false);
     setPullY(0);
   };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
+  const handleTouchStart = (e:any) => {
     if (window.scrollY === 0) {
       startY.current = e.touches[0].clientY;
       isDragging.current = true;
     }
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
+  const handleTouchMove = (e: any) => {
     if (!isDragging.current) return;
     if (window.scrollY === 0) {
       const currentY = e.touches[0].clientY;
@@ -527,12 +548,6 @@ const Feed: React.FC = () => {
         className="p-4 space-y-4 max-w-lg mx-auto pb-32 relative transition-transform duration-300 ease-out"
         style={{ transform: `translateY(${pullY}px)` }}
       >
-        {userProfile && (
-          <div className="mb-2">
-            <ProfileCompleteness profile={userProfile} />
-          </div>
-        )}
-
         <StoryBar 
           stories={stories} 
           userProfile={userProfile} 
@@ -589,22 +604,33 @@ const Feed: React.FC = () => {
             </p>
           </div>
         ) : (
-          filteredPostsByTab.map((post, index) => (
-            <div
-              key={post._id}
-              className="animate-slide-up"
-              style={{ animationDelay: `${index * 0.1}s` }}
-            >
-              <PostItem
-                post={post}
-                currentUserId={user?.uid}
-                onLike={handleLike}
-                onAddComment={handleAddComment}
-                onEdit={post.uid === user?.uid ? (id: string) => navigate(`/app/edit-post/${id}`) : undefined}
-                onDelete={post.uid === user?.uid ? handleDeletePost : undefined}
-              />
-            </div>
-          ))
+          <>
+            {filteredPostsByTab.map((post, index) => (
+              <div
+                key={post._id}
+                className="animate-slide-up"
+                style={{ animationDelay: `${index * 0.1}s` }}
+              >
+                <PostItem
+                  post={post}
+                  currentUserId={user?.uid}
+                  onLike={handleLike}
+                  onAddComment={handleAddComment}
+                  onEdit={post.uid === user?.uid ? (id: string) => navigate(`/app/edit-post/${id}`) : undefined}
+                  onDelete={post.uid === user?.uid ? handleDeletePost : undefined}
+                />
+              </div>
+            ))}
+            
+            {/* Infinite Scroll Sentinel */}
+            {hasMore && (
+              <div ref={sentinelRef} className="flex justify-center py-8">
+                <div className="animate-pulse">
+                  <Loader2 className="w-6 h-6 text-primary-500 animate-spin" />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

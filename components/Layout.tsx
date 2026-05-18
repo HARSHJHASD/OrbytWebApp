@@ -68,17 +68,17 @@ const Layout: React.FC = () => {
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
   useEffect(() => {
-    let timeoutId: any;
-    const handleResize = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
+    let timeoutId: NodeJS.Timeout | null = null;
+    const handleResize = (): void => {
+      if (timeoutId) clearTimeout(timeoutId);
+      timeoutId = setTimeout((): void => {
         setIsDesktop(window.innerWidth >= 768);
       }, 200);
     };
     window.addEventListener('resize', handleResize);
-    return () => {
+    return (): void => {
       window.removeEventListener('resize', handleResize);
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 

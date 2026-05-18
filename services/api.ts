@@ -1,4 +1,6 @@
 import { Message, Notification, Post, UserProfile } from "../types";
+import { API_CONFIG, API_ERROR_MESSAGES } from "../constants/config";
+import { getErrorMessage } from "../util/apiErrorHandler";
 
 /**
  * API SERVICE
@@ -6,42 +8,32 @@ import { Message, Notification, Post, UserProfile } from "../types";
  * Communicates with the Node.js/MongoDB backend.
  */
 
-const PORT = 5000;
-
-const getBaseUrl = () => {
+const getBaseUrl = (): string => {
   const { protocol, hostname } = window?.location;
-
 
   const isLocal =
     hostname === "localhost" ||
     hostname === "127.0.0.1" ||
-    hostname.startsWith("192.168.") ||
-    hostname.startsWith("10.");
+    hostname.startsWith(API_CONFIG.DOMAINS.NETWORK) ||
+    hostname.startsWith(API_CONFIG.DOMAINS.PRIVATE);
 
-  const isVercel = hostname.includes("vercel.app");
+  const isVercel = hostname.includes(API_CONFIG.DOMAINS.VERCEL);
 
   // 1️⃣ Local or network testing
   if (isLocal) {
-    const localUrl = `http://${hostname}:${PORT}/api`;
-    return localUrl;
+    return API_CONFIG.BACKEND.LOCAL(hostname, API_CONFIG.PORT);
   }
 
   // 2️⃣ If frontend is deployed on Vercel
   if (isVercel) {
-    const vercelUrl = "https://orbyt.strangerchat.space/api";
-    return vercelUrl;
+    return API_CONFIG.BACKEND.VERCEL;
   }
 
-  // 3️⃣ Production (Beanstalk / custom domain / Load Balancer)
-  const prodUrl = `${protocol}//${hostname}/api`;
-  return prodUrl;
+  // 3️⃣ Production (custom domain / Load Balancer)
+  return API_CONFIG.BACKEND.PRODUCTION(protocol, hostname);
 };
 
-
 const API_BASE = getBaseUrl();
-
-
-// const API_BASE = getBaseUrl();
 
 export const api = {
   auth: {
@@ -364,10 +356,10 @@ export const api = {
       const isLocal =
         hostname === "localhost" ||
         hostname === "127.0.0.1" ||
-        hostname.startsWith("192.168.") ||
-        hostname.startsWith("10.");
+        hostname.startsWith(API_CONFIG.DOMAINS.NETWORK) ||
+        hostname.startsWith(API_CONFIG.DOMAINS.PRIVATE);
 
-      const isVercel = hostname.includes("vercel.app");
+      const isVercel = hostname.includes(API_CONFIG.DOMAINS.VERCEL);
 
       let wsUrl: string;
 
@@ -380,10 +372,10 @@ export const api = {
 
       // 2️⃣ If frontend hosted on Vercel
       else if (isVercel) {
-        wsUrl = `wss://backend.strangerchat.space?uid=${uid}`;
+        wsUrl = `${API_CONFIG.WEBSOCKET.VERCEL}?uid=${uid}`;
       }
 
-      // 3️⃣ Production (Beanstalk / custom domain)
+      // 3️⃣ Production (custom domain)
       else {
         const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
         const portPart = port ? `:${port}` : "";
@@ -391,39 +383,39 @@ export const api = {
       }
 
       let socket: WebSocket | null = null;
-      let keepAliveInterval: any;
+      let keepAliveInterval: NodeJS.Timeout | null = null;
 
-      const connect = () => {
+      const connect = (): void => {
         socket = new WebSocket(wsUrl);
 
-        socket.onopen = () => {
-          keepAliveInterval = setInterval(() => {
+        socket.onopen = (): void => {
+          keepAliveInterval = setInterval((): void => {
             if (socket?.readyState === WebSocket?.OPEN) {
               socket.send(JSON.stringify({ type: "ping" }));
             }
-          }, 30000);
+          }, API_CONFIG.PORT === 5000 ? 30000 : 30000);
         };
 
-        socket.onmessage = (event) => {
+        socket.onmessage = (event): void => {
           try {
             const data = JSON.parse(event?.data);
-            if (data?.type === "ping" || data?.type === "pong" || data?.type === "notification") return;
+            if (data?.type === "ping" || data?.type === "pong") return;
             onMessage(data);
           } catch (e) {
             console.error("WS Parse Error", e);
           }
         };
 
-        socket.onclose = () => {
-          clearInterval(keepAliveInterval);
+        socket.onclose = (): void => {
+          if (keepAliveInterval) clearInterval(keepAliveInterval);
         };
       };
 
       connect();
 
-      return () => {
+      return (): void => {
         if (socket) socket.close();
-        clearInterval(keepAliveInterval);
+        if (keepAliveInterval) clearInterval(keepAliveInterval);
       };
     },
 
@@ -479,7 +471,7 @@ export const api = {
       const response = await fetch(`${API_BASE}/push/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid, subscription }),
+        body: JSON.stringify({ uid, platform: "web", subscription }),
       });
       if (!response?.ok) throw new Error("Failed to subscribe to push notifications");
     }
@@ -494,13 +486,15 @@ export const api = {
       });
       if (!response?.ok) throw new Error("Failed to create post");
     },
-    // Updated: Accept viewerUid to filter blocked content
-    getAll: async (viewerUid?: string) => {
+    // Updated: Accept viewerUid to filter blocked content, plus pagination
+    getAll: async (viewerUid?: string, page = 1, limit = 10) => {
       try {
-        const url = viewerUid
-          ? `${API_BASE}/posts?viewerUid=${viewerUid}`
-          : `${API_BASE}/posts`;
-        const response = await fetch(url);
+        const url = new URL(`${API_BASE}/posts`);
+        if (viewerUid) url.searchParams.append('viewerUid', viewerUid);
+        url.searchParams.append('page', page.toString());
+        url.searchParams.append('limit', limit.toString());
+        
+        const response = await fetch(url.toString());
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {

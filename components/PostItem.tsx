@@ -21,7 +21,7 @@ import { api } from "../services/api";
 import { calculateDistance } from "../util/location";
 import { useUserLocation } from "./LocationGuard";
 import { useTheme } from "../context/ThemeContext";
-
+   import { Post, Comment } from '../types';
 const PostItem: React.FC<any> = ({
   post,
   currentUserId,
@@ -429,4 +429,18 @@ const PostItem: React.FC<any> = ({
   );
 };
 
-export default PostItem;
+// Memoized component to prevent unnecessary re-renders when props haven't changed
+export default React.memo(PostItem, (prevProps, nextProps) => {
+  // Return true if props are equal (don't re-render), false if different (re-render)
+  return (
+    prevProps.post?._id === nextProps.post?._id &&
+    prevProps.post?.likes === nextProps.post?.likes &&
+    prevProps.post?.comments?.length === nextProps.post?.comments?.length &&
+    prevProps.post?.likedBy === nextProps.post?.likedBy &&
+    prevProps.currentUserId === nextProps.currentUserId &&
+    prevProps.onLike === nextProps.onLike &&
+    prevProps.onAddComment === nextProps.onAddComment &&
+    prevProps.onDelete === nextProps.onDelete &&
+    prevProps.onEdit === nextProps.onEdit
+  );
+});

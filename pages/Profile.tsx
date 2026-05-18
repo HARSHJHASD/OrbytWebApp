@@ -33,7 +33,6 @@ import { api } from "../services/api";
 import { POPULAR_INTERESTS, Post, UserProfile } from "../types";
 import { calculateDistance } from "../util/location";
 import { useTheme } from "../context/ThemeContext";
-import ProfileCompleteness from "../components/ProfileCompleteness";
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -776,12 +775,6 @@ export default function Profile() {
           </div>
 
           <div className="h-px bg-slate-100 dark:bg-slate-800 mx-6 transition-colors" />
-
-          {isOwnProfile && profile && (
-            <div className="px-6 pt-6">
-              <ProfileCompleteness profile={profile} />
-            </div>
-          )}
 
           {/* Friend Requests (Only visible on own profile) */}
           {isOwnProfile && friendRequests?.length > 0 && (

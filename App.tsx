@@ -3,6 +3,7 @@ import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'reac
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import ErrorBoundary from './components/ErrorBoundary';
 import { api } from './services/api';
 import AuthPage from './pages/Auth';
 import Onboarding from './pages/Onboarding';
@@ -88,7 +89,11 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     return <Navigate to="/app" replace />;
   }
 
-  return <>{children}</>;
+  return (
+    <ErrorBoundary>
+      {children}
+    </ErrorBoundary>
+  );
 };
 
 const AppRoutes = () => {
@@ -186,14 +191,15 @@ const AppRoutes = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <ThemeProvider>
-        <Router>
-          <AppRoutes />
-        </Router>
-
-      </ThemeProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ThemeProvider>
+          <Router>
+            <AppRoutes />
+          </Router>
+        </ThemeProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 };
 

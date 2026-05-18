@@ -615,7 +615,7 @@ const DesktopLanding: React.FC = () => {
               },
               {
                 q: "Is it available on iOS and Android?",
-                a: "Currently, Orbyt is a Progressive Web App (PWA). This means you can add it to your home screen on both iOS and Android directly from your browser without visiting an app store.",
+                a: "Yes. Orbyt is available in your mobile browser on both iOS and Android, with full core features accessible without app installation.",
               },
               {
                 q: "How do you verify users?",

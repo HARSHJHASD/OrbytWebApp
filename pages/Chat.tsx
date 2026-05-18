@@ -47,8 +47,12 @@ export default function Chat() {
 
     useEffect(() => {
         // Scroll on initial load and when messages change
-        scrollToBottom(true);
-    }, [messages.length]);
+        if (!loading && messages.length > 0) {
+            setTimeout(() => {
+                scrollToBottom(true);
+            }, 100);
+        }
+    }, [messages.length, loading]);
 
     useEffect(() => {
         const init = async () => {
