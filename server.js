@@ -275,12 +275,12 @@ async function createNotification(type, fromUid, toUid, postId = null) {
         body = `${sender.displayName} commented on your post.`;
         break;
       case 'friend_request':
-        title = "Friend Request";
-        body = `${sender.displayName} sent you a friend request.`;
+        title = "New Like";
+        body = `${sender.displayName} liked your profile.`;
         break;
       case 'friend_accept':
-        title = "Friend Request Accepted";
-        body = `${sender.displayName} accepted your friend request.`;
+        title = "Like Back";
+        body = `${sender.displayName} liked you back.`;
         break;
       case 'meetup_request':
         title = "Meetup Request";
@@ -1100,7 +1100,6 @@ app.post('/api/profile/:uid', async (req, res) => {
   }
 });
 
-// ... (rest of file remains unchanged)
 app.post('/api/user/block', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
@@ -1989,6 +1988,56 @@ app.delete('/api/stories/:storyId', async (req, res) => {
     }
   } catch (error) {
     res.status(500).json({ error: "Failed to delete story" });
+  }
+});
+
+// --- Chat Expiration Logic ---
+const CHAT_EXPIRATION_DAYS = 7;
+const CHAT_EXPIRATION_MS = CHAT_EXPIRATION_DAYS * 24 * 60 * 60 * 1000;
+
+async function expireInactiveChats() {
+  if (!db) return;
+  try {
+    const chats = db.collection('chats');
+    const now = Date.now();
+
+    // Mark chats as expired if inactive for 7 days
+    await chats.updateMany(
+      { lastActivity: { $lt: now - CHAT_EXPIRATION_MS }, expired: { $ne: true } },
+      { $set: { expired: true } }
+    );
+  } catch (e) {
+    console.error('Error expiring inactive chats:', e);
+  }
+}
+
+// Schedule chat expiration job
+setInterval(expireInactiveChats, 24 * 60 * 60 * 1000); // Run daily
+
+// --- Revive Chat API ---
+app.post('/api/chats/:chatId/revive', requireAuth, async (req, res) => {
+  const { chatId } = req.params;
+  const uid = req.body.uid;
+
+  if (!db) return res.status(500).json({ error: 'Database not initialized' });
+
+  try {
+    const chats = db.collection('chats');
+    const chat = await chats.findOne({ _id: new ObjectId(chatId) });
+
+    if (!chat) return res.status(404).json({ error: 'Chat not found' });
+    if (chat.expired !== true) return res.status(400).json({ error: 'Chat is not expired' });
+
+    // Revive the chat
+    await chats.updateOne(
+      { _id: new ObjectId(chatId) },
+      { $set: { expired: false, lastActivity: Date.now() } }
+    );
+
+    res.json({ message: 'Chat revived successfully' });
+  } catch (e) {
+    console.error('Error reviving chat:', e);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 

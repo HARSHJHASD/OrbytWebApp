@@ -2,8 +2,22 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Notification } from '../types';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
-import { X } from 'lucide-react';
+import { X, MapPin } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+
+// Haversine great-circle distance in km
+const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+const NEARBY_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const NEARBY_INITIAL_DELAY_MS = 30 * 1000;      // 30 seconds after mount
 
 interface Toast {
     id: string;
@@ -11,7 +25,7 @@ interface Toast {
     body: string;
     icon?: string;
     url?: string;
-    type: 'message' | 'notification';
+    type: 'message' | 'notification' | 'nearby';
 }
 
 interface NotificationContextType {
@@ -39,8 +53,68 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const [toasts, setToasts] = useState<Toast[]>([]);
     const wsRef = useRef<WebSocket | null>(null);
     const keepAliveRef = useRef<any>(null);
+    const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const lastNearbyUidsRef = useRef<Set<string>>(new Set());
 
     const unreadCount = notifications.filter(n => !n.read).length;
+
+    const addToast = useCallback((toast: Omit<Toast, 'id'>) => {
+        const id = Math.random().toString(36).substr(2, 9);
+        setToasts(prev => [...prev, { ...toast, id }]);
+        setTimeout(() => {
+            setToasts(prev => prev.filter(t => t.id !== id));
+        }, 5000);
+    }, []);
+
+    const checkNearbyPeople = useCallback(async () => {
+        if (!user || !navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                try {
+                    const { latitude: lat, longitude: lng } = position.coords;
+                    const [myProfile, allProfiles] = await Promise.all([
+                        api.profile.get(user.uid),
+                        api.profile.getAllWithLocation(user.uid),
+                    ]);
+                    const radius: number = (myProfile as any)?.discoveryRadius ?? 10;
+                    const nearbyUsers = (allProfiles as any[]).filter((p: any) => {
+                        if (p.uid === user.uid) return false;
+                        if (!p.lastLocation?.lat || !p.lastLocation?.lng) return false;
+                        return haversineKm(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <= radius;
+                    });
+                    const newPeople = nearbyUsers.filter((p: any) => !lastNearbyUidsRef.current.has(p.uid));
+                    lastNearbyUidsRef.current = new Set(nearbyUsers.map((p: any) => p.uid as string));
+                    if (newPeople.length > 0) {
+                        const first = newPeople[0];
+                        addToast({
+                            title: `${newPeople.length} ${newPeople.length === 1 ? 'person' : 'people'} near you!`,
+                            body: newPeople.length === 1
+                                ? `${first.displayName} is nearby`
+                                : `${first.displayName} and ${newPeople.length - 1} other${newPeople.length > 2 ? 's' : ''} are nearby`,
+                            icon: first.photoURL || undefined,
+                            url: '/app/discover',
+                            type: 'nearby',
+                        });
+                    }
+                } catch (e) {
+                    console.error('Nearby people check failed:', e);
+                }
+            },
+            () => { /* silently ignore location errors */ },
+            { timeout: 8000, maximumAge: 120000 }
+        );
+    }, [user, addToast]);
+
+    // Periodic nearby-people check
+    useEffect(() => {
+        if (!user) return;
+        const initialTimeout = setTimeout(checkNearbyPeople, NEARBY_INITIAL_DELAY_MS);
+        nearbyIntervalRef.current = setInterval(checkNearbyPeople, NEARBY_CHECK_INTERVAL_MS);
+        return () => {
+            clearTimeout(initialTimeout);
+            if (nearbyIntervalRef.current) clearInterval(nearbyIntervalRef.current);
+        };
+    }, [user, checkNearbyPeople]);
 
     // Load initial notifications from server
     const fetchNotifications = useCallback(async () => {
@@ -70,14 +144,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             } catch (e) {
                 console.log("Failed to play sound", e);
             }
-        };
-
-        const addToast = (toast: Omit<Toast, 'id'>) => {
-            const id = Math.random().toString(36).substr(2, 9);
-            setToasts(prev => [...prev, { ...toast, id }]);
-            setTimeout(() => {
-                setToasts(prev => prev.filter(t => t.id !== id));
-            }, 5000);
         };
 
         const unsubscribe = api.chat.subscribe(user.uid, (data: any) => {
@@ -160,7 +226,20 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         }}
                         className="pointer-events-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 cursor-pointer hover:bg-slate-800 transition-colors group"
                     >
-                        {toast.icon ? (
+                        {toast.type === 'nearby' ? (
+                            toast.icon ? (
+                                <div className="relative w-12 h-12">
+                                    <img src={toast.icon} alt={toast.title} className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/40" />
+                                    <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-primary-500 rounded-full flex items-center justify-center">
+                                        <MapPin className="w-3 h-3 text-white" />
+                                    </span>
+                                </div>
+                            ) : (
+                                <div className="w-12 h-12 rounded-full bg-primary-500/10 flex items-center justify-center border border-primary-500/30">
+                                    <MapPin className="w-6 h-6 text-primary-500" />
+                                </div>
+                            )
+                        ) : toast.icon ? (
                             <img src={toast.icon} alt={toast.title} className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/20" />
                         ) : (
                             <div className="w-12 h-12 rounded-full bg-primary-500/10 flex items-center justify-center">

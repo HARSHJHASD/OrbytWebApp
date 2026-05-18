@@ -606,3 +606,20 @@ export const api = {
   }
 };
 
+// --- Revive Chat API ---
+export async function reviveChat(chatId: string) {
+  const response = await fetch(`/api/chats/${chatId}/revive`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ uid: getCurrentUserId() }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to revive chat');
+  }
+
+  return await response.json();
+}
+
