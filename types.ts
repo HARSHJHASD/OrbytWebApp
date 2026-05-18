@@ -40,6 +40,9 @@ export interface UserProfile {
   discoveryRadius?: number; // in km
   thatsMePhotos?: string[];
   gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+  relation?: 'self' | 'friend' | 'public';
+  distanceBand?: string;
+  locationAccuracyMeters?: number;
 }
 
 export interface Comment {

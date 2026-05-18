@@ -90,7 +90,7 @@ export default function Profile() {
     const fetchData = async () => {
       if (targetUid) {
         try {
-          const userProfile = await api.profile.get(targetUid);
+          const userProfile = await api.profile.get(targetUid, user?.uid);
 
           if (userProfile) {
             // Check if blocked
@@ -102,7 +102,7 @@ export default function Profile() {
 
             if (user && user?.uid !== targetUid) {
               // Check if I blocked them
-              const myProfile = await api.profile.get(user?.uid);
+              const myProfile = await api.profile.get(user?.uid, user?.uid);
               if (myProfile) {
                 setCurrentUserProfile(myProfile);
               }

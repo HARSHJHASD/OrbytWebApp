@@ -78,6 +78,12 @@ const apiLimiter = rateLimit({
   message: 'Too many requests, please try again later'
 });
 
+const mapProfilesLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20, // map refresh abuse guard
+  message: 'Too many map refresh requests, please try again shortly'
+});
+
 app.use('/api/', apiLimiter);
 
 // --- AUDIT LOGGING MIDDLEWARE ---
@@ -500,6 +506,84 @@ async function getMutualBlockedUids(viewerUid) {
   }
 }
 
+const LOCATION_PRIVACY = {
+  PUBLIC_COORD_DECIMALS: 1, // ~11km precision
+  FRIEND_COORD_DECIMALS: 2, // ~1.1km precision
+  PUBLIC_JITTER_METERS: 450,
+  FRIEND_JITTER_METERS: 180,
+  PUBLIC_LOCATION_DELAY_MS: 5 * 60 * 1000, // 5 minutes
+  MAX_LOCATION_AGE_MS: 24 * 60 * 60 * 1000, // 24 hours stale cutoff
+  PUBLIC_K_ANON_DECIMALS: 1,
+  PUBLIC_K_ANON_MIN_USERS: 3,
+  JITTER_ROTATION_MS: 15 * 60 * 1000, // rotate every 15 minutes
+};
+
+function roundCoord(value, decimals) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return value;
+  const factor = Math.pow(10, decimals);
+  return Math.round(value * factor) / factor;
+}
+
+function hashString(input) {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = ((hash << 5) - hash) + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+function addCoordinateJitter(lat, lng, maxMeters, seed) {
+  const seedA = hashString(`${seed}:a`);
+  const seedB = hashString(`${seed}:b`);
+  const angle = (seedA % 360) * (Math.PI / 180);
+  const radius = (seedB % Math.max(1, maxMeters));
+  const dLat = (radius / 111320) * Math.cos(angle);
+  const safeCos = Math.max(0.1, Math.cos(lat * Math.PI / 180));
+  const dLng = (radius / (111320 * safeCos)) * Math.sin(angle);
+  return {
+    lat: lat + dLat,
+    lng: lng + dLng,
+  };
+}
+
+function getLocationTimestamp(profile) {
+  if (typeof profile?.locationUpdatedAt === 'number') return profile.locationUpdatedAt;
+  if (typeof profile?.updatedAt === 'number') return profile.updatedAt;
+  if (profile?.updatedAt) {
+    const parsed = new Date(profile.updatedAt).getTime();
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return typeof profile?.createdAt === 'number' ? profile.createdAt : 0;
+}
+
+function getDistanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371e3;
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLng = (lng2 - lng1) * rad;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toDistanceBand(distanceMeters) {
+  if (typeof distanceMeters !== 'number' || Number.isNaN(distanceMeters)) return null;
+  if (distanceMeters < 500) return '< 0.5 km';
+  if (distanceMeters < 1000) return '0.5 - 1 km';
+  if (distanceMeters < 2000) return '1 - 2 km';
+  if (distanceMeters < 5000) return '2 - 5 km';
+  if (distanceMeters < 10000) return '5 - 10 km';
+  if (distanceMeters < 20000) return '10 - 20 km';
+  return '20+ km';
+}
+
+function getPublicCellKey(lat, lng) {
+  return `${roundCoord(lat, LOCATION_PRIVACY.PUBLIC_K_ANON_DECIMALS)}:${roundCoord(lng, LOCATION_PRIVACY.PUBLIC_K_ANON_DECIMALS)}`;
+}
+
 // --- API ROUTES ---
 
 app.post('/api/profile/view', async (req, res) => {
@@ -642,7 +726,7 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
       interests: [],
       blockedUsers: [],
       passedUsers: [],
-      isDiscoverable: true,
+      isDiscoverable: false,
       discoveryRadius: 10,
       createdAt: Date.now()
     });
@@ -705,7 +789,7 @@ app.post('/api/auth/google', async (req, res) => {
         interests: [],
         blockedUsers: [],
         passedUsers: [],
-        isDiscoverable: true,
+        isDiscoverable: false,
         discoveryRadius: 10,
         createdAt: Date.now()
       });
@@ -735,9 +819,39 @@ app.post('/api/auth/google', async (req, res) => {
 app.get('/api/profile/:uid', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
+    let { viewerUid } = req.query;
+    if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
+
     const profiles = db.collection('profiles');
     const profile = await profiles.findOne({ uid: req.params.uid });
-    res.json(profile || null);
+    if (!profile) return res.json(null);
+
+    // Hide precise coordinates unless this is the owner's own profile request.
+    if (profile?.lastLocation) {
+      const isSelf = !!viewerUid && viewerUid === profile.uid;
+      let isFriend = false;
+
+      if (!isSelf && viewerUid) {
+        const viewerProfile = await profiles.findOne({ uid: viewerUid }, { projection: { friends: 1 } });
+        isFriend = (viewerProfile?.friends || []).includes(profile.uid);
+      }
+
+      if (isSelf) {
+        // keep as-is
+      } else if (isFriend) {
+        profile.lastLocation = {
+          ...profile.lastLocation,
+          lat: roundCoord(profile.lastLocation.lat, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
+          lng: roundCoord(profile.lastLocation.lng, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
+        };
+      } else {
+        profile.lastLocation = {
+          name: profile?.lastLocation?.name || 'Nearby area',
+        };
+      }
+    }
+
+    res.json(profile);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch profile" });
   }
@@ -767,7 +881,7 @@ app.delete('/api/profile/:uid', async (req, res) => {
   }
 });
 
-app.get('/api/profiles', async (req, res) => {
+app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     let { viewerUid } = req.query;
@@ -775,6 +889,11 @@ app.get('/api/profiles', async (req, res) => {
     if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
 
     const profiles = db.collection('profiles');
+    const viewerProfile = viewerUid ? await profiles.findOne({ uid: viewerUid }) : null;
+    const viewerFriends = new Set(viewerProfile?.friends || []);
+    const viewerLocation = viewerProfile?.lastLocation;
+    const now = Date.now();
+
     let filter = {
       lastLocation: { $exists: true, $ne: null },
       isDiscoverable: { $ne: false } // Only show discoverable users
@@ -785,11 +904,104 @@ app.get('/api/profiles', async (req, res) => {
         filter.uid = { $nin: excludedUids };
       }
     }
-    const users = await profiles.find(filter).project({
-      uid: 1, displayName: 1, photoURL: 1, lastLocation: 1,
-      interests: 1, bio: 1, instagramHandle: 1, friends: 1
-    }).limit(100).toArray();
-    res.json(users);
+
+    const rawUsers = await profiles.find(filter).project({
+      uid: 1,
+      displayName: 1,
+      photoURL: 1,
+      lastLocation: 1,
+      locationUpdatedAt: 1,
+      updatedAt: 1,
+      createdAt: 1,
+      interests: 1,
+      bio: 1,
+      instagramHandle: 1,
+      gender: 1,
+      isDiscoverable: 1,
+    }).limit(150).toArray();
+
+    // Build density map for k-anonymity on public users.
+    const publicCellCounts = new Map();
+    for (const user of rawUsers) {
+      if (viewerUid && user.uid === viewerUid) continue;
+      const isFriend = viewerFriends.has(user.uid);
+      if (isFriend) continue;
+
+      const locationTimestamp = getLocationTimestamp(user);
+      if (!locationTimestamp || (now - locationTimestamp) > LOCATION_PRIVACY.MAX_LOCATION_AGE_MS) continue;
+      if ((now - locationTimestamp) < LOCATION_PRIVACY.PUBLIC_LOCATION_DELAY_MS) continue;
+
+      const lat = user?.lastLocation?.lat;
+      const lng = user?.lastLocation?.lng;
+      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+
+      const key = getPublicCellKey(lat, lng);
+      publicCellCounts.set(key, (publicCellCounts.get(key) || 0) + 1);
+    }
+
+    const safeUsers = [];
+    for (const user of rawUsers) {
+      if (viewerUid && user.uid === viewerUid) continue;
+
+      const isFriend = viewerFriends.has(user.uid);
+      const relation = isFriend ? 'friend' : 'public';
+      const locationTimestamp = getLocationTimestamp(user);
+      if (!locationTimestamp || (now - locationTimestamp) > LOCATION_PRIVACY.MAX_LOCATION_AGE_MS) continue;
+
+      if (relation === 'public' && (now - locationTimestamp) < LOCATION_PRIVACY.PUBLIC_LOCATION_DELAY_MS) {
+        continue;
+      }
+
+      const lat = user?.lastLocation?.lat;
+      const lng = user?.lastLocation?.lng;
+      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+
+      if (relation === 'public') {
+        const cellKey = getPublicCellKey(lat, lng);
+        const cellCount = publicCellCounts.get(cellKey) || 0;
+        if (cellCount < LOCATION_PRIVACY.PUBLIC_K_ANON_MIN_USERS) {
+          continue;
+        }
+      }
+
+      const coordDecimals = relation === 'friend'
+        ? LOCATION_PRIVACY.FRIEND_COORD_DECIMALS
+        : LOCATION_PRIVACY.PUBLIC_COORD_DECIMALS;
+      const jitterMeters = relation === 'friend'
+        ? LOCATION_PRIVACY.FRIEND_JITTER_METERS
+        : LOCATION_PRIVACY.PUBLIC_JITTER_METERS;
+
+      const roundedLat = roundCoord(lat, coordDecimals);
+      const roundedLng = roundCoord(lng, coordDecimals);
+      const jitterBucket = Math.floor(now / LOCATION_PRIVACY.JITTER_ROTATION_MS);
+      const jitterSeed = `${viewerUid || 'anon'}:${user.uid}:${jitterBucket}:${relation}`;
+      const jittered = addCoordinateJitter(roundedLat, roundedLng, jitterMeters, jitterSeed);
+
+      const distanceMeters = viewerLocation
+        ? getDistanceMeters(viewerLocation.lat, viewerLocation.lng, lat, lng)
+        : null;
+
+      safeUsers.push({
+        uid: user.uid,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+        interests: user.interests || [],
+        bio: user.bio,
+        instagramHandle: user.instagramHandle,
+        gender: user.gender,
+        relation,
+        distanceBand: toDistanceBand(distanceMeters),
+        locationAccuracyMeters: relation === 'friend' ? 250 : 1500,
+        isDiscoverable: user.isDiscoverable !== false,
+        lastLocation: {
+          lat: jittered.lat,
+          lng: jittered.lng,
+          name: relation === 'friend' ? user?.lastLocation?.name : 'Nearby area',
+        },
+      });
+    }
+
+    res.json(safeUsers.slice(0, 100));
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch profiles" });
   }
@@ -827,6 +1039,9 @@ app.post('/api/profile/:uid', async (req, res) => {
 
     // 1. Update Profile
     const updateFields = { ...data, uid, updatedAt: new Date() };
+    if (typeof data?.lastLocation?.lat === 'number' && typeof data?.lastLocation?.lng === 'number') {
+      updateFields.locationUpdatedAt = Date.now();
+    }
     const updateDoc = { $set: updateFields };
 
     await profiles.updateOne({ uid }, updateDoc, { upsert: true });

@@ -76,9 +76,10 @@ export const api = {
   },
 
   profile: {
-    get: async (uid: string) => {
+    get: async (uid: string, viewerUid?: string) => {
       try {
-        const response = await fetch(`${API_BASE}/profile/${uid}`);
+        const query = viewerUid ? `?viewerUid=${encodeURIComponent(viewerUid)}` : "";
+        const response = await fetch(`${API_BASE}/profile/${uid}${query}`);
         if (!response?.ok) return null;
         return await response.json();
       } catch (error) {
@@ -119,8 +120,8 @@ export const api = {
     },
 
     createOrUpdate: async (uid: string, data: Partial<UserProfile>) => {
-      // Fuzz location for privacy before sending to server
-      if (data?.lastLocation?.lat && data?.lastLocation?.lng) {
+      // Keep a coarse client-side fallback, but server-side sanitization is authoritative.
+      if (typeof data?.lastLocation?.lat === 'number' && typeof data?.lastLocation?.lng === 'number') {
         data.lastLocation.lat = parseFloat(data.lastLocation.lat.toFixed(3));
         data.lastLocation.lng = parseFloat(data.lastLocation.lng.toFixed(3));
       }

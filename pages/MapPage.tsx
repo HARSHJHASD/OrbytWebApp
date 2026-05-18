@@ -316,7 +316,7 @@ const MapPage: React.FC = () => {
                 {selectedUser.displayName}
               </h3>
               <p className="text-sm text-primary-600 dark:text-primary-400 font-medium">
-                {selectedUser.distDisplay} away
+                {selectedUser.distanceBand || selectedUser.distDisplay} away (approx.)
               </p>
             </div>
 
@@ -374,6 +374,10 @@ const MapPage: React.FC = () => {
           </div>
         </button>
       )}
+
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] bg-slate-900/90 text-slate-200 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-slate-700 shadow-lg">
+        Approximate locations for safety
+      </div>
 
       {/* BOTTOM DRAWER */}
       {isListOpen && (
@@ -467,11 +471,11 @@ const MapPage: React.FC = () => {
                           </h3>
                           {u.lastLocation?.name ? (
                             <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-1 uppercase tracking-wider flex items-center gap-1">
-                              <MapPin className="w-3 h-3" /> {u.lastLocation.name} · {u.distDisplay}
+                              <MapPin className="w-3 h-3" /> {u.lastLocation.name} · {u.distanceBand || u.distDisplay}
                             </p>
                           ) : (
                             <p className="text-xs font-bold text-primary-500 dark:text-primary-400 mt-1 uppercase tracking-tight">
-                              {u.distDisplay} away
+                              {(u.distanceBand || u.distDisplay)} away
                             </p>
                           )}
                         </div>
