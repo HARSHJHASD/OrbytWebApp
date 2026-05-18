@@ -91,8 +91,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         title: data.notification.fromName,
                         body: data.notification.type === 'like' ? 'liked your post' : 
                               data.notification.type === 'comment' ? 'commented on your post' :
-                              data.notification.type === 'friend_request' ? 'sent you a friend request' :
-                              data.notification.type === 'friend_accept' ? 'accepted your friend request' :
+                              data.notification.type === 'friend_request' ? 'liked your profile' :
+                              data.notification.type === 'friend_accept' ? 'liked you back' :
                               data.notification.type === 'meetup_request' ? 'wants to join your meetup' :
                               data.notification.type === 'meetup_accept' ? 'accepted your meetup request' : 'sent a notification',
                         icon: data.notification.fromPhoto,

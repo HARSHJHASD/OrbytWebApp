@@ -26,9 +26,9 @@ function getNotifMeta(type: Notification['type']) {
         case 'comment':
             return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'commented on your post' };
         case 'friend_request':
-            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'sent you a friend request' };
+            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'liked your profile' };
         case 'friend_accept':
-            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: 'accepted your friend request' };
+            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: 'liked you back' };
         case 'meetup_request':
             return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants to join your meetup' };
         case 'meetup_accept':
@@ -184,7 +184,7 @@ const NotificationsPage: React.FC = () => {
                         <div>
                             <p className="text-white font-bold text-lg">All caught up!</p>
                             <p className="text-slate-500 text-sm mt-1">
-                                When someone likes your post, comments, or sends a friend request, you'll see it here.
+                                When someone likes your post, comments, or likes your profile, you'll see it here.
                             </p>
                         </div>
                     </div>
