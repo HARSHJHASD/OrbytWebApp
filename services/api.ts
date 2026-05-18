@@ -1,4 +1,4 @@
-import { Message, Notification, Post, UserProfile } from "../types";
+import { Message, Notification, Post, UserProfile, Community } from "../types";
 import { API_CONFIG, API_ERROR_MESSAGES } from "../constants/config";
 import { getErrorMessage } from "../util/apiErrorHandler";
 
@@ -603,7 +603,67 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to fetch version config");
       return await response.json(); // { minAppVersion: string, updateUrl: string }
     }
-  }
+  },
+
+  communities: {
+    create: async (uid: string, name: string, description?: string) => {
+      const response = await fetch(`${API_BASE}/communities`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, name, description }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to create room");
+      return data as { success: boolean; id: string };
+    },
+    getAll: async () => {
+      try {
+        const response = await fetch(`${API_BASE}/communities`);
+        if (!response?.ok) return [];
+        return await response.json() as Community[];
+      } catch { return []; }
+    },
+    get: async (id: string) => {
+      try {
+        const response = await fetch(`${API_BASE}/communities/${id}`);
+        if (!response?.ok) return null;
+        return await response.json() as Community;
+      } catch { return null; }
+    },
+    join: async (id: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/communities/${id}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      if (!response?.ok) throw new Error("Failed to join room");
+    },
+    leave: async (id: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/communities/${id}/leave`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to leave room");
+    },
+    update: async (id: string, uid: string, name: string, description?: string) => {
+      const response = await fetch(`${API_BASE}/communities/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, name, description }),
+      });
+      if (!response?.ok) throw new Error("Failed to update room");
+    },
+    delete: async (id: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/communities/${id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      if (!response?.ok) throw new Error("Failed to delete room");
+    },
+  },
 };
 
 // --- Revive Chat API ---

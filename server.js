@@ -445,6 +445,7 @@ async function createIndexes() {
       notifications: ['toUid', 'createdAt'],
       stories: ['uid', 'expiresAt'],
       profile_views: ['viewerUid', 'targetUid'],
+      communities: ['ownerUid', 'lastActivity'],
     };
 
     for (const [collName, fields] of Object.entries(collections)) {
@@ -2038,6 +2039,148 @@ app.post('/api/chats/:chatId/revive', requireAuth, async (req, res) => {
   } catch (e) {
     console.error('Error reviving chat:', e);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ============================================================
+// --- COMMUNITY ROOMS ---
+// ============================================================
+
+// Create a community room
+app.post('/api/communities', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { uid, name, description } = req.body;
+    if (!uid || !name || typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'uid and name are required' });
+    }
+    const trimmedName = name.trim().slice(0, 80);
+    if (trimmedName.length < 2) return res.status(400).json({ error: 'Name must be at least 2 characters' });
+    const communities = db.collection('communities');
+    const result = await communities.insertOne({
+      name: trimmedName,
+      description: (description || '').trim().slice(0, 300),
+      ownerUid: uid,
+      members: [uid],
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+    });
+    res.json({ success: true, id: result.insertedId.toString() });
+  } catch (e) {
+    console.error('Create community error:', e);
+    res.status(500).json({ error: 'Failed to create community' });
+  }
+});
+
+// List all public communities
+app.get('/api/communities', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const communities = db.collection('communities');
+    const list = await communities.find({})
+      .sort({ lastActivity: -1 })
+      .limit(100)
+      .toArray();
+    res.json(list);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch communities' });
+  }
+});
+
+// Get a single community
+app.get('/api/communities/:id', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid ID' });
+    const communities = db.collection('communities');
+    const community = await communities.findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    res.json(community);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch community' });
+  }
+});
+
+// Join a community
+app.post('/api/communities/:id/join', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { uid } = req.body;
+    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const communities = db.collection('communities');
+    const community = await communities.findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    await communities.updateOne(
+      { _id: new ObjectId(id) },
+      { $addToSet: { members: uid }, $set: { lastActivity: Date.now() } }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to join community' });
+  }
+});
+
+// Leave a community
+app.post('/api/communities/:id/leave', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { uid } = req.body;
+    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const communities = db.collection('communities');
+    const community = await communities.findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (community.ownerUid === uid) return res.status(400).json({ error: 'Owner cannot leave. Delete the room instead.' });
+    await communities.updateOne(
+      { _id: new ObjectId(id) },
+      { $pull: { members: uid } }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to leave community' });
+  }
+});
+
+// Update a community (owner only)
+app.put('/api/communities/:id', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { uid, name, description } = req.body;
+    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const communities = db.collection('communities');
+    const community = await communities.findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can edit this room' });
+    const updates = {};
+    if (name && name.trim().length >= 2) updates.name = name.trim().slice(0, 80);
+    if (description !== undefined) updates.description = (description || '').trim().slice(0, 300);
+    await communities.updateOne({ _id: new ObjectId(id) }, { $set: updates });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update community' });
+  }
+});
+
+// Delete a community (owner only)
+app.delete('/api/communities/:id', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { uid } = req.body;
+    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const communities = db.collection('communities');
+    const community = await communities.findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can delete this room' });
+    await communities.deleteOne({ _id: new ObjectId(id) });
+    // Remove all messages for this room
+    await db.collection('messages').deleteMany({ groupId: id });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete community' });
   }
 });
 

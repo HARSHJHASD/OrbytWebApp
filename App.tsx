@@ -33,6 +33,8 @@ import About from './pages/About';
 import Blog from './pages/Blog';
 import Contact from './pages/Contact';
 import DeleteAccount from './pages/DeleteAccount';
+import Communities from './pages/Communities';
+import CommunityRoom from './pages/CommunityRoom';
 
 
 // Guard component to protect routes and check profile existence
@@ -162,6 +164,15 @@ const AppRoutes = () => {
             </ProtectedRoute>
           } />
 
+          {/* Community Room - Isolated (full-screen chat) */}
+          <Route path="/app/rooms/:communityId" element={
+            <ProtectedRoute>
+              <LocationGuard>
+                <CommunityRoom />
+              </LocationGuard>
+            </ProtectedRoute>
+          } />
+
           {/* Main App - Protected by Location & Layout */}
           <Route element={
             <ProtectedRoute>
@@ -172,6 +183,7 @@ const AppRoutes = () => {
           }>
             <Route path="/app" element={<Feed />} />
             <Route path="/app/map" element={<MapPage />} />
+            <Route path="/app/rooms" element={<Communities />} />
             <Route path="/app/inbox" element={<Inbox />} />
             <Route path="/app/discover" element={<Discover />} />
             <Route path="/app/notifications" element={<NotificationsPage />} />

@@ -1,4 +1,4 @@
-import { Home, Map, MessageCircle, PlusSquare, User } from 'lucide-react';
+import { Home, Hash, MessageCircle, PlusSquare, User } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +32,8 @@ const Layout: React.FC = () => {
     if (path === '/app') title = "Feed | Orbyt";
     else if (path === '/app/map') title = "Live Map | Orbyt";
     else if (path === '/app/inbox') title = "Chat | Orbyt";
+    else if (path === '/app/rooms') title = "Rooms | Orbyt";
+    else if (path.startsWith('/app/rooms/')) title = "Room Chat | Orbyt";
     else if (path === '/app/discover') title = "Discover | Orbyt";
     else if (path.startsWith('/app/profile')) title = "Profile | Orbyt";
     else if (path === '/app/settings') title = "Settings | Orbyt";
@@ -127,13 +129,13 @@ const Layout: React.FC = () => {
             <span className="text-[10px] font-medium">Home</span>
           </button>
 
-          {/* Map */}
+          {/* Rooms */}
           <button
-            onClick={() => navigate('/app/map')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/map') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
+            onClick={() => navigate('/app/rooms')}
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/rooms') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Map className={`w-5 h-5 ${isActive('/app/map') ? 'fill-current' : ''}`} />
-            <span className="text-[10px] font-medium">Map</span>
+            <Hash className={`w-5 h-5 ${isActive('/app/rooms') ? 'stroke-[2.5]' : ''}`} />
+            <span className="text-[10px] font-medium">Rooms</span>
           </button>
 
           {/* Discover */}

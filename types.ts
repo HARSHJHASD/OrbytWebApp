@@ -142,3 +142,13 @@ export const MEETUP_ACTIVITIES = [
   'Picnic', 'Beach Day', 'Camping', 'Road Trip',
   'Volunteering', 'Meditation', 'Dance', 'Cooking Class', 'Wine Tasting', 'House Party'
 ];
+
+export interface Community {
+  _id: string;
+  name: string;
+  description?: string;
+  ownerUid: string;
+  members: string[];
+  createdAt: number;
+  lastActivity: number;
+}
