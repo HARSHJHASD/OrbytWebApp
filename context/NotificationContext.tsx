@@ -16,8 +16,15 @@ const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): nu
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const NEARBY_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const NEARBY_INITIAL_DELAY_MS = 30 * 1000;      // 30 seconds after mount
+const NEARBY_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const NEARBY_INITIAL_DELAY_MS = 30 * 1000;            // 30 seconds after mount
+
+// Only check during times when metro-city users are typically free:
+// 7–9:30 AM (morning commute), 12–2 PM (lunch), 5–9 PM (evening/after work)
+function isActiveHour(): boolean {
+    const h = new Date().getHours();
+    return (h >= 7 && h < 10) || (h >= 12 && h < 14) || (h >= 17 && h < 21);
+}
 
 interface Toast {
     id: string;
@@ -68,6 +75,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const checkNearbyPeople = useCallback(async () => {
         if (!user || !navigator.geolocation) return;
+        if (!isActiveHour()) return;
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 try {
