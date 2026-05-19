@@ -92,7 +92,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                                 ? `${first.displayName} is nearby`
                                 : `${first.displayName} and ${newPeople.length - 1} other${newPeople.length > 2 ? 's' : ''} are nearby`,
                             icon: first.photoURL || undefined,
-                            url: '/app/discover',
+                            url: '/app/map',
                             type: 'nearby',
                         });
                     }
