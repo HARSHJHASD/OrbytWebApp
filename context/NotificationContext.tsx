@@ -38,17 +38,25 @@ interface Toast {
 interface NotificationContextType {
     notifications: Notification[];
     unreadCount: number;
+    unreadMessages: number;
+    unreadRooms: number;
     markRead: (ids: string[]) => Promise<void>;
     markAllRead: () => Promise<void>;
     addNotification: (n: Notification) => void;
+    clearUnreadMessages: () => void;
+    clearUnreadRooms: () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
     notifications: [],
     unreadCount: 0,
+    unreadMessages: 0,
+    unreadRooms: 0,
     markRead: async () => { },
     markAllRead: async () => { },
     addNotification: () => { },
+    clearUnreadMessages: () => { },
+    clearUnreadRooms: () => { },
 });
 
 export const useNotifications = () => useContext(NotificationContext);
@@ -58,6 +66,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const navigate = useNavigate();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [toasts, setToasts] = useState<Toast[]>([]);
+    const [unreadMessages, setUnreadMessages] = useState(0);
+    const [unreadRooms, setUnreadRooms] = useState(0);
     const wsRef = useRef<WebSocket | null>(null);
     const keepAliveRef = useRef<any>(null);
     const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -139,6 +149,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         fetchNotifications();
     }, [fetchNotifications]);
 
+    // Load initial unread message count
+    useEffect(() => {
+        if (!user) return;
+        api.chat.getUnreadCount(user.uid).then(count => setUnreadMessages(count)).catch(() => {});
+    }, [user]);
+
+    const clearUnreadMessages = useCallback(() => setUnreadMessages(0), []);
+    const clearUnreadRooms = useCallback(() => setUnreadRooms(0), []);
+
     // Real-time WebSocket subscription for incoming notifications
     useEffect(() => {
         if (!user) return;
@@ -195,6 +214,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 const userUidStr = String(user?.uid || '');
                 
                 if (fromUidStr !== userUidStr && fromUidStr !== 'system') {
+                    // Increment real-time badge counters only if not already on that page
+                    const path = window.location.pathname;
+                    if (data?.groupId) {
+                        const onRooms = path.startsWith('/app/rooms') || path.startsWith('/app/communities');
+                        if (!onRooms) setUnreadRooms(prev => prev + 1);
+                    } else {
+                        const onChat = path.startsWith('/app/inbox') || path.startsWith('/app/chat');
+                        if (!onChat) setUnreadMessages(prev => prev + 1);
+                    }
+
                     addToast({
                         title: data.authorName || 'New Message',
                         body: data.text,
@@ -231,7 +260,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, []);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, markRead, markAllRead, addNotification }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms }}>
             {children}
             
             {/* Toast Container */}

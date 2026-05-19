@@ -2,7 +2,7 @@ import { Home, Hash, Map, MessageCircle, PlusSquare, User } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/api';
+import { useNotifications } from '../context/NotificationContext';
 import DeviceFrame from './DeviceFrame';
 // import MainLogo from '../assets/logo.png'; 
 
@@ -10,7 +10,7 @@ const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const [unreadMessages, setUnreadMessages] = useState(0);
+  const { unreadMessages, unreadRooms, clearUnreadMessages, clearUnreadRooms } = useNotifications();
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
@@ -50,22 +50,15 @@ const Layout: React.FC = () => {
 
   const profilePath = user ? `/app/profile/${user.uid}` : '/auth';
 
-  // Poll for unread messages
+  // Clear badge counts when navigating to their respective pages
   useEffect(() => {
-    const checkUnread = async () => {
-      if (!user) return;
-      try {
-        const count = await api.chat.getUnreadCount(user.uid);
-        setUnreadMessages(count);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-
-    checkUnread();
-    const interval = setInterval(checkUnread, 10000);
-    return () => clearInterval(interval);
-  }, [user]);
+    if (location.pathname.startsWith('/app/inbox') || location.pathname.startsWith('/app/chat')) {
+      clearUnreadMessages();
+    }
+    if (location.pathname.startsWith('/app/rooms') || location.pathname.startsWith('/app/communities')) {
+      clearUnreadRooms();
+    }
+  }, [location.pathname]);
 
   const [isDesktop, setIsDesktop] = useState(window.innerWidth >= 768);
 
@@ -192,7 +185,14 @@ const Layout: React.FC = () => {
             onClick={() => navigate('/app/rooms')}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/rooms') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
           >
-            <Hash className={`w-[18px] h-[18px] ${isActive('/app/rooms') ? 'stroke-[2.5]' : ''}`} />
+            <div className="relative">
+              <Hash className={`w-[18px] h-[18px] ${isActive('/app/rooms') ? 'stroke-[2.5]' : ''}`} />
+              {unreadRooms > 0 && (
+                <div className="absolute -top-1.5 -right-1.5 bg-indigo-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-slate-900">
+                  {unreadRooms > 9 ? '9+' : unreadRooms}
+                </div>
+              )}
+            </div>
             <span className="text-[9px] font-medium">Rooms</span>
           </button>
 
@@ -208,7 +208,7 @@ const Layout: React.FC = () => {
         </div>
       </div>
     </div>
-  ), [isDesktop, isOffline, unreadMessages, location.pathname, user]);
+  ), [isDesktop, isOffline, unreadMessages, unreadRooms, location.pathname, user]);
 
   return isDesktop ? (
     <DeviceFrame>
