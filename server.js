@@ -228,7 +228,7 @@ function sendToUser(uid, data) {
   }
 }
 
-async function createNotification(type, fromUid, toUid, postId = null) {
+async function createNotification(type, fromUid, toUid, postId = null, extra = {}) {
   if (!db || fromUid === toUid) return;
   try {
     const notifications = db.collection('notifications');
@@ -252,6 +252,8 @@ async function createNotification(type, fromUid, toUid, postId = null) {
       fromPhoto: sender.photoURL,
       toUid,
       postId,
+      groupId: extra.groupId || null,
+      message: extra.message || null,
       read: false,
       createdAt: Date.now()
     };
@@ -264,45 +266,70 @@ async function createNotification(type, fromUid, toUid, postId = null) {
 
     let title = "New Notification";
     let body = "You have a new notification on Orbyt.";
+    const name = sender.displayName;
 
     switch (type) {
       case 'like':
-        title = "New Like!";
-        body = `${sender.displayName} liked your post.`;
+        title = "❤️ New Like!";
+        body = `${name} liked your post.`;
         break;
       case 'comment':
-        title = "New Comment!";
-        body = `${sender.displayName} commented on your post.`;
+        title = "💬 New Comment!";
+        body = `${name} commented on your post.`;
         break;
       case 'friend_request':
-        title = "New Like";
-        body = `${sender.displayName} liked your profile.`;
+        title = "💛 Someone likes you!";
+        body = `${name} liked your profile. Like back?`;
         break;
       case 'friend_accept':
-        title = "Like Back";
-        body = `${sender.displayName} liked you back.`;
+        title = "🎉 It's a match!";
+        body = `${name} liked you back! You're now connected.`;
         break;
       case 'meetup_request':
-        title = "Meetup Request";
-        body = `${sender.displayName} requested to join your meetup.`;
+        title = "🙋 Meetup Request";
+        body = `${name} wants to join your meetup. Accept them?`;
         break;
       case 'meetup_accept':
-        title = "Meetup Accepted";
-        body = `${sender.displayName} accepted your request to join the meetup!`;
+        title = "✅ You're in!";
+        body = `${name} accepted your request. See you at the meetup!`;
+        break;
+      case 'friend_post':
+        title = `📸 ${name} just dropped something!`;
+        body = `New post from your connection. Don't miss the vibe 🔥`;
+        break;
+      case 'friend_event':
+        title = `🎉 ${name} is planning something fun!`;
+        body = extra.eventTitle
+          ? `"${extra.eventTitle}" just dropped. Grab your spot before it fills up!`
+          : `A new event just dropped. Grab your spot before it fills up!`;
+        break;
+      case 'new_event':
+        title = `🔥 Hot new event near you!`;
+        body = extra.eventTitle
+          ? `${name} is hosting "${extra.eventTitle}". Don't sleep on this one!`
+          : `${name} just created a new event. Check it out!`;
+        break;
+      case 'room_message':
+        title = `💬 ${extra.groupTitle || 'Room Activity'}`;
+        body = `${name}: ${extra.message || 'sent a message'}`;
         break;
     }
+
+    const notifUrl = extra.groupId
+      ? `/communities/${extra.groupId}`
+      : postId ? `/post/${postId}` : `/profile/${fromUid}`;
 
     const payload = JSON.stringify({
       title,
       body,
       icon: sender.photoURL || "/pwa-192x192.png",
-      data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
+      data: { url: notifUrl }
     });
 
     const expoPayload = {
       title,
       body,
-      data: { url: postId ? `/post/${postId}` : `/profile/${sender.uid}` }
+      data: { url: notifUrl }
     };
 
     await sendPushNotification(toUid, payload, expoPayload);
@@ -1239,6 +1266,36 @@ app.post('/api/posts', async (req, res) => {
       attendees: [], pendingRequests: [],
       createdAt: Date.now()
     });
+
+    const postIdStr = result.insertedId.toString();
+    const isMeetup = postData.type === 'meetup';
+    const notifType = isMeetup ? 'friend_event' : 'friend_post';
+    const extra = isMeetup ? { eventTitle: postData.meetupDetails?.title } : {};
+
+    // Notify all friends about the new post/event (fire-and-forget)
+    setImmediate(async () => {
+      try {
+        const poster = await db.collection('profiles').findOne({ uid: postData.uid });
+        if (poster?.friends?.length) {
+          for (const friendUid of poster.friends) {
+            await createNotification(notifType, postData.uid, friendUid, postIdStr, extra).catch(() => {});
+          }
+        }
+        // For meetup posts: also notify all other discoverable users (new_event)
+        if (isMeetup) {
+          const allProfiles = await db.collection('profiles').find({
+            uid: { $ne: postData.uid, $nin: poster?.friends || [] },
+            isDiscoverable: true
+          }).limit(80).toArray();
+          for (const p of allProfiles) {
+            await createNotification('new_event', postData.uid, p.uid, postIdStr, extra).catch(() => {});
+          }
+        }
+      } catch (e) {
+        console.error('Post notification error:', e);
+      }
+    });
+
     res.json({ success: true, id: result.insertedId });
   } catch (error) {
     res.status(500).json({ error: "Failed to create post" });
@@ -1710,16 +1767,18 @@ app.post('/api/chat/send', async (req, res) => {
       const result = await messages.insertOne(newMessage);
       const fullMessage = { ...newMessage, _id: result.insertedId };
 
-      const notifUrl = community
-        ? { expo: `/community/${community._id}`, web: `/app/communities/${community._id}` }
-        : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
-
-      const expoPayload = { title: groupTitle, body: `${authorName}: ${displayBody}`, data: { url: notifUrl.expo } };
-      const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${displayBody}`, icon: authorPhoto || '/pwa-192x192.png', data: { url: notifUrl.web } });
+      const roomGroupId = community ? community._id.toString() : String(groupId);
 
       for (const uid of recipients) {
         sendToUser(uid, fullMessage);
-        if (uid !== fromUid) await sendPushNotification(uid, webPayloadStr, expoPayload);
+        if (uid !== fromUid) {
+          // createNotification handles in-app notification doc + WS notification event + push
+          createNotification('room_message', fromUid, uid, null, {
+            groupId: roomGroupId,
+            groupTitle,
+            message: displayBody
+          }).catch(() => {});
+        }
       }
 
       return res.json(fullMessage);

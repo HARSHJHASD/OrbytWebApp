@@ -162,13 +162,26 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     if (prev.find(n => n._id === data?.notification?._id)) return prev;
                     
                     addToast({
-                        title: data.notification.fromName,
+                        title: data.notification.type === 'friend_post'
+                            ? `📸 ${data.notification.fromName} just dropped something!`
+                            : data.notification.type === 'friend_event'
+                            ? `🎉 ${data.notification.fromName} is planning something fun!`
+                            : data.notification.type === 'new_event'
+                            ? `🔥 Hot new event near you!`
+                            : data.notification.type === 'room_message'
+                            ? `💬 ${data.notification.message?.split(':')[0] || 'Room'}`
+                            : data.notification.fromName,
                         body: data.notification.type === 'like' ? 'liked your post' : 
                               data.notification.type === 'comment' ? 'commented on your post' :
-                              data.notification.type === 'friend_request' ? 'liked your profile' :
-                              data.notification.type === 'friend_accept' ? 'liked you back' :
-                              data.notification.type === 'meetup_request' ? 'wants to join your meetup' :
-                              data.notification.type === 'meetup_accept' ? 'accepted your meetup request' : 'sent a notification',
+                              data.notification.type === 'friend_request' ? 'liked your profile 💛' :
+                              data.notification.type === 'friend_accept' ? '🎉 liked you back! You\'re now connected.' :
+                              data.notification.type === 'meetup_request' ? 'wants to join your meetup 🙋' :
+                              data.notification.type === 'meetup_accept' ? '✅ accepted your meetup request. See you there!' :
+                              data.notification.type === 'friend_post' ? 'New post from your connection. Don\'t miss the vibe 🔥' :
+                              data.notification.type === 'friend_event' ? 'A new event just dropped. Grab your spot before it fills up!' :
+                              data.notification.type === 'new_event' ? `${data.notification.fromName} just created a new event. Don't sleep on this one!` :
+                              data.notification.type === 'room_message' ? data.notification.message || 'sent a message' :
+                              'sent a notification',
                         icon: data.notification.fromPhoto,
                         url: data.notification.postId ? `/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
                         type: 'notification'

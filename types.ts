@@ -74,12 +74,14 @@ export interface Post {
 
 export interface Notification {
   _id: string;
-  type: 'friend_request' | 'friend_accept' | 'like' | 'comment' | 'meetup_request' | 'meetup_accept';
+  type: 'friend_request' | 'friend_accept' | 'like' | 'comment' | 'meetup_request' | 'meetup_accept' | 'friend_post' | 'friend_event' | 'new_event' | 'room_message';
   fromUid: string;
   fromName: string;
   fromPhoto: string;
   toUid: string;
   postId?: string;
+  groupId?: string;
+  message?: string;
   read: boolean;
   createdAt: number;
 }

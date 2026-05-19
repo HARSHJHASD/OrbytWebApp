@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Users, Zap } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
 
@@ -26,20 +26,29 @@ function getNotifMeta(type: Notification['type']) {
         case 'comment':
             return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'commented on your post' };
         case 'friend_request':
-            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'liked your profile' };
+            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'liked your profile 💛' };
         case 'friend_accept':
-            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: 'liked you back' };
+            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 liked you back! You\'re now connected.' };
         case 'meetup_request':
-            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants to join your meetup' };
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants to join your meetup 🙋' };
         case 'meetup_accept':
-            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: 'accepted your meetup request' };
+            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: '✅ accepted your meetup request. See you there!' };
+        case 'friend_post':
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-yellow-500', label: 'just posted something. Don\'t miss the vibe 🔥' };
+        case 'friend_event':
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'dropped a new event. Grab your spot!' };
+        case 'new_event':
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created a hot new event near you 🔥' };
+        case 'room_message':
+            return { icon: <Users className="w-4 h-4" />, color: 'bg-indigo-500', label: 'sent a message in a room' };
         default:
             return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'sent you a notification' };
     }
 }
 
 function getNotifLink(n: Notification): string {
-    if (['like', 'comment', 'meetup_request', 'meetup_accept'].includes(n.type) && n.postId) {
+    if (n.type === 'room_message' && n.groupId) return `/app/communities/${n.groupId}`;
+    if (['like', 'comment', 'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event'].includes(n.type) && n.postId) {
         return `/app/post/${n.postId}`;
     }
     return `/app/profile/${n.fromUid}`;
@@ -85,6 +94,9 @@ const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap 
                     {' '}
                     <span className="text-slate-300">{label}</span>
                 </p>
+                {n.type === 'room_message' && n.message && (
+                    <p className="text-xs text-slate-400 mt-0.5 truncate italic">"{n.message}"</p>
+                )}
                 <p className="text-xs text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
             </div>
 
