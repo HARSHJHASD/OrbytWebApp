@@ -35,6 +35,7 @@ export default function Chat() {
     const [mediaType, setMediaType] = useState<'image' | 'emoji' | 'audio' | null>(null);
     const [mediaUrl, setMediaUrl] = useState<string | null>(null);
     const [showMediaMenu, setShowMediaMenu] = useState(false);
+    const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -392,7 +393,7 @@ export default function Chat() {
                                                 : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}
                                       `}>
                                             {msg.mediaType === 'image' && (
-                                                <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => window.open(msg.mediaUrl, '_blank')}>
+                                                <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxUrl(msg.mediaUrl || null)}>
                                                     <img src={msg.mediaUrl} alt="Sent image" className="max-w-full h-auto object-cover max-h-64 sm:max-h-80" />
                                                 </div>
                                             )}
@@ -621,6 +622,29 @@ export default function Chat() {
                 confirmText="Remove"
                 danger
             />
+
+            {/* Image Lightbox */}
+            {lightboxUrl && (
+                <div
+                    className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center"
+                    onClick={() => setLightboxUrl(null)}
+                >
+                    <button
+                        onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+                        className="absolute top-5 right-5 z-10 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors backdrop-blur-sm border border-white/10"
+                        aria-label="Close"
+                    >
+                        <X className="w-6 h-6" />
+                    </button>
+                    <img
+                        src={lightboxUrl}
+                        alt="Full size"
+                        draggable={false}
+                        className="max-w-[95vw] max-h-[90vh] object-contain rounded-xl shadow-2xl select-none"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                </div>
+            )}
 
             {/* Report Modal */}
             {reportModalOpen && (

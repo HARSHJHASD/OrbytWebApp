@@ -19,6 +19,11 @@ const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): nu
 const NEARBY_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const NEARBY_INITIAL_DELAY_MS = 30 * 1000;            // 30 seconds after mount
 
+const KNOWN_NOTIFICATION_TYPES = [
+    'friend_request', 'friend_accept', 'like', 'comment',
+    'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event',
+] as const;
+
 // Only check during times when metro-city users are typically free:
 // 7–9:30 AM (morning commute), 12–2 PM (lunch), 5–9 PM (evening/after work)
 function isActiveHour(): boolean {
@@ -139,7 +144,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (!user) return;
         try {
             const data = await api.notifications.get(user.uid);
-            setNotifications(data);
+            setNotifications(data.filter((n: Notification) => KNOWN_NOTIFICATION_TYPES.includes(n.type as any)));
         } catch (e) {
             console.error('Failed to fetch notifications', e);
         }
@@ -178,6 +183,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 if (data.notification.fromUid === user.uid) return;
                 // room_message no longer creates notification docs — skip that type here
                 if (data.notification.type === 'room_message') return;
+                // Skip unknown / generic notification types
+                if (!KNOWN_NOTIFICATION_TYPES.includes(data.notification.type)) return;
                 
                 setNotifications(prev => {
                     if (prev.find(n => n._id === data?.notification?._id)) return prev;

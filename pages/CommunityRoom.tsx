@@ -79,6 +79,7 @@ const CommunityRoom: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [joiningFirst, setJoiningFirst] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -292,8 +293,9 @@ const CommunityRoom: React.FC = () => {
                     <img
                       src={msg.mediaUrl}
                       alt="Image"
-                      className="max-w-[200px] rounded-xl object-cover"
+                      className="max-w-[200px] rounded-xl object-cover cursor-pointer hover:opacity-90 transition-opacity"
                       loading="lazy"
+                      onClick={() => setLightboxUrl(msg.mediaUrl!)}
                     />
                   ) : (
                     <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.text}</p>
@@ -356,6 +358,29 @@ const CommunityRoom: React.FC = () => {
           onClose={() => setShowMembers(false)}
           onNavigate={uid => navigate(`/app/profile/${uid}`)}
         />
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/95 flex items-center justify-center"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+            className="absolute top-5 right-5 z-10 w-11 h-11 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center text-white transition-colors backdrop-blur-sm border border-white/10"
+            aria-label="Close"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <img
+            src={lightboxUrl}
+            alt="Full size"
+            draggable={false}
+            className="max-w-[95vw] max-h-[90vh] object-contain rounded-xl shadow-2xl select-none"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );

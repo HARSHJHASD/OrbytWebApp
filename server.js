@@ -535,14 +535,14 @@ async function getMutualBlockedUids(viewerUid) {
 }
 
 const LOCATION_PRIVACY = {
-  PUBLIC_COORD_DECIMALS: 1, // ~11km precision
+  PUBLIC_COORD_DECIMALS: 2, // ~1.1km precision (was 1/~11km — too coarse)
   FRIEND_COORD_DECIMALS: 2, // ~1.1km precision
   PUBLIC_JITTER_METERS: 450,
   FRIEND_JITTER_METERS: 180,
   PUBLIC_LOCATION_DELAY_MS: 5 * 60 * 1000, // 5 minutes
-  MAX_LOCATION_AGE_MS: 24 * 60 * 60 * 1000, // 24 hours stale cutoff
-  PUBLIC_K_ANON_DECIMALS: 1,
-  PUBLIC_K_ANON_MIN_USERS: 3,
+  MAX_LOCATION_AGE_MS: 72 * 60 * 60 * 1000, // 72 hours stale cutoff (was 24h)
+  PUBLIC_K_ANON_DECIMALS: 2,
+  PUBLIC_K_ANON_MIN_USERS: 1, // was 3 — required 3+ users in same 11km cell, hid everyone
   JITTER_ROTATION_MS: 15 * 60 * 1000, // rotate every 15 minutes
 };
 
@@ -946,58 +946,26 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
       instagramHandle: 1,
       gender: 1,
       isDiscoverable: 1,
-    }).limit(150).toArray();
-
-    // Build density map for k-anonymity on public users.
-    const publicCellCounts = new Map();
-    for (const user of rawUsers) {
-      if (viewerUid && user.uid === viewerUid) continue;
-      const isFriend = viewerFriends.has(user.uid);
-      if (isFriend) continue;
-
-      const locationTimestamp = getLocationTimestamp(user);
-      if (!locationTimestamp || (now - locationTimestamp) > LOCATION_PRIVACY.MAX_LOCATION_AGE_MS) continue;
-      if ((now - locationTimestamp) < LOCATION_PRIVACY.PUBLIC_LOCATION_DELAY_MS) continue;
-
-      const lat = user?.lastLocation?.lat;
-      const lng = user?.lastLocation?.lng;
-      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
-
-      const key = getPublicCellKey(lat, lng);
-      publicCellCounts.set(key, (publicCellCounts.get(key) || 0) + 1);
-    }
+    }).limit(500).toArray();
 
     const safeUsers = [];
     for (const user of rawUsers) {
       if (viewerUid && user.uid === viewerUid) continue;
 
-      const isFriend = viewerFriends.has(user.uid);
-      const relation = isFriend ? 'friend' : 'public';
-      const locationTimestamp = getLocationTimestamp(user);
-      if (!locationTimestamp || (now - locationTimestamp) > LOCATION_PRIVACY.MAX_LOCATION_AGE_MS) continue;
-
-      if (relation === 'public' && (now - locationTimestamp) < LOCATION_PRIVACY.PUBLIC_LOCATION_DELAY_MS) {
-        continue;
-      }
-
       const lat = user?.lastLocation?.lat;
       const lng = user?.lastLocation?.lng;
       if (typeof lat !== 'number' || typeof lng !== 'number') continue;
 
-      if (relation === 'public') {
-        const cellKey = getPublicCellKey(lat, lng);
-        const cellCount = publicCellCounts.get(cellKey) || 0;
-        if (cellCount < LOCATION_PRIVACY.PUBLIC_K_ANON_MIN_USERS) {
-          continue;
-        }
-      }
+      const isFriend = viewerFriends.has(user.uid);
+      const relation = isFriend ? 'friend' : 'public';
 
-      const coordDecimals = relation === 'friend'
-        ? LOCATION_PRIVACY.FRIEND_COORD_DECIMALS
-        : LOCATION_PRIVACY.PUBLIC_COORD_DECIMALS;
-      const jitterMeters = relation === 'friend'
+      // Apply jitter so exact location is never revealed
+      const jitterMeters = isFriend
         ? LOCATION_PRIVACY.FRIEND_JITTER_METERS
         : LOCATION_PRIVACY.PUBLIC_JITTER_METERS;
+      const coordDecimals = isFriend
+        ? LOCATION_PRIVACY.FRIEND_COORD_DECIMALS
+        : LOCATION_PRIVACY.PUBLIC_COORD_DECIMALS;
 
       const roundedLat = roundCoord(lat, coordDecimals);
       const roundedLng = roundCoord(lng, coordDecimals);
@@ -1019,17 +987,17 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
         gender: user.gender,
         relation,
         distanceBand: toDistanceBand(distanceMeters),
-        locationAccuracyMeters: relation === 'friend' ? 250 : 1500,
+        locationAccuracyMeters: isFriend ? 250 : 1500,
         isDiscoverable: user.isDiscoverable !== false,
         lastLocation: {
           lat: jittered.lat,
           lng: jittered.lng,
-          name: relation === 'friend' ? user?.lastLocation?.name : 'Nearby area',
+          name: isFriend ? user?.lastLocation?.name : 'Nearby area',
         },
       });
     }
 
-    res.json(safeUsers.slice(0, 100));
+    res.json(safeUsers);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch profiles" });
   }
