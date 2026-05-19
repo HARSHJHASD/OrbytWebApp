@@ -1659,36 +1659,63 @@ app.post('/api/chat/send', async (req, res) => {
     let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto, mediaType, mediaUrl };
 
     if (groupId) {
-      const posts = db.collection('posts');
-      // Normalize groupId: try as ObjectId first, then as string
-      let query = {};
+      // --- 1. Try community rooms first ---
+      let community = null;
       if (ObjectId.isValid(groupId)) {
-        query = { _id: new ObjectId(groupId) };
+        community = await db.collection('communities').findOne({ _id: new ObjectId(groupId) });
+      }
+      if (!community) {
+        community = await db.collection('communities').findOne({ _id: groupId });
+      }
+
+      let groupTitle, recipients;
+
+      if (community) {
+        // Community room
+        if (!community.members.includes(fromUid)) {
+          return res.status(403).json({ error: 'You are not a member of this room' });
+        }
+        groupTitle = community.name;
+        newMessage.groupId = community._id.toString();
+        newMessage.groupTitle = groupTitle;
+        recipients = new Set(community.members);
+        // Keep lastActivity fresh
+        await db.collection('communities').updateOne(
+          { _id: community._id },
+          { $set: { lastActivity: Date.now() } }
+        );
       } else {
-        query = { _id: groupId };
-      }
-      const post = await posts.findOne(query);
-      if (!post) return res.status(404).json({ error: "Group not found" });
+        // --- 2. Fall back to meetup posts ---
+        const posts = db.collection('posts');
+        let query = {};
+        if (ObjectId.isValid(groupId)) {
+          query = { _id: new ObjectId(groupId) };
+        } else {
+          query = { _id: groupId };
+        }
+        const post = await posts.findOne(query);
+        if (!post) return res.status(404).json({ error: 'Group not found' });
 
-      // Authorization check
-      const isHost = post.uid === fromUid;
-      const isAttendee = post.attendees && post.attendees.includes(fromUid);
-      if (!isHost && !isAttendee) {
-        return res.status(403).json({ error: "You are not a member of this group" });
+        const isHost = post.uid === fromUid;
+        const isAttendee = post.attendees && post.attendees.includes(fromUid);
+        if (!isHost && !isAttendee) {
+          return res.status(403).json({ error: 'You are not a member of this group' });
+        }
+        groupTitle = post.meetupDetails?.title || 'Meetup Group';
+        newMessage.groupId = String(post._id);
+        newMessage.groupTitle = groupTitle;
+        recipients = new Set([...(post.attendees || []), post.uid]);
       }
-
-      const groupTitle = post.meetupDetails?.title || "Meetup Group";
-      // STANDARDIZED: Always store groupId as string for consistency
-      newMessage.groupId = String(post._id); // Use normalized post ID
-      newMessage.groupTitle = groupTitle;
 
       const result = await messages.insertOne(newMessage);
       const fullMessage = { ...newMessage, _id: result.insertedId };
-      const recipients = new Set([...(post.attendees || []), post.uid]);
 
-      // Dispatch WebSockets & Push
-      const expoPayload = { title: groupTitle, body: `${authorName}: ${displayBody}`, data: { url: `/chat/group/${groupId}` } };
-      const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${displayBody}`, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/group/${groupId}` } });
+      const notifUrl = community
+        ? { expo: `/community/${community._id}`, web: `/app/communities/${community._id}` }
+        : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
+
+      const expoPayload = { title: groupTitle, body: `${authorName}: ${displayBody}`, data: { url: notifUrl.expo } };
+      const webPayloadStr = JSON.stringify({ title: groupTitle, body: `${authorName}: ${displayBody}`, icon: authorPhoto || '/pwa-192x192.png', data: { url: notifUrl.web } });
 
       for (const uid of recipients) {
         sendToUser(uid, fullMessage);
