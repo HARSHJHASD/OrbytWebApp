@@ -176,6 +176,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         const unsubscribe = api.chat.subscribe(user.uid, (data: any) => {
             if (data?.type === 'notification' && data?.notification) {
                 if (data.notification.fromUid === user.uid) return;
+                // room_message no longer creates notification docs — skip that type here
+                if (data.notification.type === 'room_message') return;
                 
                 setNotifications(prev => {
                     if (prev.find(n => n._id === data?.notification?._id)) return prev;
@@ -187,8 +189,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                             ? `🎉 ${data.notification.fromName} is planning something fun!`
                             : data.notification.type === 'new_event'
                             ? `🔥 Hot new event near you!`
-                            : data.notification.type === 'room_message'
-                            ? `💬 ${data.notification.message?.split(':')[0] || 'Room'}`
                             : data.notification.fromName,
                         body: data.notification.type === 'like' ? 'liked your post' : 
                               data.notification.type === 'comment' ? 'commented on your post' :
@@ -199,10 +199,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                               data.notification.type === 'friend_post' ? 'New post from your connection. Don\'t miss the vibe 🔥' :
                               data.notification.type === 'friend_event' ? 'A new event just dropped. Grab your spot before it fills up!' :
                               data.notification.type === 'new_event' ? `${data.notification.fromName} just created a new event. Don't sleep on this one!` :
-                              data.notification.type === 'room_message' ? data.notification.message || 'sent a message' :
                               'sent a notification',
                         icon: data.notification.fromPhoto,
-                        url: data.notification.postId ? `/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
+                        url: data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
                         type: 'notification'
                     });
 
@@ -214,24 +213,24 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 const userUidStr = String(user?.uid || '');
                 
                 if (fromUidStr !== userUidStr && fromUidStr !== 'system') {
-                    // Increment real-time badge counters only if not already on that page
                     const path = window.location.pathname;
                     if (data?.groupId) {
+                        // Room message — only bump the Rooms tab badge, no toast
                         const onRooms = path.startsWith('/app/rooms') || path.startsWith('/app/communities');
                         if (!onRooms) setUnreadRooms(prev => prev + 1);
                     } else {
+                        // Direct message — badge + toast
                         const onChat = path.startsWith('/app/inbox') || path.startsWith('/app/chat');
                         if (!onChat) setUnreadMessages(prev => prev + 1);
+                        addToast({
+                            title: data.authorName || 'New Message',
+                            body: data.text,
+                            icon: data.authorPhoto,
+                            url: `/app/chat/${data.fromUid}`,
+                            type: 'message'
+                        });
+                        playSound('message');
                     }
-
-                    addToast({
-                        title: data.authorName || 'New Message',
-                        body: data.text,
-                        icon: data.authorPhoto,
-                        url: `/app/chat/${data.fromUid}`,
-                        type: 'message'
-                    });
-                    playSound('message');
                 }
             }
         });

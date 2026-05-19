@@ -1767,18 +1767,17 @@ app.post('/api/chat/send', async (req, res) => {
       const result = await messages.insertOne(newMessage);
       const fullMessage = { ...newMessage, _id: result.insertedId };
 
-      const roomGroupId = community ? community._id.toString() : String(groupId);
+      const notifUrl = community
+        ? { expo: `/community/${community._id}`, web: `/app/rooms/${community._id}` }
+        : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
+
+      const expoPayload = { title: `💬 ${groupTitle}`, body: `${authorName}: ${displayBody}`, data: { url: notifUrl.expo } };
+      const webPayloadStr = JSON.stringify({ title: `💬 ${groupTitle}`, body: `${authorName}: ${displayBody}`, icon: authorPhoto || '/pwa-192x192.png', data: { url: notifUrl.web } });
 
       for (const uid of recipients) {
         sendToUser(uid, fullMessage);
-        if (uid !== fromUid) {
-          // createNotification handles in-app notification doc + WS notification event + push
-          createNotification('room_message', fromUid, uid, null, {
-            groupId: roomGroupId,
-            groupTitle,
-            message: displayBody
-          }).catch(() => {});
-        }
+        // Push only — no notification document, badge is driven client-side from the WS message
+        if (uid !== fromUid) sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => {});
       }
 
       return res.json(fullMessage);

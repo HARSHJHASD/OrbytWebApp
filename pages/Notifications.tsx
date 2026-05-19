@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Users, Zap } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
 
@@ -39,15 +39,12 @@ function getNotifMeta(type: Notification['type']) {
             return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'dropped a new event. Grab your spot!' };
         case 'new_event':
             return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created a hot new event near you 🔥' };
-        case 'room_message':
-            return { icon: <Users className="w-4 h-4" />, color: 'bg-indigo-500', label: 'sent a message in a room' };
         default:
             return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'sent you a notification' };
     }
 }
 
 function getNotifLink(n: Notification): string {
-    if (n.type === 'room_message' && n.groupId) return `/app/communities/${n.groupId}`;
     if (['like', 'comment', 'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event'].includes(n.type) && n.postId) {
         return `/app/post/${n.postId}`;
     }
@@ -94,9 +91,6 @@ const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap 
                     {' '}
                     <span className="text-slate-300">{label}</span>
                 </p>
-                {n.type === 'room_message' && n.message && (
-                    <p className="text-xs text-slate-400 mt-0.5 truncate italic">"{n.message}"</p>
-                )}
                 <p className="text-xs text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
             </div>
 
