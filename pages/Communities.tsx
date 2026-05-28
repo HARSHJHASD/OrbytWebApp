@@ -111,6 +111,8 @@ const Communities: React.FC = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [editRoom, setEditRoom] = useState<Community | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null); // roomId being acted on
+  const [confirmState, setConfirmState] = useState<{ open: boolean; type: 'leave' | 'delete'; room: Community | null }>({ open: false, type: 'leave', room: null });
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -157,33 +159,35 @@ const Communities: React.FC = () => {
       setAllRooms(prev => prev.map(r => r._id === room._id ? { ...r, members: [...r.members, user.uid] } : r));
       navigate(`/app/rooms/${room._id}`);
     } catch (e: any) {
-      alert(e.message || 'Failed to join room');
+      setErrorMsg(e.message || 'Failed to join room');
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleLeave = async (room: Community) => {
-    if (!user || !confirm(`Leave "${room.name}"?`)) return;
-    setActionLoading(room._id);
-    try {
-      await api.communities.leave(room._id, user.uid);
-      setAllRooms(prev => prev.map(r => r._id === room._id ? { ...r, members: r.members.filter(m => m !== user.uid) } : r));
-    } catch (e: any) {
-      alert(e.message || 'Failed to leave room');
-    } finally {
-      setActionLoading(null);
-    }
+  const handleLeave = (room: Community) => {
+    setConfirmState({ open: true, type: 'leave', room });
   };
 
-  const handleDelete = async (room: Community) => {
-    if (!user || !confirm(`Delete "${room.name}"? This cannot be undone.`)) return;
+  const handleDelete = (room: Community) => {
+    setConfirmState({ open: true, type: 'delete', room });
+  };
+
+  const handleConfirmAction = async () => {
+    const { type, room } = confirmState;
+    if (!user || !room) return;
+    setConfirmState({ open: false, type, room: null });
     setActionLoading(room._id);
     try {
-      await api.communities.delete(room._id, user.uid);
-      setAllRooms(prev => prev.filter(r => r._id !== room._id));
+      if (type === 'leave') {
+        await api.communities.leave(room._id, user.uid);
+        setAllRooms(prev => prev.map(r => r._id === room._id ? { ...r, members: r.members.filter(m => m !== user.uid) } : r));
+      } else {
+        await api.communities.delete(room._id, user.uid);
+        setAllRooms(prev => prev.filter(r => r._id !== room._id));
+      }
     } catch (e: any) {
-      alert(e.message || 'Failed to delete room');
+      setErrorMsg(e.message || `Failed to ${type} room`);
     } finally {
       setActionLoading(null);
     }
@@ -371,6 +375,66 @@ const Communities: React.FC = () => {
           onClose={() => setEditRoom(null)}
           onSave={handleEdit}
         />
+      )}
+
+      {/* Leave / Delete Confirmation Modal */}
+      {confirmState.open && confirmState.room && (
+        <div className="fixed inset-0 z-[3000] flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setConfirmState({ open: false, type: confirmState.type, room: null })}
+          />
+          <div className="relative w-full max-w-md bg-slate-900 rounded-t-3xl p-6 border-t border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center mb-4 ${
+                confirmState.type === 'delete'
+                  ? 'bg-red-500/10 border border-red-500/20'
+                  : 'bg-orange-500/10 border border-orange-500/20'
+              }`}>
+                {confirmState.type === 'delete'
+                  ? <Trash2 className="w-7 h-7 text-red-400" />
+                  : <LogOut className="w-7 h-7 text-orange-400" />}
+              </div>
+              <h2 className="text-lg font-bold text-white mb-2">
+                {confirmState.type === 'delete' ? 'Delete Room?' : 'Leave Room?'}
+              </h2>
+              <p className="text-slate-400 text-sm leading-relaxed">
+                {confirmState.type === 'delete'
+                  ? `"${confirmState.room.name}" will be permanently deleted and all messages lost. This cannot be undone.`
+                  : `You'll leave "${confirmState.room.name}". You can always rejoin later.`}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmState({ open: false, type: confirmState.type, room: null })}
+                className="flex-1 py-3.5 rounded-2xl border border-slate-700 text-slate-300 font-semibold hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmAction}
+                className={`flex-1 py-3.5 rounded-2xl text-white font-bold transition-colors ${
+                  confirmState.type === 'delete'
+                    ? 'bg-red-500 hover:bg-red-600'
+                    : 'bg-orange-500 hover:bg-orange-600'
+                }`}
+              >
+                {confirmState.type === 'delete' ? 'Delete' : 'Leave'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Toast */}
+      {errorMsg && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[4000] bg-red-500/90 backdrop-blur-sm text-white text-sm font-semibold px-5 py-3 rounded-2xl shadow-xl flex items-center gap-2 animate-fade-in">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg(null)} className="ml-1 opacity-70 hover:opacity-100">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );

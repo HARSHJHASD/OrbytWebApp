@@ -75,12 +75,13 @@ const CommunityRoom: React.FC = () => {
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [myProfile, setMyProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isMember, setIsMember] = useState(false);
+  const [joiningRoom, setJoiningRoom] = useState(false);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [joiningFirst, setJoiningFirst] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -104,13 +105,8 @@ const CommunityRoom: React.FC = () => {
 
         if (!comm) { navigate('/app/rooms'); return; }
 
-        // Auto-join if not a member yet
-        if (!comm.members.includes(user.uid)) {
-          setJoiningFirst(true);
-          await api.communities.join(communityId, user.uid);
-          comm.members = [...comm.members, user.uid];
-          setJoiningFirst(false);
-        }
+        // Check membership without auto-joining
+        setIsMember(comm.members.includes(user.uid));
 
         setCommunity(comm);
         setMessages(history);
@@ -191,17 +187,32 @@ const CommunityRoom: React.FC = () => {
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  if (loading || joiningFirst) {
+  if (loading) {
     return (
       <div className="h-screen bg-slate-950 flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
-        <p className="text-slate-400 text-sm">{joiningFirst ? 'Joining room…' : 'Loading…'}</p>
+        <p className="text-slate-400 text-sm">Loading…</p>
       </div>
     );
   }
 
   const isMine = (msg: Message) => msg.fromUid === user?.uid;
   const senderProfile = (uid: string) => members.find(m => m.uid === uid);
+
+  const handleJoinRoom = async () => {
+    if (!user || !communityId || !community) return;
+    setJoiningRoom(true);
+    try {
+      await api.communities.join(communityId, user.uid);
+      setIsMember(true);
+      setCommunity(prev => prev ? { ...prev, members: [...prev.members, user.uid] } : prev);
+      if (myProfile) setMembers(prev => [...prev, myProfile]);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setJoiningRoom(false);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-white">
@@ -312,43 +323,59 @@ const CommunityRoom: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
-      <div className="border-t border-slate-800/70 bg-slate-900/80 backdrop-blur-xl px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]">
-        <div className="flex items-end gap-2 bg-slate-800 rounded-2xl px-3 py-2">
-          {/* Image attach */}
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
-          <button
-            onClick={() => fileRef.current?.click()}
-            className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-primary-400 transition-colors flex-shrink-0 mb-0.5"
-          >
-            <ImageIcon className="w-5 h-5" />
-          </button>
+      {/* Input or Join Gate */}
+      {isMember ? (
+        <div className="border-t border-slate-800/70 bg-slate-900/80 backdrop-blur-xl px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]">
+          <div className="flex items-end gap-2 bg-slate-800 rounded-2xl px-3 py-2">
+            {/* Image attach */}
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-primary-400 transition-colors flex-shrink-0 mb-0.5"
+            >
+              <ImageIcon className="w-5 h-5" />
+            </button>
 
-          <textarea
-            ref={inputRef}
-            className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none max-h-32 min-h-[20px] leading-snug py-1"
-            placeholder="Message the room…"
-            rows={1}
-            value={text}
-            onChange={e => setText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            style={{ height: 'auto' }}
-            onInput={e => {
-              const t = e.currentTarget;
-              t.style.height = 'auto';
-              t.style.height = Math.min(t.scrollHeight, 128) + 'px';
-            }}
-          />
+            <textarea
+              ref={inputRef}
+              className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none max-h-32 min-h-[20px] leading-snug py-1"
+              placeholder="Message the room…"
+              rows={1}
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              style={{ height: 'auto' }}
+              onInput={e => {
+                const t = e.currentTarget;
+                t.style.height = 'auto';
+                t.style.height = Math.min(t.scrollHeight, 128) + 'px';
+              }}
+            />
 
-          <button
-            onClick={() => handleSend()}
-            disabled={sending || (!text.trim())}
-            className="w-8 h-8 rounded-xl bg-primary-500 flex items-center justify-center flex-shrink-0 mb-0.5 disabled:opacity-40 active:scale-95 transition-all"
-          >
-            {sending ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Send className="w-4 h-4 text-white" />}
-          </button>
+            <button
+              onClick={() => handleSend()}
+              disabled={sending || (!text.trim())}
+              className="w-8 h-8 rounded-xl bg-primary-500 flex items-center justify-center flex-shrink-0 mb-0.5 disabled:opacity-40 active:scale-95 transition-all"
+            >
+              {sending ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : <Send className="w-4 h-4 text-white" />}
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="border-t border-slate-800/70 bg-slate-900/90 backdrop-blur-xl px-4 py-4 pb-[max(env(safe-area-inset-bottom),16px)]">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <p className="text-slate-400 text-xs">You're viewing as a guest · Join to send messages</p>
+            <button
+              onClick={handleJoinRoom}
+              disabled={joiningRoom}
+              className="w-full py-3.5 rounded-2xl bg-primary-500 text-white font-bold text-sm shadow-lg shadow-primary-500/25 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {joiningRoom ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              {joiningRoom ? 'Joining…' : 'Join Room to Chat'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Members Drawer */}
       {showMembers && community && (

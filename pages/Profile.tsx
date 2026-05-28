@@ -617,7 +617,7 @@ export default function Profile() {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-slate-800 text-primary-500 text-3xl font-bold">
+                  <div className="w-full h-full flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-primary-500 text-3xl font-bold">
                     {profile?.displayName?.charAt(0)?.toUpperCase() || "U"}
                   </div>
                 )}
@@ -781,7 +781,7 @@ export default function Profile() {
             <div className="p-6 bg-orange-500/10">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <h2 className="text-sm font-bold text-orange-200 uppercase tracking-wider">
+                <h2 className="text-sm font-bold text-orange-700 dark:text-orange-200 uppercase tracking-wider">
                   Like Requests
                 </h2>
               </div>
@@ -792,14 +792,14 @@ export default function Profile() {
                   return (
                     <div
                       key={reqUser?.uid}
-                      className="bg-slate-900 p-3 rounded-2xl shadow-sm border border-slate-800"
+                      className="bg-white dark:bg-slate-900 p-3 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800"
                     >
                       <div className="flex items-center justify-between">
                         <div
                           className="flex items-center gap-3 cursor-pointer"
                           onClick={() => navigate(`/app/profile/${reqUser?.uid}`)}
                         >
-                          <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden">
+                          <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                             {reqUser?.photoURL ? (
                               <img
                                 draggable={false}
@@ -813,7 +813,7 @@ export default function Profile() {
                               </div>
                             )}
                           </div>
-                          <span className="font-bold text-white text-sm">
+                          <span className="font-bold text-slate-900 dark:text-white text-sm">
                             {reqUser?.displayName}
                           </span>
                         </div>
@@ -826,14 +826,14 @@ export default function Profile() {
                           </button>
                           <button
                             onClick={() => handleRejectRequest(reqUser?.uid)}
-                            className="p-2 bg-slate-800 text-slate-400 rounded-xl hover:bg-slate-700 transition-colors"
+                            className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                           >
                             <X className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
                       {requestMsg && (
-                        <div className="mt-2 bg-slate-800/50 p-2 rounded-xl text-xs text-slate-300 italic border border-slate-800/50 flex items-start gap-2">
+                        <div className="mt-2 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-xl text-xs text-slate-600 dark:text-slate-300 italic border border-slate-200/50 dark:border-slate-800/50 flex items-start gap-2">
                           <Mail className="w-3 h-3 mt-0.5 text-slate-500" />
                           <span>"{requestMsg}"</span>
                         </div>
@@ -842,7 +842,7 @@ export default function Profile() {
                   );
                 })}
               </div>
-              <div className="h-px bg-slate-800 mt-6" />
+              <div className="h-px bg-slate-200 dark:bg-slate-800 mt-6" />
             </div>
           )}
 
@@ -850,23 +850,23 @@ export default function Profile() {
           <div className="p-6">
             <div className="flex items-center gap-2 mb-3">
               <Sparkles className="w-5 h-5 text-yellow-500" />
-              <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">
+              <h2 className="text-sm font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                 About Me
               </h2>
             </div>
-            <p className="text-slate-400 text-base leading-relaxed whitespace-pre-wrap font-medium">
+            <p className="text-slate-600 dark:text-slate-400 text-base leading-relaxed whitespace-pre-wrap font-medium">
               {profile?.bio || "No bio yet."}
             </p>
           </div>
 
-          <div className="h-px bg-slate-800 mx-6" />
+          <div className="h-px bg-slate-200 dark:bg-slate-800 mx-6" />
 
           {/* That's me Section */}
           {profile?.thatsMePhotos && profile?.thatsMePhotos?.length > 0 && (
             <div className="p-6 relative group/carousel">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">
+                  <h2 className="text-sm font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider">
                     That's Me
                   </h2>
                 </div>
@@ -888,11 +888,11 @@ export default function Profile() {
             </div>
           )}
 
-          <div className="h-px bg-slate-800 mx-6" />
+          <div className="h-px bg-slate-200 dark:bg-slate-800 mx-6" />
 
           {/* Interests Section */}
-          <div className="p-6 bg-slate-900/50 rounded-b-[2rem]">
-            <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4">
+          <div className="p-6 bg-slate-50/50 dark:bg-slate-900/50 rounded-b-[2rem]">
+            <h2 className="text-sm font-bold text-slate-500 dark:text-slate-300 uppercase tracking-wider mb-4">
               Interests
             </h2>
             <div className="flex flex-wrap gap-2.5">
@@ -903,7 +903,7 @@ export default function Profile() {
                 return (
                   <span
                     key={interestId}
-                    className="inline-flex items-center px-4 py-2 rounded-xl bg-slate-800 text-slate-200 text-sm font-semibold border border-slate-700 shadow-sm"
+                    className="inline-flex items-center px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-semibold border border-slate-200 dark:border-slate-700 shadow-sm"
                   >
                     {tagInfo ? (
                       <>
@@ -923,19 +923,19 @@ export default function Profile() {
         {/* POSTS SECTION */}
         <div className="mt-8 mb-4">
           <div className="flex items-center justify-between px-2 mb-4">
-            <h2 className="text-xl font-bold text-white">
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
               {isOwnProfile ? "My Posts" : "Posts"}
             </h2>
 
             {/* Tabs Navigation */}
-            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+            <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
               {["regular", "meetup"].map((type) => (
                 <button
                   key={type}
                   onClick={() => setActiveTab(type)}
                   className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === type
                       ? "bg-primary-500 text-white shadow-lg"
-                      : "text-slate-400 hover:text-slate-200"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                     }`}
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}s
@@ -945,8 +945,8 @@ export default function Profile() {
           </div>
 
           {filteredPosts?.length === 0 ? (
-            <div className="bg-slate-900 rounded-3xl p-8 text-center border border-slate-800">
-              <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="bg-slate-50 dark:bg-slate-900 rounded-3xl p-8 text-center border border-slate-200 dark:border-slate-800">
+              <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Edit2 className="w-8 h-8 text-slate-600" />
               </div>
               <p className="text-slate-400 font-medium">
@@ -985,15 +985,15 @@ export default function Profile() {
               className="absolute inset-0 bg-black/70 backdrop-blur-sm"
               onClick={() => setShowRequestModal(false)}
             ></div>
-            <div className="bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl relative z-10 p-6 border border-slate-800 animate-slide-up">
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl relative z-10 p-6 border border-slate-200 dark:border-slate-800 animate-slide-up">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-primary-500" /> Like
               </h3>
-              <p className="text-slate-400 text-sm mb-4">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 Add a message to introduce yourself (optional).
               </p>
               <textarea
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-sm outline-none focus:border-primary-500 mb-4 h-24 resize-none placeholder-slate-500"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-900 dark:text-white text-sm outline-none focus:border-primary-500 mb-4 h-24 resize-none placeholder-slate-400 dark:placeholder-slate-500"
                 placeholder="Hi! I saw we have similar interests..."
                 value={requestMessage}
                 onChange={(e) => setRequestMessage(e?.target?.value)}
@@ -1028,15 +1028,15 @@ export default function Profile() {
               className="absolute inset-0 bg-black/70 backdrop-blur-sm"
               onClick={() => setReportModalOpen(false)}
             ></div>
-            <div className="bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl relative z-10 p-6 border border-slate-800">
-              <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl relative z-10 p-6 border border-slate-200 dark:border-slate-800">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
                 <ShieldAlert className="w-5 h-5 text-yellow-500" /> Report User
               </h3>
-              <p className="text-slate-400 text-sm mb-4">
+              <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 Why are you reporting this user?
               </p>
               <textarea
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white text-sm outline-none focus:border-primary-500 mb-4 h-24 resize-none"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-slate-900 dark:text-white text-sm outline-none focus:border-primary-500 mb-4 h-24 resize-none"
                 placeholder="e.g. Inappropriate behavior, spam..."
                 value={reportReason}
                 onChange={(e) => setReportReason(e?.target?.value)}
@@ -1069,7 +1069,7 @@ export default function Profile() {
             ></div>
             <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2rem] shadow-2xl relative z-10 p-6 animate-slide-up border border-slate-100 dark:border-slate-800">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold dark:text-white">Report User</h3>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Report User</h3>
                 <button onClick={() => setReportModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                   <X className="w-6 h-6" />
                 </button>
@@ -1112,10 +1112,10 @@ export default function Profile() {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setIsFriendsModalOpen(false)}
             ></div>
-            <div className="bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-800">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-200 dark:border-slate-800">
               {/* Header */}
-              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="font-bold text-xl text-white">My Likes</h3>
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="font-bold text-xl text-slate-900 dark:text-white">My Likes</h3>
                 <button
                   onClick={() => setIsFriendsModalOpen(false)}
                   className="p-2 -mr-2 text-slate-400 hover:text-white"
@@ -1142,9 +1142,9 @@ export default function Profile() {
                           {sentRequestsList.map((friend) => (
                             <div
                               key={friend?.uid}
-                              className="flex items-center gap-3 p-3 rounded-2xl bg-slate-800/50 border border-slate-800 opacity-75"
+                              className="flex items-center gap-3 p-3 rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 opacity-75"
                             >
-                              <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden shrink-0">
+                              <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden shrink-0">
                                 {friend?.photoURL ? (
                                   <img
                                     draggable={false}
@@ -1157,7 +1157,7 @@ export default function Profile() {
                                   </div>
                                 )}
                               </div>
-                              <span className="text-slate-300 font-bold text-sm flex-1">
+                              <span className="text-slate-700 dark:text-slate-300 font-bold text-sm flex-1">
                                 {friend?.displayName}
                               </span>
                               <span className="text-xs text-slate-500 italic mr-2">
@@ -1166,7 +1166,7 @@ export default function Profile() {
                               <button
                                 onClick={() => handleWithdrawRequest(friend?.uid)}
                                 disabled={actionLoading}
-                                className="p-2 bg-slate-800 text-slate-400 rounded-xl hover:bg-red-500/20 hover:text-red-400 transition-colors border border-slate-700"
+                                className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-red-500/20 hover:text-red-400 transition-colors border border-slate-200 dark:border-slate-700"
                               >
                                 {actionLoading ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -1191,13 +1191,13 @@ export default function Profile() {
                         {friendsList.map((friend) => (
                           <div
                             key={friend?.uid}
-                            className="flex items-center gap-3 p-3 rounded-2xl bg-slate-800 border border-slate-700 cursor-pointer hover:bg-slate-700 transition-colors"
+                            className="flex items-center gap-3 p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                             onClick={() => {
                               setIsFriendsModalOpen(false);
                               navigate(`/app/profile/${friend?.uid}`);
                             }}
                           >
-                            <div className="w-12 h-12 rounded-full bg-slate-900 overflow-hidden shrink-0 border border-slate-600">
+                            <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-900 overflow-hidden shrink-0 border border-slate-300 dark:border-slate-600">
                               {friend?.photoURL ? (
                                 <img
                                   draggable={false}
@@ -1211,10 +1211,10 @@ export default function Profile() {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-bold text-white text-base truncate">
+                              <h4 className="font-bold text-slate-900 dark:text-white text-base truncate">
                                 {friend?.displayName}
                               </h4>
-                              <p className="text-xs text-slate-400 truncate">
+                              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                                 {friend?.bio || "No bio"}
                               </p>
                             </div>
@@ -1251,10 +1251,10 @@ export default function Profile() {
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
               onClick={() => setIsViewersModalOpen(false)}
             ></div>
-            <div className="bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-800">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-200 dark:border-slate-800">
               {/* Header */}
-              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                <h3 className="font-bold text-xl text-white">Profile Views</h3>
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="font-bold text-xl text-slate-900 dark:text-white">Profile Views</h3>
                 <button
                   onClick={() => setIsViewersModalOpen(false)}
                   className="p-2 -mr-2 text-slate-400 hover:text-white"
@@ -1279,13 +1279,13 @@ export default function Profile() {
                     {viewers.map((viewer, index) => (
                       <div
                         key={`${viewer?.uid}-${index}`}
-                        className="flex items-center gap-3 p-3 rounded-2xl bg-slate-800 border border-slate-700 cursor-pointer hover:bg-slate-700 transition-colors"
+                        className="flex items-center gap-3 p-3 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                         onClick={() => {
                           setIsViewersModalOpen(false);
                           navigate(`/app/profile/${viewer?.uid}`);
                         }}
                       >
-                        <div className="w-12 h-12 rounded-full bg-slate-900 overflow-hidden shrink-0 border border-slate-600">
+                        <div className="w-12 h-12 rounded-full bg-slate-200 dark:bg-slate-900 overflow-hidden shrink-0 border border-slate-300 dark:border-slate-600">
                           {viewer?.photoURL ? (
                             <img
                               draggable={false}
@@ -1299,7 +1299,7 @@ export default function Profile() {
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-bold text-white text-base truncate">
+                          <h4 className="font-bold text-slate-900 dark:text-white text-base truncate">
                             {viewer?.displayName}
                           </h4>
                           <p className="text-xs text-slate-400 truncate">
