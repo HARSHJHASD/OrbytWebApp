@@ -97,6 +97,12 @@ export interface Message {
   authorPhoto?: string; // For group chat display
   mediaType?: 'image' | 'emoji' | 'audio';
   mediaUrl?: string; // base64 or URL
+  replyTo?: {
+    _id: string;
+    text?: string;
+    fromName: string;
+    mediaType?: 'image' | 'emoji' | 'audio';
+  };
 }
 
 export interface InterestTag {

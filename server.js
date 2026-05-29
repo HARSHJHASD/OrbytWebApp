@@ -1667,7 +1667,7 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
 app.post('/api/chat/send', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, groupId, text, mediaType, mediaUrl } = req.body;
+    const { fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo } = req.body;
     const messages = db.collection('messages');
     const profiles = db.collection('profiles');
     const sender = await profiles.findOne({ uid: fromUid });
@@ -1681,7 +1681,7 @@ app.post('/api/chat/send', async (req, res) => {
       else if (mediaType === 'audio') displayBody = "sent a voice note";
     }
 
-    let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto, mediaType, mediaUrl };
+    let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto, mediaType, mediaUrl, ...(replyTo ? { replyTo } : {}) };
 
     if (groupId) {
       // --- 1. Try community rooms first ---

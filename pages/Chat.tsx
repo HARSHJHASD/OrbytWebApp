@@ -1,4 +1,4 @@
-import { Ban, Camera, ChevronLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
+import { Ban, Camera, ChevronLeft, CornerUpLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
 import { compressImage } from '../util/ImageCompression';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -36,6 +36,7 @@ export default function Chat() {
     const [mediaUrl, setMediaUrl] = useState<string | null>(null);
     const [showMediaMenu, setShowMediaMenu] = useState(false);
     const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+    const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -173,16 +174,28 @@ export default function Chat() {
         const msgText = text.trim();
         const currentMediaType = mType || mediaType;
         const currentMediaUrl = mUrl || mediaUrl;
+        const currentReply = replyingTo;
 
         setText(''); // Optimistic clear
         setMediaType(null);
         setMediaUrl(null);
+        setReplyingTo(null);
+
+        const replyTo = currentReply ? {
+            _id: currentReply._id,
+            text: currentReply.text,
+            fromName: currentReply.fromUid === user?.uid
+                ? 'You'
+                : (isGroup ? (members.find(m => m.uid === currentReply.fromUid)?.displayName || 'User') : (friend?.displayName || 'User')),
+            mediaType: currentReply.mediaType,
+        } : undefined;
 
         try {
-            const sentMsg = await api.chat.send(user?.uid, uid, msgText, groupId, currentMediaType || undefined, currentMediaUrl || undefined);
+            const sentMsg = await api.chat.send(user?.uid, uid, msgText, groupId, currentMediaType || undefined, currentMediaUrl || undefined, replyTo);
+            const msgToAdd = replyTo ? { ...sentMsg, replyTo } : sentMsg;
             setMessages(prev => {
-                if (prev?.some(m => m?._id === sentMsg?._id)) return prev;
-                return [...prev, sentMsg];
+                if (prev?.some(m => m?._id === msgToAdd?._id)) return prev;
+                return [...prev, msgToAdd];
             });
             triggerHaptic(15); // subtle tick on send
         } catch (e) {
@@ -190,6 +203,7 @@ export default function Chat() {
             setText(msgText); // Restore text on fail
             setMediaType(currentMediaType);
             setMediaUrl(currentMediaUrl);
+            setReplyingTo(currentReply);
         } finally {
             setSending(false);
         }
@@ -371,7 +385,7 @@ export default function Chat() {
                                         <span className="text-[10px] text-slate-500 ml-9 mb-0.5">{msg.authorName || 'User'}</span>
                                     )}
 
-                                    <div className={`flex ${isMe ? 'items-end' : 'items-end gap-2'}`}>
+                                    <div className={`group flex ${isMe ? 'items-end justify-end' : 'items-end gap-2'}`}>
                                         {!isMe && (
                                             <div className="w-6 h-6 rounded-full bg-slate-800 overflow-hidden shrink-0 mb-1 opacity-80 border border-slate-700">
                                                 {showAvatar && (
@@ -386,12 +400,31 @@ export default function Chat() {
                                             </div>
                                         )}
 
-                                        <div className={`
-                                          group relative px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm
+                                        {isMe && (
+                                            <button
+                                                onClick={() => setReplyingTo(msg)}
+                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-primary-400 transition-all mb-1 shrink-0"
+                                                title="Reply"
+                                            >
+                                                <CornerUpLeft className="w-3.5 h-3.5" />
+                                            </button>
+                                        )}
+
+                                        <div className={`relative px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm
                                           ${isMe
                                                 ? 'bg-primary-600 text-white rounded-br-none'
                                                 : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}
                                       `}>
+                                            {msg.replyTo && (
+                                                <div className={`mb-2 -mx-1 px-3 py-1.5 rounded-lg border-l-2 text-xs ${isMe ? 'bg-black/20 border-white/40' : 'bg-slate-700/60 border-primary-500'}`}>
+                                                    <p className={`font-bold mb-0.5 truncate ${isMe ? 'text-white/80' : 'text-primary-400'}`}>
+                                                        {msg.replyTo.fromName}
+                                                    </p>
+                                                    <p className={`truncate ${isMe ? 'text-white/60' : 'text-slate-400'}`}>
+                                                        {msg.replyTo.mediaType === 'image' ? '📷 Photo' : msg.replyTo.text}
+                                                    </p>
+                                                </div>
+                                            )}
                                             {msg.mediaType === 'image' && (
                                                 <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxUrl(msg.mediaUrl || null)}>
                                                     <img src={msg.mediaUrl} alt="Sent image" className="max-w-full h-auto object-cover max-h-64 sm:max-h-80" />
@@ -400,17 +433,26 @@ export default function Chat() {
                                             <span className={/^[\p{Emoji}\s]+$/u.test(msg?.text || "") && (msg?.text?.length || 0) <= 6 ? "text-4xl block py-1" : ""}>
                                                 {msg?.text}
                                             </span>
-                                            
-                                            {!isMe && (
+                                        </div>
+
+                                        {!isMe && (
+                                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-all mb-1 shrink-0">
+                                                <button
+                                                    onClick={() => setReplyingTo(msg)}
+                                                    className="p-1 text-slate-600 hover:text-primary-400 transition-colors"
+                                                    title="Reply"
+                                                >
+                                                    <CornerUpLeft className="w-3.5 h-3.5" />
+                                                </button>
                                                 <button
                                                     onClick={() => handleReportMessage(msg)}
-                                                    className="absolute -right-8 top-1/2 -translate-y-1/2 p-1 text-slate-600 hover:text-yellow-500 opacity-0 group-hover:opacity-100 transition-all"
-                                                    title="Report Message"
+                                                    className="p-1 text-slate-600 hover:text-yellow-500 transition-colors"
+                                                    title="Report"
                                                 >
                                                     <Flag className="w-3.5 h-3.5" />
                                                 </button>
-                                            )}
-                                        </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -424,6 +466,24 @@ export default function Chat() {
             <div className="p-3 bg-slate-900 border-t border-slate-800 shrink-0 pb-[max(env(safe-area-inset-bottom),0.75rem)]">
                 <div className="max-w-md mx-auto relative">
                     
+                    {/* Reply Bar */}
+                    {replyingTo && (
+                        <div className="flex items-center gap-2 mb-2 px-3 py-2 bg-slate-800 rounded-xl border-l-2 border-primary-500">
+                            <CornerUpLeft className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                            <div className="flex-1 min-w-0">
+                                <p className="text-[10px] font-bold text-primary-400 uppercase tracking-wider">
+                                    Replying to {replyingTo.fromUid === user?.uid ? 'yourself' : (isGroup ? (members.find(m => m.uid === replyingTo.fromUid)?.displayName || 'User') : friend?.displayName)}
+                                </p>
+                                <p className="text-xs text-slate-400 truncate">
+                                    {replyingTo.mediaType === 'image' ? '📷 Photo' : replyingTo.text}
+                                </p>
+                            </div>
+                            <button onClick={() => setReplyingTo(null)} className="p-1 text-slate-500 hover:text-white transition-colors">
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    )}
+
                     {/* Media Preview */}
                     {mediaUrl && (
                         <div className="absolute bottom-full left-0 right-0 mb-3 animate-slide-up">

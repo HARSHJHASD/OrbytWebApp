@@ -288,11 +288,12 @@ export const api = {
       groupId?: string,
       mediaType?: 'image' | 'emoji' | 'audio',
       mediaUrl?: string,
+      replyTo?: { _id: string; text?: string; fromName: string; mediaType?: 'image' | 'emoji' | 'audio'; },
     ): Promise<Message> => {
       const response = await fetch(`${API_BASE}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fromUid, toUid, groupId, text, mediaType, mediaUrl }),
+        body: JSON.stringify({ fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo }),
       });
       const data = await response.json();
       if (!response?.ok) throw new Error("Failed to send");
