@@ -122,7 +122,7 @@ const EditProfile: React.FC = () => {
       const newPhotos = [...thatsMePhotos];
       
       for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+        const file:any = files[i];
         const targetIndex = index + i;
         if (targetIndex >= 3) break;
 
