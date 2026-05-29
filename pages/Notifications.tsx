@@ -124,23 +124,24 @@ function groupByDay(notifications: Notification[]): { label: string; items: Noti
     const yesterdayStart = todayStart - 86400000;
     const weekStart = todayStart - 6 * 86400000;
 
-    const groups: Record<string, Notification[]> = {
-        Today: [],
-        Yesterday: [],
-        'This Week': [],
-        Earlier: [],
-    };
+    const today: Notification[] = [];
+    const yesterday: Notification[] = [];
+    const thisWeek: Notification[] = [];
+    const earlier: Notification[] = [];
 
     for (const n of notifications) {
-        if (n.createdAt >= todayStart) groups['Today'].push(n);
-        else if (n.createdAt >= yesterdayStart) groups['Yesterday'].push(n);
-        else if (n.createdAt >= weekStart) groups['This Week'].push(n);
-        else groups['Earlier'].push(n);
+        if (n.createdAt >= todayStart) today.push(n);
+        else if (n.createdAt >= yesterdayStart) yesterday.push(n);
+        else if (n.createdAt >= weekStart) thisWeek.push(n);
+        else earlier.push(n);
     }
 
-    return Object.entries(groups)
-        .filter(([, items]) => items.length > 0)
-        .map(([label, items]) => ({ label, items }));
+    return [
+        { label: 'Today', items: today },
+        { label: 'Yesterday', items: yesterday },
+        { label: 'This Week', items: thisWeek },
+        { label: 'Earlier', items: earlier },
+    ].filter(g => g.items.length > 0);
 }
 
 /* ---------- Page ---------- */
@@ -152,8 +153,8 @@ const NotificationsPage: React.FC = () => {
     // Mark all unread as read when this page is opened
     useEffect(() => {
         if (unreadCount > 0) {
-            const unreadIds = notifications?.filter(n => !n?.read).map(n => n?._id);
-            if (unreadIds?.length > 0) markRead(unreadIds);
+            const unreadIds = notifications.filter(n => !n.read).map(n => n._id);
+            if (unreadIds.length > 0) markRead(unreadIds);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
