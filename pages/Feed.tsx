@@ -400,14 +400,14 @@ const Feed: React.FC = () => {
       case "friend_request":
         return (
           <>
-            liked your{" "}
-            <span className="font-bold text-slate-100">profile</span>
+            wants to connect with{" "}
+            <span className="font-bold text-slate-100">you</span>
           </>
         );
       case "friend_accept":
         return (
           <>
-            <span className="font-bold text-slate-100">liked you back</span>
+            <span className="font-bold text-slate-100">connected with you</span>
           </>
         );
       case "like":

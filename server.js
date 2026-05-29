@@ -279,11 +279,11 @@ async function createNotification(type, fromUid, toUid, postId = null, extra = {
         break;
       case 'friend_request':
         title = "💛 Someone likes you!";
-        body = `${name} liked your profile. Like back?`;
+        body = `${name} wants to connect with you.`;
         break;
       case 'friend_accept':
         title = "🎉 It's a match!";
-        body = `${name} liked you back! You're now connected.`;
+        body = `${name} connected with you! You're now connected.`;
         break;
       case 'meetup_request':
         title = "🙋 Meetup Request";

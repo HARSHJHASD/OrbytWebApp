@@ -667,7 +667,7 @@ export default function Profile() {
                 <span className="font-bold text-slate-900 dark:text-white transition-colors">
                   {profile?.friends?.length || 0}
                 </span>
-                <span className="text-slate-500 dark:text-slate-400 text-sm transition-colors">Likes</span>
+                <span className="text-slate-500 dark:text-slate-400 text-sm transition-colors">Connections</span>
               </button>
 
               {isOwnProfile && (
@@ -717,7 +717,7 @@ export default function Profile() {
                       ) : (
                         <UserPlus className="w-5 h-5" />
                       )}
-                      Like
+                      Connect
                     </button>
                   )}
                   {relationship === "sent" && (
@@ -731,7 +731,7 @@ export default function Profile() {
                       ) : (
                         <X className="w-5 h-5" />
                       )}
-                      Cancel Like
+                      Cancel Request
                     </button>
                   )}
                   {relationship === "received" && (
@@ -745,7 +745,7 @@ export default function Profile() {
                       ) : (
                         <UserCheck className="w-5 h-5" />
                       )}
-                      Like Back
+                      Connect Back
                     </button>
                   )}
                   {relationship === "friend" && (
@@ -756,7 +756,7 @@ export default function Profile() {
                         className="inline-flex items-center gap-2 px-5 py-3 bg-transparent border-2 border-primary-500 text-primary-400 rounded-2xl font-semibold text-sm hover:bg-primary-500/10 transition-colors"
                       >
                         <Check className="w-5 h-5" />
-                        Liked
+                        Connected
                       </button>
                       <button
                         onClick={() => {
@@ -776,13 +776,13 @@ export default function Profile() {
 
           <div className="h-px bg-slate-100 dark:bg-slate-800 mx-6 transition-colors" />
 
-          {/* Like Requests (Only visible on own profile) */}
+          {/* Connection Requests (Only visible on own profile) */}
           {isOwnProfile && friendRequests?.length > 0 && (
             <div className="p-6 bg-orange-500/10">
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
                 <h2 className="text-sm font-bold text-orange-700 dark:text-orange-200 uppercase tracking-wider">
-                  Like Requests
+                  Connection Requests
                 </h2>
               </div>
               <div className="space-y-3">
@@ -987,7 +987,7 @@ export default function Profile() {
             ></div>
             <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-2xl shadow-2xl relative z-10 p-6 border border-slate-200 dark:border-slate-800 animate-slide-up">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-                <UserPlus className="w-5 h-5 text-primary-500" /> Like
+                <UserPlus className="w-5 h-5 text-primary-500" /> Connect
               </h3>
               <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                 Add a message to introduce yourself (optional).
@@ -1105,7 +1105,7 @@ export default function Profile() {
           </div>
         )}
 
-        {/* Likes List Modal */}
+        {/* Connections Modal */}
         {isFriendsModalOpen && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 animate-fade-in">
             <div
@@ -1115,7 +1115,7 @@ export default function Profile() {
             <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl relative z-10 flex flex-col max-h-[80vh] animate-slide-up border border-slate-200 dark:border-slate-800">
               {/* Header */}
               <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <h3 className="font-bold text-xl text-slate-900 dark:text-white">My Likes</h3>
+                <h3 className="font-bold text-xl text-slate-900 dark:text-white">My Connections</h3>
                 <button
                   onClick={() => setIsFriendsModalOpen(false)}
                   className="p-2 -mr-2 text-slate-400 hover:text-white"
@@ -1184,7 +1184,7 @@ export default function Profile() {
                     {friendsList?.length === 0 ? (
                       <div className="text-center py-10 text-slate-500">
                         <Users className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                        <p>No likes yet</p>
+                        <p>No connections yet</p>
                       </div>
                     ) : (
                       <div className="space-y-3">

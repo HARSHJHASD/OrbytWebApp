@@ -199,8 +199,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                             : data.notification.fromName,
                         body: data.notification.type === 'like' ? 'liked your post' : 
                               data.notification.type === 'comment' ? 'commented on your post' :
-                              data.notification.type === 'friend_request' ? 'liked your profile 💛' :
-                              data.notification.type === 'friend_accept' ? '🎉 liked you back! You\'re now connected.' :
+                              data.notification.type === 'friend_request' ? 'wants to connect with you' :
+                              data.notification.type === 'friend_accept' ? '🎉 connected with you!' :
                               data.notification.type === 'meetup_request' ? 'wants to join your meetup 🙋' :
                               data.notification.type === 'meetup_accept' ? '✅ accepted your meetup request. See you there!' :
                               data.notification.type === 'friend_post' ? 'New post from your connection. Don\'t miss the vibe 🔥' :

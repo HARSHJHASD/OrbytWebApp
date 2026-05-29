@@ -26,9 +26,9 @@ function getNotifMeta(type: Notification['type']) {
         case 'comment':
             return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'commented on your post' };
         case 'friend_request':
-            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'liked your profile 💛' };
+            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'wants to connect with you' };
         case 'friend_accept':
-            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 liked you back! You\'re now connected.' };
+            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 connected with you!' };
         case 'meetup_request':
             return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants to join your meetup 🙋' };
         case 'meetup_accept':
