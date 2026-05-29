@@ -45,10 +45,24 @@ function getNotifMeta(type: Notification['type']) {
 }
 
 function getNotifLink(n: Notification): string {
-    if (['like', 'comment', 'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event'].includes(n.type) && n.postId) {
-        return `/app/post/${n.postId}`;
+    switch (n.type) {
+        case 'friend_request':
+        case 'friend_accept':
+            return `/app/profile/${n.fromUid}`;
+        case 'like':
+        case 'comment':
+        case 'meetup_request':
+        case 'friend_event':
+            return n.postId ? `/app/post/${n.postId}` : `/app/notifications`;
+        case 'meetup_accept':
+            return n.postId ? `/app/chat/group/${n.postId}` : `/app/notifications`;
+        case 'friend_post':
+            return '/app';
+        case 'new_event':
+            return '/app?tab=meetup';
+        default:
+            return `/app/notifications`;
     }
-    return `/app/profile/${n.fromUid}`;
 }
 
 /* ---------- Card ---------- */

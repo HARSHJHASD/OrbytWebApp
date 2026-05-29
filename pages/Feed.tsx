@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useUserLocation } from "../components/LocationGuard";
 import PostItem from "../components/PostItem";
 import { useAuth } from "../context/AuthContext";
@@ -63,6 +63,7 @@ const PostSkeleton = () => (
 const Feed: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { location: myLocation } = useUserLocation();
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +71,12 @@ const Feed: React.FC = () => {
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStoryGroup, setSelectedStoryGroup] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
+
+  // Activate meetup tab when navigated with ?tab=meetup (e.g. from new_event notification)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('tab') === 'meetup') setActiveTab('meetup');
+  }, [location.search]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Notification State
