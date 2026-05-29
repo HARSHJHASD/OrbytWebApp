@@ -22,25 +22,25 @@ function timeAgo(ts: number): string {
 function getNotifMeta(type: Notification['type']) {
     switch (type) {
         case 'like':
-            return { icon: <Heart className="w-4 h-4" />, color: 'bg-red-500', label: 'liked your post' };
+            return { icon: <Heart className="w-4 h-4" />, color: 'bg-red-500', label: 'actually noticed your post. mark your calendar.' };
         case 'comment':
-            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'commented on your post' };
+            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'had thoughts about your post. couldn\'t keep them in.' };
         case 'friend_request':
-            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'wants to connect with you' };
+            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'slid into your orbit' };
         case 'friend_accept':
-            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 connected with you!' };
+            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 mutual obsession officially confirmed' };
         case 'meetup_request':
-            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants to join your meetup 🙋' };
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants in on your little gathering 🙋' };
         case 'meetup_accept':
-            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: '✅ accepted your meetup request. See you there!' };
+            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: '✅ fine, you\'re allowed to come. see you there.' };
         case 'friend_post':
-            return { icon: <Zap className="w-4 h-4" />, color: 'bg-yellow-500', label: 'just posted something. Don\'t miss the vibe 🔥' };
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-yellow-500', label: 'blessed the feed with their presence. don\'t act too excited.' };
         case 'friend_event':
-            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'dropped a new event. Grab your spot!' };
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'planned something. could be great, could be terrible.' };
         case 'new_event':
-            return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created a hot new event near you 🔥' };
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created an event nearby. social obligations incoming 🔥' };
         default:
-            return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'sent you a notification' };
+            return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'did something. unclear what.' };
     }
 }
 
@@ -202,9 +202,9 @@ const NotificationsPage: React.FC = () => {
                             <Bell className="w-9 h-9 text-slate-600" />
                         </div>
                         <div>
-                            <p className="text-white font-bold text-lg">All caught up!</p>
+                            <p className="text-white font-bold text-lg">Crickets. Absolute silence.</p>
                             <p className="text-slate-500 text-sm mt-1">
-                                When someone likes your post, comments, or likes your profile, you'll see it here.
+                                When someone finally notices you exist, it'll show up here.
                             </p>
                         </div>
                     </div>

@@ -191,22 +191,22 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     
                     addToast({
                         title: data.notification.type === 'friend_post'
-                            ? `📸 ${data.notification.fromName} just dropped something!`
+                            ? `📸 ${data.notification.fromName} graced the feed`
                             : data.notification.type === 'friend_event'
-                            ? `🎉 ${data.notification.fromName} is planning something fun!`
+                            ? `🎉 ${data.notification.fromName} allegedly has a plan`
                             : data.notification.type === 'new_event'
-                            ? `🔥 Hot new event near you!`
+                            ? `🔥 Someone nearby made plans. No pressure.`
                             : data.notification.fromName,
-                        body: data.notification.type === 'like' ? 'liked your post' : 
-                              data.notification.type === 'comment' ? 'commented on your post' :
-                              data.notification.type === 'friend_request' ? 'wants to connect with you' :
-                              data.notification.type === 'friend_accept' ? '🎉 connected with you!' :
-                              data.notification.type === 'meetup_request' ? 'wants to join your meetup 🙋' :
-                              data.notification.type === 'meetup_accept' ? '✅ accepted your meetup request. See you there!' :
-                              data.notification.type === 'friend_post' ? 'New post from your connection. Don\'t miss the vibe 🔥' :
-                              data.notification.type === 'friend_event' ? 'A new event just dropped. Grab your spot before it fills up!' :
-                              data.notification.type === 'new_event' ? `${data.notification.fromName} just created a new event. Don't sleep on this one!` :
-                              'sent a notification',
+                        body: data.notification.type === 'like' ? 'actually noticed your post. wild, right?' : 
+                              data.notification.type === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
+                              data.notification.type === 'friend_request' ? 'slid into your orbit' :
+                              data.notification.type === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
+                              data.notification.type === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
+                              data.notification.type === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
+                              data.notification.type === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
+                              data.notification.type === 'friend_event' ? 'planned something. probably involves leaving the house.' :
+                              data.notification.type === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
+                              'did something. unclear what.',
                         icon: data.notification.fromPhoto,
                         url: data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
                         type: 'notification'
