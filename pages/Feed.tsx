@@ -529,26 +529,6 @@ const Feed: React.FC = () => {
         </div>
       </div>
 
-      {/* Push Notification Promo Banner */}
-      {/* {isSupported && !isSubscribed && (
-        <div className="bg-primary-900/30 border-b border-primary-500/20 px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Bell className="w-5 h-5 text-primary-400" />
-            <div>
-              <p className="text-sm font-bold text-white">Enable Notifications</p>
-              <p className="text-xs text-slate-400">Don't miss messages from nearby friends</p>
-            </div>
-          </div>
-          <button
-            onClick={handleSubscribe}
-            disabled={subscribing}
-            className="px-3 py-1.5 bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold rounded-lg transition-colors shadow-sm disabled:opacity-50"
-          >
-            {subscribing ? "Wait..." : "Enable"}
-          </button>
-        </div>
-      )} */}
-
       {/* Content Container */}
       <div
         className="p-4 space-y-4 max-w-lg mx-auto pb-32 relative transition-transform duration-300 ease-out"
