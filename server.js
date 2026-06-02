@@ -36,6 +36,192 @@ app.get("/app", (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
+// Smart deep-link page: tries to open native app, falls back to store download
+app.get("/post/:id", (req, res) => {
+  const postId = req.params.id;
+  const deepLink = `orbyt://post/${postId}`;
+  const playStoreUrl = "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
+  const appStoreUrl = "https://apps.apple.com/app/orbyt/id6740371671";
+
+  res.setHeader("Content-Type", "text/html");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Open in Orbyt</title>
+  <meta name="description" content="View this post on Orbyt — the social app for real connections nearby." />
+  <meta property="og:title" content="Open in Orbyt" />
+  <meta property="og:description" content="View this post on Orbyt — the social app for real connections nearby." />
+  <meta property="og:type" content="website" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #030B18;
+      color: #F0F4FF;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, #6C63FF 0%, #4ECDC4 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38px;
+      font-weight: 900;
+      color: #fff;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(108, 99, 255, 0.4);
+    }
+    h1 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+    .subtitle { color: #8899BB; font-size: 15px; line-height: 1.5; margin-bottom: 36px; max-width: 320px; }
+    .card {
+      background: #0D1B2E;
+      border: 1px solid #1E3050;
+      border-radius: 20px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 380px;
+    }
+    .open-btn {
+      display: block;
+      width: 100%;
+      background: linear-gradient(135deg, #6C63FF 0%, #4ECDC4 100%);
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+      padding: 16px;
+      border-radius: 14px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      margin-bottom: 12px;
+      letter-spacing: 0.2px;
+      transition: opacity 0.2s;
+    }
+    .open-btn:hover { opacity: 0.88; }
+    .divider { color: #3A4F6E; font-size: 13px; margin: 16px 0; }
+    .store-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .store-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #162030;
+      border: 1px solid #1E3050;
+      color: #C8D8F0;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 18px;
+      border-radius: 12px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .store-btn:hover { background: #1E3050; border-color: #6C63FF; }
+    .store-icon { font-size: 22px; line-height: 1; }
+    .status-msg {
+      font-size: 13px;
+      color: #8899BB;
+      margin-top: 18px;
+      min-height: 18px;
+    }
+    .desktop-note {
+      display: none;
+      margin-top: 24px;
+      color: #556B8C;
+      font-size: 13px;
+    }
+    @media (min-width: 768px) {
+      .desktop-note { display: block; }
+    }
+  </style>
+</head>
+<body>
+  <div class="logo">O</div>
+  <h1>Open in Orbyt</h1>
+  <p class="subtitle">Someone shared a post with you. Get the app to view it and connect with people nearby.</p>
+
+  <div class="card">
+    <a id="openAppBtn" href="${deepLink}" class="open-btn">Open in Orbyt App</a>
+
+    <div class="divider">— Don't have the app? —</div>
+
+    <div class="store-row">
+      <a id="androidBtn" href="${playStoreUrl}" class="store-btn" target="_blank" rel="noopener noreferrer">
+        <span class="store-icon">▶</span>
+        <div><div style="font-size:11px;color:#8899BB;font-weight:500">GET IT ON</div>Google Play</div>
+      </a>
+      <a id="iosBtn" href="${appStoreUrl}" class="store-btn" target="_blank" rel="noopener noreferrer">
+        <span class="store-icon">&#63743;</span>
+        <div><div style="font-size:11px;color:#8899BB;font-weight:500">Download on the</div>App Store</div>
+      </a>
+    </div>
+
+    <p class="status-msg" id="statusMsg"></p>
+  </div>
+
+  <p class="desktop-note">Orbyt is a mobile-only app. Scan the QR code or open this link on your phone.</p>
+
+  <script>
+    (function () {
+      const ua = navigator.userAgent || '';
+      const isAndroid = /android/i.test(ua);
+      const isIOS = /iphone|ipad|ipod/i.test(ua);
+      const playStoreUrl = "${playStoreUrl}";
+      const appStoreUrl = "${appStoreUrl}";
+      const deepLink = "${deepLink}";
+      const statusEl = document.getElementById('statusMsg');
+
+      function tryOpenApp() {
+        // Try to open the app via custom scheme
+        let didOpenApp = false;
+        const start = Date.now();
+
+        window.location.href = deepLink;
+
+        // After a short delay, check if the page is still visible (app didn't open)
+        setTimeout(function () {
+          if (document.hidden || Date.now() - start > 2500) return;
+          // Still here — app not installed, redirect to store
+          if (isAndroid) {
+            statusEl.textContent = 'Redirecting to Google Play…';
+            window.location.href = playStoreUrl;
+          } else if (isIOS) {
+            statusEl.textContent = 'Redirecting to the App Store…';
+            window.location.href = appStoreUrl;
+          } else {
+            statusEl.textContent = 'Orbyt is available on Android and iOS.';
+          }
+        }, 1800);
+      }
+
+      // Auto-try on mobile only
+      if (isAndroid || isIOS) {
+        statusEl.textContent = 'Opening Orbyt…';
+        tryOpenApp();
+      }
+
+      // Manual button — always try deep link first
+      document.getElementById('openAppBtn').addEventListener('click', function (e) {
+        e.preventDefault();
+        statusEl.textContent = 'Opening Orbyt…';
+        tryOpenApp();
+      });
+    })();
+  </script>
+</body>
+</html>`);
+});
+
 const port = process.env.PORT || 5000;
 // Create HTTP server wrapping Express
 const server = http.createServer(app);
