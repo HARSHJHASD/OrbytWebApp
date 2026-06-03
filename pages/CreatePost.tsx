@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
@@ -18,12 +18,18 @@ import {
   Globe,
   Lock,
   Loader2,
+  Eye,
+  Smile,
 } from "lucide-react";
 import { useUserLocation } from "../components/LocationGuard";
 import { MEETUP_ACTIVITIES, FEE_TYPES } from "../types";
 import Input from "../components/ui/Input";
 import { compressImage } from "../util/ImageCompression";
 import ImageCropperModal from "../components/ImageCropperModal";
+
+const MOODS = ['😄','🎉','😤','🥲','😍','🤔','😴','🔥','❤️','💪'];
+const POPULAR_TAGS = ['#local','#vibes','#meetup','#explore','#foodie','#fitness','#travel','#art','#music','#tech'];
+const DRAFT_KEY = 'create_post_draft';
 
 const CreatePost: React.FC = () => {
   const { user } = useAuth();
@@ -52,6 +58,70 @@ const CreatePost: React.FC = () => {
   const [maxGuests, setMaxGuests] = useState<number | "">("");
   const [meetupUrl, setMeetupUrl] = useState("");
   const [visibility, setVisibility] = useState<'public' | 'friends'>('public');
+
+  // Draft
+  const draftSaved = useRef(false);
+
+  // Mood
+  const [selectedMood, setSelectedMood] = useState<string | null>(null);
+  const [showMoodPicker, setShowMoodPicker] = useState(false);
+
+  // Hashtag suggestions
+  const [showHashtagSuggestions, setShowHashtagSuggestions] = useState(false);
+  const [hashtagQuery, setHashtagQuery] = useState('');
+  const filteredTags = POPULAR_TAGS.filter(t => t.startsWith(hashtagQuery));
+
+  // Preview
+  const [showPreview, setShowPreview] = useState(false);
+
+  // Load draft on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (d.content) setContent(d.content);
+        if (d.selectedMood) setSelectedMood(d.selectedMood);
+      }
+    } catch {}
+  }, []);
+
+  // Auto-save draft
+  useEffect(() => {
+    if (!content && !selectedMood) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ content, selectedMood }));
+      draftSaved.current = true;
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [content, selectedMood]);
+
+  const clearDraft = useCallback(() => {
+    localStorage.removeItem(DRAFT_KEY);
+    draftSaved.current = false;
+  }, []);
+
+  const handleContentChange = (txt: string) => {
+    setContent(txt);
+    if (error) setError(null);
+    const words = txt.split(/\s/);
+    const last = words[words.length - 1];
+    if (last.startsWith('#') && last.length > 1) {
+      setHashtagQuery(last.toLowerCase());
+      setShowHashtagSuggestions(true);
+    } else {
+      setShowHashtagSuggestions(false);
+      setHashtagQuery('');
+    }
+  };
+
+  const insertHashtag = (tag: string) => {
+    const words = content.split(/\s/);
+    words[words.length - 1] = tag;
+    setContent(words.join(' ') + ' ');
+    setShowHashtagSuggestions(false);
+    setHashtagQuery('');
+  };
 
   useEffect(() => {
     if (gpsLocation) {
@@ -159,7 +229,7 @@ const CreatePost: React.FC = () => {
         uid: user.uid,
         authorName: profile?.displayName || user.email?.split("@")[0] || "User",
         authorPhoto: profile?.photoURL || "",
-        content: postType === "regular" ? content : content || meetupTitle, // Fallback content for legacy
+        content: postType === "regular" ? (content + (selectedMood ? ` — feeling ${selectedMood}` : '')) : content || meetupTitle, // Fallback content for legacy
         imageURL: image || undefined,
         location:
           gpsLocation
@@ -190,6 +260,7 @@ const CreatePost: React.FC = () => {
       }
 
       await api.posts.create(payload);
+      clearDraft();
       navigate("/app");
     } catch (err: unknown) {
       console.error(err);
@@ -220,19 +291,30 @@ const CreatePost: React.FC = () => {
           </button>
           <span className="font-bold text-white text-lg">Create</span>
 
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !isFormValid()}
-            className="text-primary-500 font-bold text-base hover:text-primary-400 transition-colors disabled:opacity-50 flex items-center gap-1 px-2 py-1"
-          >
-            {loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : postType === "meetup" ? (
-              "Create"
-            ) : (
-              "Post"
+          <div className="flex items-center gap-2">
+            {postType === 'regular' && (
+              <button
+                onClick={() => setShowPreview(true)}
+                className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
+                title="Preview post"
+              >
+                <Eye className="w-5 h-5" />
+              </button>
             )}
-          </button>
+            <button
+              onClick={handleSubmit}
+              disabled={loading || !isFormValid()}
+              className="text-primary-500 font-bold text-base hover:text-primary-400 transition-colors disabled:opacity-50 flex items-center gap-1 px-2 py-1"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : postType === "meetup" ? (
+                "Create"
+              ) : (
+                "Post"
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -276,14 +358,60 @@ const CreatePost: React.FC = () => {
               className="w-full h-40 text-lg text-white bg-transparent placeholder-slate-500 outline-none resize-none"
               placeholder="What's on your mind?"
               value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
-                if (error) setError(null);
-              }}
+              onChange={(e) => handleContentChange(e.target.value)}
               autoFocus
             />
             <div className="text-right text-[10px] text-slate-500 font-bold uppercase tracking-tighter mt-1">
               {content.length} / 2000
+            </div>
+
+            {/* Hashtag suggestions */}
+            {showHashtagSuggestions && filteredTags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {filteredTags.map(tag => (
+                  <button
+                    key={tag}
+                    type="button"
+                    onClick={() => insertHashtag(tag)}
+                    className="text-primary-400 bg-primary-500/10 border border-primary-500/30 rounded-full px-3 py-1 text-sm font-bold hover:bg-primary-500/20 transition-colors"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Mood selector */}
+            <div className="mt-3">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowMoodPicker(v => !v)}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-sm font-bold text-slate-400 hover:text-white hover:border-slate-700 transition-colors"
+                >
+                  <Smile className="w-4 h-4" />
+                  {selectedMood ? <span>Feeling {selectedMood}</span> : <span>Add Mood</span>}
+                </button>
+                {selectedMood && (
+                  <button type="button" onClick={() => setSelectedMood(null)} className="text-slate-500 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              {showMoodPicker && (
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  {MOODS.map(m => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => { setSelectedMood(m); setShowMoodPicker(false); }}
+                      className={`w-10 h-10 rounded-full text-xl flex items-center justify-center transition-all ${selectedMood === m ? 'bg-primary-500/20 ring-2 ring-primary-500' : 'bg-slate-900 hover:bg-slate-800'}`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </>
         ) : (
@@ -462,6 +590,46 @@ const CreatePost: React.FC = () => {
         onClose={() => { setCropModalOpen(false); setTempImageSrc(null); }}
         onCropComplete={handleCropComplete}
       />
+
+      {/* Post Preview Modal */}
+      {showPreview && (
+        <div className="fixed inset-0 z-[200] bg-black/80 flex items-end sm:items-center justify-center p-4" onClick={() => setShowPreview(false)}>
+          <div className="bg-slate-900 rounded-2xl w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800">
+              <button onClick={() => setShowPreview(false)} className="text-slate-400 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+              <span className="text-white font-bold">Preview</span>
+              <div className="w-5" />
+            </div>
+            <div className="p-4">
+              <div className="bg-slate-800 rounded-2xl p-4 border border-slate-700">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 rounded-full bg-slate-600 flex items-center justify-center text-white text-sm font-bold">You</div>
+                  <div>
+                    <p className="text-white font-bold text-sm">Your Name</p>
+                    <div className="flex items-center gap-1 text-slate-500 text-xs">
+                      {visibility === 'public' ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                      <span>Just now{locationName ? ` · ${locationName}` : ''}</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-white text-base leading-relaxed mb-3">
+                  {content}{selectedMood ? ` — feeling ${selectedMood}` : ''}
+                </p>
+                {image && (
+                  <img src={image} alt="Preview" className="w-full rounded-xl object-cover max-h-80" />
+                )}
+                {locationName && (
+                  <div className="flex items-center gap-1 text-slate-500 text-xs mt-3">
+                    <MapPin className="w-3 h-3" />
+                    <span>{locationName}</span>
+                  </div>
+                )}
+              </div>
+              <p className="text-slate-500 text-xs text-center mt-3">This is how your post will appear in the feed</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
