@@ -1,8 +1,10 @@
 import {
   Bell,
   Check,
+  Globe,
   Heart,
   Loader2,
+  Lock,
   MessageCircle,
   RefreshCw,
   Settings,
@@ -71,6 +73,21 @@ const Feed: React.FC = () => {
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStoryGroup, setSelectedStoryGroup] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
+  const [mutedUids, setMutedUids] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('mutedStoryUids');
+      return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  const handleMuteUser = (uid: string) => {
+    setMutedUids(prev => {
+      const next = new Set(prev);
+      next.add(uid);
+      try { localStorage.setItem('mutedStoryUids', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   // Activate meetup tab when navigated with ?tab=meetup (e.g. from new_event notification)
   useEffect(() => {
@@ -94,6 +111,8 @@ const Feed: React.FC = () => {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [pendingStoryFile, setPendingStoryFile] = useState<File | null>(null);
+  const [showStoryVisibility, setShowStoryVisibility] = useState(false);
 
   // Pagination state
   const [hasMore, setHasMore] = useState(true);
@@ -190,7 +209,17 @@ const Feed: React.FC = () => {
   const handleAddStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user || !userProfile) return;
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+    setPendingStoryFile(file);
+    setShowStoryVisibility(true);
+  };
 
+  const doAddStory = async (visibility: 'public' | 'friends') => {
+    if (!pendingStoryFile || !user || !userProfile) return;
+    setShowStoryVisibility(false);
+    const file = pendingStoryFile;
+    setPendingStoryFile(null);
     try {
       setLoading(true);
       const base64 = await compressImage(file, 640, 0.5, 9 / 16);
@@ -199,6 +228,7 @@ const Feed: React.FC = () => {
         authorName: userProfile?.displayName,
         authorPhoto: userProfile?.photoURL,
         imageURL: base64,
+        visibility,
         location: myLocation ? { ...myLocation, name: 'Nearby' } : undefined
       });
       fetchPosts();
@@ -535,7 +565,7 @@ const Feed: React.FC = () => {
         style={{ transform: `translateY(${pullY}px)` }}
       >
         <StoryBar 
-          stories={stories} 
+          stories={stories.filter((g: any) => !mutedUids.has(g.uid))} 
           userProfile={userProfile} 
           onAddStory={() => fileInputRef.current?.click()}
           onViewStory={(group) => setSelectedStoryGroup(group)}
@@ -697,6 +727,7 @@ const Feed: React.FC = () => {
           group={selectedStoryGroup} 
           onClose={() => setSelectedStoryGroup(null)} 
           currentUserId={user?.uid}
+          onMute={handleMuteUser}
         />
       )}
       {/* Scroll to Top Button */}
@@ -730,6 +761,41 @@ const Feed: React.FC = () => {
         danger
         loading={deleting}
       />
+
+      {/* Story Visibility Picker */}
+      {showStoryVisibility && (
+        <div className="fixed inset-0 z-[300] flex items-end justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowStoryVisibility(false)}>
+          <div className="bg-[#0d1b2a] w-full max-w-md rounded-t-3xl p-6 pb-10" onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
+            <h3 className="text-white font-bold text-lg mb-1">Who can see this Moment?</h3>
+            <p className="text-slate-400 text-sm mb-5">Choose your audience before posting</p>
+            <button
+              onClick={() => doAddStory('public')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-700 hover:border-primary-500/50 bg-slate-900/60 hover:bg-slate-800/60 transition-all mb-3 text-left"
+            >
+              <div className="w-11 h-11 rounded-full bg-primary-600/20 flex items-center justify-center shrink-0">
+                <Globe className="w-5 h-5 text-primary-400" />
+              </div>
+              <div>
+                <p className="text-white font-bold text-sm">Everyone</p>
+                <p className="text-slate-400 text-xs mt-0.5">Visible to all Orbyt users nearby</p>
+              </div>
+            </button>
+            <button
+              onClick={() => doAddStory('friends')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border border-slate-700 hover:border-green-500/50 bg-slate-900/60 hover:bg-slate-800/60 transition-all text-left"
+            >
+              <div className="w-11 h-11 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                <Lock className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <p className="text-white font-bold text-sm">Friends Only</p>
+                <p className="text-slate-400 text-xs mt-0.5">Only people you've connected with</p>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

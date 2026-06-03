@@ -15,6 +15,8 @@ import {
   Link as LinkIcon,
   PartyPopper,
   Type,
+  Globe,
+  Lock,
   Loader2,
 } from "lucide-react";
 import { useUserLocation } from "../components/LocationGuard";
@@ -49,6 +51,7 @@ const CreatePost: React.FC = () => {
   const [endTime, setEndTime] = useState("");
   const [maxGuests, setMaxGuests] = useState<number | "">("");
   const [meetupUrl, setMeetupUrl] = useState("");
+  const [visibility, setVisibility] = useState<'public' | 'friends'>('public');
 
   useEffect(() => {
     if (gpsLocation) {
@@ -167,6 +170,7 @@ const CreatePost: React.FC = () => {
             }
             : undefined,
         type: postType,
+        visibility,
       };
 
       if (postType === "meetup") {
@@ -234,7 +238,7 @@ const CreatePost: React.FC = () => {
 
       <div className="flex-1 p-4 max-w-md mx-auto w-full pb-10">
         {/* Toggle Switch */}
-        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 mb-6">
+        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 mb-3">
           <button
             onClick={() => setPostType("regular")}
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${postType === "regular" ? "bg-slate-800 text-white shadow-md" : "text-slate-500 hover:text-slate-300"}`}
@@ -246,6 +250,22 @@ const CreatePost: React.FC = () => {
             className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold transition-all ${postType === "meetup" ? "bg-primary-600 text-white shadow-md" : "text-slate-500 hover:text-slate-300"}`}
           >
             <PartyPopper className="w-4 h-4" /> Meet Up
+          </button>
+        </div>
+
+        {/* Visibility Toggle */}
+        <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 mb-6 gap-1">
+          <button
+            onClick={() => setVisibility('public')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${visibility === 'public' ? 'bg-primary-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Globe className="w-3.5 h-3.5" /> Everyone
+          </button>
+          <button
+            onClick={() => setVisibility('friends')}
+            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${visibility === 'friends' ? 'bg-primary-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+          >
+            <Lock className="w-3.5 h-3.5" /> Friends Only
           </button>
         </div>
 
