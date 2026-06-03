@@ -1,27 +1,38 @@
 import {
+  Bookmark,
   Calendar,
   Clock,
+  CornerUpLeft,
   DollarSign,
   Edit,
   ExternalLink,
+  Flag,
   Heart,
   Loader2,
   MapPin,
   MessageCircle,
+  MoreVertical,
   Navigation,
   PartyPopper,
   Send,
+  Share2,
   Trash2,
+  UserMinus,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 import { calculateDistance } from "../util/location";
 import { useUserLocation } from "./LocationGuard";
 import { useTheme } from "../context/ThemeContext";
-   import { Post, Comment } from '../types';
+import { Post, Comment } from '../types';
+
+const REACTIONS = ['❤️','😂','😮','🔥','👏'];
+const REPORT_REASONS = ['Spam','Harassment','Misinformation','Nudity / Sexual content','Hate speech','Other'];
+
 const PostItem: React.FC<any> = ({
   post,
   currentUserId,
@@ -29,6 +40,13 @@ const PostItem: React.FC<any> = ({
   onAddComment,
   onDelete,
   onEdit,
+  onDeleteComment,
+  onLikeComment,
+  onReport,
+  onBlock,
+  onBookmark,
+  isBookmarked,
+  friendIds,
 }) => {
   const navigate = useNavigate();
   const { location: myLocation } = useUserLocation();
@@ -37,9 +55,24 @@ const PostItem: React.FC<any> = ({
   const [commentText, setCommentText] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [joinLoading, setJoinLoading] = useState(false);
-  const [requestSent, setRequestSent] = useState(false); // Local optimistic state
+  const [requestSent, setRequestSent] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<{ uid: string; authorName: string } | null>(null);
+  const [localCommentLikes, setLocalCommentLikes] = useState<Record<string, { count: number; liked: boolean }>>({});
+  // New feature state
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [reportStep, setReportStep] = useState<null | 'pick' | 'done'>(null);
+  const [showReactions, setShowReactions] = useState(false);
+  const [reaction, setReaction] = useState<string | null>(null);
+  const [showWhoLiked, setShowWhoLiked] = useState(false);
+  const [whoLikedProfiles, setWhoLikedProfiles] = useState<any[]>([]);
+  const [loadingWhoLiked, setLoadingWhoLiked] = useState(false);
+  const [peekProfile, setPeekProfile] = useState<any>(null);
+  const longPressTimer = useRef<any>(null);
+
   const isLiked = currentUserId && post?.likedBy?.includes(currentUserId);
   const commentCount = post?.comments?.length || 0;
+  const seenByFriendIds = (friendIds || []).filter((fid: string) => post?.likedBy?.includes(fid));
+  const seenCount = seenByFriendIds.length;
 
   const hasComments = commentCount > 0;
   const commentsToShow = showAllComments
@@ -60,12 +93,96 @@ const PostItem: React.FC<any> = ({
     try {
       await onAddComment(post?._id, commentText);
       setCommentText("");
+      setReplyingTo(null);
       setShowAllComments(true);
     } catch (error) {
       console.error("Failed to add comment", error);
     } finally {
       setSubmittingComment(false);
     }
+  };
+
+  const handleReply = (comment: any) => {
+    setReplyingTo({ uid: comment.uid, authorName: comment.authorName });
+    setCommentText(`@${comment.authorName} `);
+    setShowAllComments(true);
+  };
+
+  const handleCancelReply = () => {
+    setReplyingTo(null);
+    setCommentText('');
+  };
+
+  const handleCommentLike = (comment: any) => {
+    if (!currentUserId) return;
+    const commentId = comment?._id || comment?.id;
+    if (!commentId) return;
+    const existing = localCommentLikes[commentId];
+    const currentLiked = existing !== undefined ? existing.liked : (comment?.likedBy?.includes(currentUserId) || false);
+    const currentCount = existing !== undefined ? existing.count : (comment?.likes || 0);
+    setLocalCommentLikes(prev => ({
+      ...prev,
+      [commentId]: { liked: !currentLiked, count: currentLiked ? currentCount - 1 : currentCount + 1 },
+    }));
+    onLikeComment?.(post?._id, commentId);
+  };
+
+  const handleDeleteComment = (comment: any) => {
+    const commentId = comment?._id || comment?.id;
+    if (!commentId) return;
+    onDeleteComment?.(post?._id, commentId);
+  };
+
+  const handleReaction = (emoji: string) => {
+    setReaction(prev => prev === emoji ? null : emoji);
+    setShowReactions(false);
+    onLike(post);
+  };
+
+  const openWhoLiked = async () => {
+    if (!post?.likedBy?.length) return;
+    setShowWhoLiked(true);
+    setLoadingWhoLiked(true);
+    try {
+      const profiles = await Promise.all(
+        (post.likedBy as string[]).slice(0, 20).map((uid: string) => api.profile.get(uid).catch(() => null))
+      );
+      setWhoLikedProfiles(profiles.filter(Boolean));
+    } catch {}
+    setLoadingWhoLiked(false);
+  };
+
+  const handleReport = async (reason: string) => {
+    setReportStep(null);
+    if (!currentUserId) return;
+    try {
+      await api.userAction.report(currentUserId, post?.uid, reason, post?._id);
+    } catch {}
+    setReportStep('done');
+  };
+
+  const handleBlock = async () => {
+    setShowMoreMenu(false);
+    if (!currentUserId) return;
+    try {
+      await api.userAction.block(currentUserId, post?.uid);
+      onBlock?.(post?.uid);
+    } catch {}
+  };
+
+  const handleAvatarMouseDown = () => {
+    longPressTimer.current = setTimeout(() => {
+      openPeek();
+    }, 600);
+  };
+  const handleAvatarMouseUp = () => clearTimeout(longPressTimer.current);
+
+  const openPeek = async () => {
+    if (!post?.uid || post?.uid === currentUserId) return;
+    try {
+      const p = await api.profile.get(post.uid);
+      setPeekProfile(p);
+    } catch {}
   };
 
   const handleJoinRequest = async () => {
@@ -107,7 +224,14 @@ const PostItem: React.FC<any> = ({
           to={`/app/profile/${post?.uid}`}
           className="flex items-center gap-3 group"
         >
-          <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden ring-2 ring-transparent group-hover:ring-primary-500/50 transition-all">
+          <div
+            className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden ring-2 ring-transparent group-hover:ring-primary-500/50 transition-all cursor-pointer"
+            onMouseDown={handleAvatarMouseDown}
+            onMouseUp={handleAvatarMouseUp}
+            onMouseLeave={handleAvatarMouseUp}
+            onTouchStart={handleAvatarMouseDown}
+            onTouchEnd={handleAvatarMouseUp}
+          >
             {post?.authorPhoto ? (
               <img
                 src={post?.authorPhoto}
@@ -169,6 +293,43 @@ const PostItem: React.FC<any> = ({
               >
                 <Trash2 className="w-5 h-5 sm:w-[22px] sm:h-[22px]" />
               </button>
+            )}
+
+            {/* Bookmark */}
+            <button
+              onClick={() => onBookmark?.(post?._id)}
+              className={`p-2.5 rounded-full transition-all duration-200 ${isBookmarked ? 'text-primary-500' : 'text-slate-500 hover:text-primary-400'}`}
+              aria-label="Bookmark"
+            >
+              <Bookmark className={`w-5 h-5 ${isBookmarked ? 'fill-current' : ''}`} />
+            </button>
+
+            {/* 3-dot more menu (only for other users' posts) */}
+            {!isHost && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowMoreMenu(v => !v)}
+                  className="p-2.5 text-slate-500 hover:text-slate-300 rounded-full transition-all duration-200"
+                >
+                  <MoreVertical className="w-5 h-5" />
+                </button>
+                {showMoreMenu && (
+                  <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-xl z-30 min-w-[180px] overflow-hidden">
+                    <button
+                      onClick={() => { setShowMoreMenu(false); setReportStep('pick'); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors"
+                    >
+                      <Flag className="w-4 h-4" /> Report Post
+                    </button>
+                    <button
+                      onClick={handleBlock}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                    >
+                      <UserMinus className="w-4 h-4" /> Block {post?.authorName}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -337,15 +498,31 @@ const PostItem: React.FC<any> = ({
         <div
           className={`flex items-center gap-4 pt-2 ${isMeetup ? "" : "border-t border-slate-100 dark:border-slate-800"}`}
         >
-          <button
-            onClick={() => onLike(post)}
-            className={`flex items-center gap-1.5 transition-colors group py-2 ${isLiked ? "text-primary-500" : "text-slate-500 hover:text-primary-500"}`}
-          >
-            <Heart
-              className={`w-6 h-6 transition-transform group-active:scale-90 ${isLiked ? "fill-current" : ""}`}
-            />
-            <span className="text-sm font-medium">{post?.likes}</span>
-          </button>
+          {/* Like / Reaction button */}
+          <div className="relative">
+            <button
+              onClick={() => onLike(post)}
+              onContextMenu={(e) => { e.preventDefault(); setShowReactions(v => !v); }}
+              className={`flex items-center gap-1.5 transition-colors group py-2 select-none ${isLiked ? "text-primary-500" : "text-slate-500 hover:text-primary-500"}`}
+            >
+              <span className="text-xl leading-none">{reaction || '❤️'}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); openWhoLiked(); }}
+                className="text-sm font-medium hover:underline"
+              >{post?.likes}</button>
+            </button>
+            {showReactions && (
+              <div className="absolute bottom-full left-0 mb-1 flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full shadow-xl px-3 py-2 z-20">
+                {REACTIONS.map(emoji => (
+                  <button
+                    key={emoji}
+                    onClick={() => handleReaction(emoji)}
+                    className="text-2xl hover:scale-125 transition-transform"
+                  >{emoji}</button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setShowAllComments(!showAllComments)}
             className={`flex items-center gap-1.5 transition-colors py-2 ${showAllComments ? "text-blue-400" : "text-slate-500 hover:text-blue-400"}`}
@@ -356,6 +533,13 @@ const PostItem: React.FC<any> = ({
             <span className="text-sm font-medium">{commentCount}</span>
           </button>
         </div>
+
+        {/* Seen by friends */}
+        {seenCount > 0 && (
+          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 mb-2">
+            👁 {seenCount} {seenCount === 1 ? 'friend' : 'friends'} liked this
+          </p>
+        )}
 
         {/* Comments Section */}
         <div className="space-y-3 mt-1">
@@ -370,31 +554,54 @@ const PostItem: React.FC<any> = ({
 
           {commentsToShow && commentsToShow?.length > 0 && (
             <div className="space-y-3">
-              {commentsToShow.map((comment: any, idx: any) => (
-                <div key={idx} className="flex gap-2.5 animate-fade-in">
+              {commentsToShow.map((comment: any, idx: any) => {
+                const commentId = comment?._id || comment?.id;
+                const localLike = localCommentLikes[commentId];
+                const isCommentLiked = localLike !== undefined ? localLike.liked : (comment?.likedBy?.includes(currentUserId) || false);
+                const commentLikeCount = localLike !== undefined ? localLike.count : (comment?.likes || 0);
+                const canDeleteThis = currentUserId && (comment?.uid === currentUserId || post?.uid === currentUserId);
+                return (
+                  <div key={commentId || idx} className="flex gap-2.5 animate-fade-in">
                     <Link to={`/app/profile/${comment?.uid}`} className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0 mt-0.5 border border-slate-200 dark:border-slate-700 block cursor-pointer hover:opacity-80 transition-opacity">
                       {comment?.authorPhoto ? (
-                        <img
-                          src={comment?.authorPhoto}
-                          alt={comment?.authorName}
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={comment?.authorPhoto} alt={comment?.authorName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                          {comment?.authorName?.[0]}
-                        </div>
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400">{comment?.authorName?.[0]}</div>
                       )}
                     </Link>
-                  <div className="bg-slate-50 dark:bg-slate-800/80 px-4 py-2.5 rounded-2xl text-sm border border-slate-200 dark:border-slate-800 flex-1">
-                    <Link to={`/app/profile/${comment?.uid}`} className="font-bold text-slate-900 dark:text-slate-200 text-xs mr-2 block mb-0.5 hover:text-primary-500 transition-colors inline-block">
-                      {comment?.authorName}
-                    </Link>
-                    <span className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
-                      {comment?.text}
-                    </span>
+                    <div className="flex-1">
+                      <div className="bg-slate-50 dark:bg-slate-800/80 px-4 py-2.5 rounded-2xl text-sm border border-slate-200 dark:border-slate-800">
+                        <Link to={`/app/profile/${comment?.uid}`} className="font-bold text-slate-900 dark:text-slate-200 text-xs mr-2 hover:text-primary-500 transition-colors inline-block mb-0.5">
+                          {comment?.authorName}
+                        </Link>
+                        <span className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{comment?.text}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 ml-2">
+                        <button onClick={() => handleReply(comment)} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-primary-500 transition-colors">
+                          <CornerUpLeft className="w-3 h-3" /> Reply
+                        </button>
+                        <button onClick={() => handleCommentLike(comment)} className={`flex items-center gap-1 text-[11px] transition-colors ${isCommentLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-400'}`}>
+                          <Heart className={`w-3 h-3 ${isCommentLiked ? 'fill-current' : ''}`} />
+                          {commentLikeCount > 0 && <span>{commentLikeCount}</span>}
+                        </button>
+                        {canDeleteThis && (
+                          <button onClick={() => handleDeleteComment(comment)} className="text-[11px] text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </div>
+          )}
+
+          {replyingTo && (
+            <div className="flex items-center gap-2 px-1 py-1.5 bg-primary-500/10 rounded-xl text-xs text-primary-400 border border-primary-500/20">
+              <CornerUpLeft className="w-3.5 h-3.5" />
+              <span>Replying to <strong>{replyingTo.authorName}</strong></span>
+              <button onClick={handleCancelReply} className="ml-auto"><X className="w-3.5 h-3.5" /></button>
             </div>
           )}
 
@@ -402,7 +609,7 @@ const PostItem: React.FC<any> = ({
             <input
               value={commentText}
               onChange={(e) => setCommentText(e?.target?.value)}
-              placeholder={isMeetup ? "Ask a question..." : "Add a comment..."}
+              placeholder={replyingTo ? `Reply to ${replyingTo.authorName}...` : isMeetup ? "Ask a question..." : "Add a comment..."}
               className="flex-1 bg-transparent border-b border-slate-200 dark:border-slate-800 py-2 text-sm text-slate-900 dark:text-white focus:border-primary-500 outline-none placeholder-slate-400 dark:placeholder-slate-600 transition-colors"
               onKeyDown={(e) => {
                 if (e?.key === "Enter" && !e?.shiftKey) {
@@ -416,22 +623,84 @@ const PostItem: React.FC<any> = ({
               disabled={!commentText.trim() || submittingComment}
               className="p-2 text-primary-500 hover:text-primary-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {submittingComment ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
+              {submittingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Report reason picker */}
+      {reportStep === 'pick' && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setReportStep(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-5" />
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-4">Why are you reporting this?</h3>
+            {REPORT_REASONS.map(reason => (
+              <button key={reason} onClick={() => handleReport(reason)} className="w-full text-left py-3 px-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors">
+                {reason}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {reportStep === 'done' && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={() => setReportStep(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 text-center shadow-xl">
+            <div className="text-4xl mb-3">✅</div>
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-1">Report Submitted</h3>
+            <p className="text-sm text-slate-500">Thanks for keeping Orbyt safe.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Who liked modal */}
+      {showWhoLiked && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center" onClick={() => setShowWhoLiked(false)}>
+          <div className="bg-white dark:bg-slate-900 rounded-t-3xl w-full max-w-lg p-6 max-h-[60vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="w-10 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-5" />
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white mb-4">Liked by</h3>
+            {loadingWhoLiked ? (
+              <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-primary-500" /></div>
+            ) : (
+              <div className="space-y-3">
+                {whoLikedProfiles.map((p: any) => (
+                  <button key={p.uid} onClick={() => { setShowWhoLiked(false); window.location.href = `/app/profile/${p.uid}`; }} className="w-full flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl px-2 py-2 transition-colors">
+                    <div className="w-9 h-9 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      {p.photoURL ? <img src={p.photoURL} alt={p.displayName} className="w-full h-full object-cover" /> : <span className="text-sm font-bold text-slate-500 flex items-center justify-center h-full">{p.displayName?.[0]}</span>}
+                    </div>
+                    <span className="text-sm font-medium text-slate-900 dark:text-slate-200">{p.displayName}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Quick profile peek */}
+      {peekProfile && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center" onClick={() => setPeekProfile(null)}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 text-center shadow-xl w-72" onClick={e => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mx-auto mb-3">
+              {peekProfile.photoURL ? <img src={peekProfile.photoURL} className="w-full h-full object-cover" /> : <span className="text-xl font-bold text-slate-500 flex items-center justify-center h-full">{peekProfile.displayName?.[0]}</span>}
+            </div>
+            <h3 className="font-bold text-lg text-slate-900 dark:text-white">{peekProfile.displayName}</h3>
+            {peekProfile.jobRole && <p className="text-xs text-slate-500 mt-0.5">{peekProfile.jobRole}</p>}
+            {peekProfile.bio && <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 line-clamp-2">{peekProfile.bio}</p>}
+            <button
+              onClick={() => { setPeekProfile(null); window.location.href = `/app/profile/${peekProfile.uid}`; }}
+              className="mt-4 w-full py-2 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-sm transition-colors"
+            >View Profile</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 // Memoized component to prevent unnecessary re-renders when props haven't changed
 export default React.memo(PostItem, (prevProps, nextProps) => {
-  // Return true if props are equal (don't re-render), false if different (re-render)
   return (
     prevProps.post?._id === nextProps.post?._id &&
     prevProps.post?.likes === nextProps.post?.likes &&
@@ -441,6 +710,7 @@ export default React.memo(PostItem, (prevProps, nextProps) => {
     prevProps.onLike === nextProps.onLike &&
     prevProps.onAddComment === nextProps.onAddComment &&
     prevProps.onDelete === nextProps.onDelete &&
-    prevProps.onEdit === nextProps.onEdit
+    prevProps.onEdit === nextProps.onEdit &&
+    prevProps.isBookmarked === nextProps.isBookmarked
   );
 });

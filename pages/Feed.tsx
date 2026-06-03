@@ -73,6 +73,14 @@ const Feed: React.FC = () => {
   const [stories, setStories] = useState<any[]>([]);
   const [selectedStoryGroup, setSelectedStoryGroup] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
+  const [feedSort, setFeedSort] = useState<'latest' | 'nearby' | 'friends' | 'trending'>('latest');
+  const BOOKMARKS_KEY = 'bookmarkedPostIds';
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem(BOOKMARKS_KEY); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+  });
+  const [blockedUids, setBlockedUids] = useState<Set<string>>(() => {
+    try { const s = localStorage.getItem('blockedUids'); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
+  });
   const [mutedUids, setMutedUids] = useState<Set<string>>(() => {
     try {
       const stored = localStorage.getItem('mutedStoryUids');
@@ -87,6 +95,27 @@ const Feed: React.FC = () => {
       try { localStorage.setItem('mutedStoryUids', JSON.stringify([...next])); } catch {}
       return next;
     });
+  };
+
+  const handleBookmark = (postId: string) => {
+    setBookmarkedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) next.delete(postId); else next.add(postId);
+      try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
+  const handleBlockFromFeed = async (targetUid: string) => {
+    setBlockedUids(prev => {
+      const next = new Set(prev);
+      next.add(targetUid);
+      try { localStorage.setItem('blockedUids', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    if (user?.uid) {
+      try { await api.userAction.block(user.uid, targetUid); } catch {}
+    }
   };
 
   // Activate meetup tab when navigated with ?tab=meetup (e.g. from new_event notification)
@@ -203,8 +232,21 @@ const Feed: React.FC = () => {
   };
 
   const filteredPostsByTab = useMemo(() => {
-    return posts.filter((p) => p.type === activeTab);
-  }, [posts, activeTab]);
+    let filtered = posts.filter((p) => p.type === activeTab && !blockedUids.has(p.uid));
+    if (feedSort === 'trending') {
+      filtered = [...filtered].sort((a, b) => ((b as any).likedBy?.length || 0) - ((a as any).likedBy?.length || 0));
+    } else if (feedSort === 'nearby' && myLocation) {
+      filtered = [...filtered].sort((a: any, b: any) => {
+        const getD = (p: any) => p.location
+          ? Math.sqrt(Math.pow(p.location.lat - myLocation.lat, 2) + Math.pow(p.location.lng - myLocation.lng, 2))
+          : Infinity;
+        return getD(a) - getD(b);
+      });
+    } else if (feedSort === 'friends') {
+      filtered = filtered.filter((p: any) => userProfile?.friends?.includes(p.uid) || p.uid === user?.uid);
+    }
+    return filtered;
+  }, [posts, activeTab, blockedUids, feedSort, myLocation, userProfile, user]);
 
   const handleAddStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -362,6 +404,23 @@ const Feed: React.FC = () => {
 
   const handleDeletePost = (postId: string) => {
     setConfirmDeleteId(postId);
+  };
+
+  const handleDeleteComment = async (postId: string, commentId: string) => {
+    if (!user) return;
+    try {
+      await api.posts.deleteComment(postId, commentId, user.uid);
+      setPosts(prev => prev.map(p =>
+        p._id === postId
+          ? { ...p, comments: (p.comments || []).filter((c: any) => (c._id || c.id) !== commentId) }
+          : p
+      ));
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLikeComment = async (postId: string, commentId: string) => {
+    if (!user) return;
+    try { await api.posts.likeComment(postId, commentId, user.uid); } catch (e) { console.error(e); }
   };
 
   const handleConfirmDelete = async () => {
@@ -603,6 +662,25 @@ const Feed: React.FC = () => {
           </div>
         </div>
 
+        {/* Feed Sort Pills */}
+        {activeTab === 'regular' && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 no-scrollbar">
+            {(['latest','nearby','friends','trending'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setFeedSort(s)}
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                  feedSort === s
+                    ? 'bg-primary-600 text-white border-primary-600'
+                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-primary-500/50'
+                }`}
+              >
+                {s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-6 animate-fade-in">
             <PostSkeleton />
@@ -634,6 +712,12 @@ const Feed: React.FC = () => {
                   onAddComment={handleAddComment}
                   onEdit={post.uid === user?.uid ? (id: string) => navigate(`/app/edit-post/${id}`) : undefined}
                   onDelete={post.uid === user?.uid ? handleDeletePost : undefined}
+                  onDeleteComment={handleDeleteComment}
+                  onLikeComment={handleLikeComment}
+                  onBookmark={handleBookmark}
+                  isBookmarked={bookmarkedIds.has((post as any)._id || '')}
+                  onBlock={handleBlockFromFeed}
+                  friendIds={userProfile?.friends || []}
                 />
               </div>
             ))}

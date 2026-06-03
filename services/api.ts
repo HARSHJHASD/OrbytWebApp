@@ -563,6 +563,24 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to add comment");
       return await response.json();
     },
+    deleteComment: async (postId: string, commentId: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/posts/${postId}/deleteComment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId, uid }),
+      });
+      if (!response?.ok) throw new Error("Failed to delete comment");
+      return await response.json();
+    },
+    likeComment: async (postId: string, commentId: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/posts/${postId}/likeComment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commentId, uid }),
+      });
+      if (!response?.ok) throw new Error("Failed to like comment");
+      return await response.json();
+    },
   },
   util: {
     getStories: async (viewerUid: string) => {
