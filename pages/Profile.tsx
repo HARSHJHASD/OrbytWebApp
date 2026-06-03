@@ -1,5 +1,6 @@
 import {
   Ban,
+  Bookmark,
   Briefcase,
   Camera,
   Check,
@@ -7,7 +8,9 @@ import {
   Edit2,
   Eye,
   Flag,
+  Grid,
   Instagram,
+  List,
   Loader2,
   LogOut,
   Lock,
@@ -16,6 +19,7 @@ import {
   MessageCircle,
   MoreVertical,
   Navigation,
+  Share2,
   ShieldAlert,
   Sparkles,
   UserCheck,
@@ -46,9 +50,20 @@ export default function Profile() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("regular"); // "regular" or "meetup"
   const [myPosts, setMyPosts] = useState<Post[]>([]);
+  const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(new Set());
   const filteredPosts = useMemo(() => {
     return myPosts?.filter(post => post?.type === activeTab);
   }, [myPosts, activeTab]);
+
+  const savedPosts = useMemo(() =>
+    myPosts.filter(p => bookmarkedPostIds.has(p._id ?? '')),
+    [myPosts, bookmarkedPostIds]
+  );
+
+  const displayedPosts = useMemo(() =>
+    activeTab === 'saved' ? savedPosts : filteredPosts,
+    [activeTab, filteredPosts, savedPosts]
+  );
 
   // Location Name State
   const [locationName, setLocationName] = useState<string>("Unknown Location");
@@ -82,6 +97,7 @@ export default function Profile() {
   const [showMenu, setShowMenu] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
   const isOwnProfile = !uid || (user && user?.uid === uid);
   const targetUid = uid || user?.uid;
@@ -187,6 +203,16 @@ export default function Profile() {
         .finally(() => setViewersLoading(false));
     }
   }, [isOwnProfile, user]);
+
+  // Load bookmarks on own profile
+  useEffect(() => {
+    if (isOwnProfile) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('bookmarkedPostIds') || '[]');
+        setBookmarkedPostIds(new Set(saved));
+      } catch {}
+    }
+  }, [isOwnProfile]);
 
   // Effect to determine Location Name
   useEffect(() => {
@@ -500,6 +526,18 @@ export default function Profile() {
     navigate(`/app/edit-post/${postId}`);
   };
 
+  const handleShareProfile = async () => {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `${profile?.displayName} on Orbyt`, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert('Profile link copied!');
+      }
+    } catch {}
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full min-h-[50vh] transition-colors duration-300">
@@ -550,6 +588,24 @@ export default function Profile() {
         profile?.lastLocation?.lng,
       )
       : null;
+
+  const mutualCount = !isOwnProfile
+    ? (profile?.friends || []).filter(fid => currentUserProfile?.friends?.includes(fid)).length
+    : 0;
+
+  const completenessFields = [
+    !!profile?.photoURL,
+    !!(profile?.bio?.trim()),
+    !!profile?.jobRole,
+    (profile?.interests?.length || 0) >= 5,
+    (profile?.thatsMePhotos?.length || 0) >= 1,
+    !!profile?.instagramHandle,
+    !!profile?.dob,
+    !!profile?.gender,
+  ];
+  const completenessScore = Math.round(
+    (completenessFields.filter(Boolean).length / completenessFields.length) * 100
+  );
 
   return (
     <div className="bg-slate-50 dark:bg-slate-950 min-h-screen transition-colors duration-300">
@@ -658,7 +714,7 @@ export default function Profile() {
               </div>
             )}
 
-            <div className="flex justify-center mt-4 gap-2">
+            <div className="flex justify-center mt-4 gap-2 flex-wrap">
               <button
                 onClick={handleOpenFriendsList}
                 className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-2xl flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors active:scale-95 group"
@@ -682,7 +738,33 @@ export default function Profile() {
                   <span className="text-slate-500 dark:text-slate-400 text-sm transition-colors">Views</span>
                 </button>
               )}
+
+              <div className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-2xl flex items-center gap-2 border border-slate-200 dark:border-slate-700">
+                <Edit2 className="w-4 h-4 text-slate-400" />
+                <span className="font-bold text-slate-900 dark:text-white">{myPosts.length}</span>
+                <span className="text-slate-500 dark:text-slate-400 text-sm">Posts</span>
+              </div>
+
+              {!isOwnProfile && mutualCount > 0 && (
+                <div className="bg-primary-500/10 px-4 py-2 rounded-2xl flex items-center gap-2 border border-primary-500/20">
+                  <Users className="w-4 h-4 text-primary-400" />
+                  <span className="font-bold text-primary-400">{mutualCount}</span>
+                  <span className="text-primary-400/70 text-sm">Mutual</span>
+                </div>
+              )}
             </div>
+
+            {isOwnProfile && completenessScore < 100 && (
+              <div className="w-full mt-4 p-3 bg-primary-500/5 rounded-2xl border border-primary-500/10">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-primary-500">Profile {completenessScore}% complete</span>
+                  <button onClick={() => navigate('/app/edit-profile')} className="text-xs text-primary-400 hover:text-primary-300 font-semibold">Complete →</button>
+                </div>
+                <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-primary-500 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${completenessScore}%` }} />
+                </div>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex flex-wrap gap-3 justify-center mt-6">
@@ -694,6 +776,14 @@ export default function Profile() {
                 >
                   <Instagram className="w-5 h-5" />
                   Instagram
+                </button>
+
+                <button
+                  onClick={handleShareProfile}
+                  className="inline-flex items-center gap-2 px-5 py-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl font-semibold text-sm hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors active:scale-95 border border-slate-200 dark:border-slate-700"
+                >
+                  <Share2 className="w-4 h-4" />
+                  Share
                 </button>
 
               {isOwnProfile ? (
@@ -923,36 +1013,44 @@ export default function Profile() {
         {/* POSTS SECTION */}
         <div className="mt-8 mb-4">
           <div className="flex items-center justify-between px-2 mb-4">
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-              {isOwnProfile ? "My Posts" : "Posts"}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                {isOwnProfile ? "My Posts" : "Posts"}
+              </h2>
+              <button
+                onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')}
+                className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors border border-slate-200 dark:border-slate-700"
+              >
+                {viewMode === 'list' ? <Grid className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </button>
+            </div>
 
             {/* Tabs Navigation */}
             <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-800">
-              {["regular", "meetup"].map((type) => (
+              {(isOwnProfile ? ["regular", "meetup", "saved"] : ["regular", "meetup"]).map((type) => (
                 <button
                   key={type}
                   onClick={() => setActiveTab(type)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${activeTab === type
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-1 ${activeTab === type
                       ? "bg-primary-500 text-white shadow-lg"
                       : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
                     }`}
                 >
-                  {type.charAt(0).toUpperCase() + type.slice(1)}s
+                  {type === 'saved' ? <Bookmark className="w-3.5 h-3.5" /> : type.charAt(0).toUpperCase() + type.slice(1) + 's'}
                 </button>
               ))}
             </div>
           </div>
 
-          {filteredPosts?.length === 0 ? (
+          {displayedPosts?.length === 0 ? (
             <div className="bg-slate-50 dark:bg-slate-900 rounded-3xl p-8 text-center border border-slate-200 dark:border-slate-800">
               <div className="w-16 h-16 bg-slate-200 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Edit2 className="w-8 h-8 text-slate-600" />
+                {activeTab === 'saved' ? <Bookmark className="w-8 h-8 text-slate-600" /> : <Edit2 className="w-8 h-8 text-slate-600" />}
               </div>
               <p className="text-slate-400 font-medium">
-                No {activeTab} posts yet
+                {activeTab === 'saved' ? 'No saved posts yet' : `No ${activeTab} posts yet`}
               </p>
-              {isOwnProfile && (
+              {isOwnProfile && activeTab !== 'saved' && (
                 <button
                   onClick={() => navigate("/app/create-post")}
                   className="mt-4 text-primary-500 font-bold hover:text-primary-400 text-sm"
@@ -961,9 +1059,27 @@ export default function Profile() {
                 </button>
               )}
             </div>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-3 gap-0.5 rounded-2xl overflow-hidden">
+              {displayedPosts.map((post) => (
+                <div
+                  key={post?._id}
+                  className="aspect-square bg-slate-200 dark:bg-slate-800 overflow-hidden cursor-pointer"
+                  onClick={() => navigate(`/app/post/${post?._id}`)}
+                >
+                  {post?.imageUrl ? (
+                    <img src={post?.imageUrl} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center p-2">
+                      <p className="text-xs text-slate-500 dark:text-slate-400 text-center line-clamp-4">{post?.text}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           ) : (
             <div className="space-y-6">
-              {filteredPosts.map((post) => (
+              {displayedPosts.map((post) => (
                 <PostItem
                   key={post?._id}
                   post={post}
