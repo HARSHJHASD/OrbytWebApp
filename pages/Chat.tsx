@@ -1,4 +1,4 @@
-import { Ban, Camera, ChevronLeft, CornerUpLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
+import { Ban, Camera, ChevronLeft, Copy, CornerUpLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
 import { compressImage } from '../util/ImageCompression';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -127,7 +127,13 @@ export default function Chat() {
     useEffect(() => {
         if (!user) return;
 
-        const unsubscribe = api.chat.subscribe(user.uid, (newMsg: Message) => {
+        const unsubscribe = api.chat.subscribe(user.uid, (payload: any) => {
+            // Handle delete events
+            if (payload?.type === 'message_deleted') {
+                setMessages(prev => prev.map(m => m._id === payload.messageId ? { ...m, deleted: true, text: '', mediaUrl: undefined } : m));
+                return;
+            }
+            const newMsg = payload as Message;
             let isRelevant = false;
 
             if (isGroup && groupId) {
@@ -279,6 +285,21 @@ export default function Chat() {
         }
     };
 
+    const handleDeleteMessage = async (msg: Message) => {
+        if (!user) return;
+        try {
+            await api.chat.deleteMessage(msg._id, user.uid);
+            setMessages(prev => prev.map(m => m._id === msg._id ? { ...m, deleted: true, text: '', mediaUrl: undefined } : m));
+        } catch (e) {
+            console.error('Failed to delete message', e);
+        }
+    };
+
+    const handleCopyMessage = (text: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text).catch(console.error);
+    };
+
     const handleBlockUser = async () => {
         if (!user || !uid) return;
         if (window.confirm("Are you sure you want to block this user? You will no longer see each other's messages or profile.")) {
@@ -373,89 +394,112 @@ export default function Chat() {
                 ) : (
                     messages.map((msg, idx) => {
                         const isMe = msg.fromUid === user?.uid;
+                        const isDeleted = (msg as any).deleted === true;
                         const showAvatar = !isMe && (idx === messages.length - 1 || messages[idx + 1]?.fromUid !== msg.fromUid);
+                        // Date separator
+                        const msgDate = new Date(msg.createdAt);
+                        const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt) : null;
+                        const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
+                        const today = new Date();
+                        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+                        const dateLabel = msgDate.toDateString() === today.toDateString() ? 'Today'
+                            : msgDate.toDateString() === yesterday.toDateString() ? 'Yesterday'
+                            : msgDate.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+                        const msgTime = msgDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                         return (
-                            <div
-                                key={msg._id}
-                                className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div className={`flex max-w-[80%] flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                    {isGroup && !isMe && showAvatar && (
-                                        <span className="text-[10px] text-slate-500 ml-9 mb-0.5">{msg.authorName || 'User'}</span>
-                                    )}
+                            <React.Fragment key={msg._id}>
+                                {showDateSep && (
+                                    <div className="flex items-center gap-3 my-2">
+                                        <div className="flex-1 h-px bg-slate-800" />
+                                        <span className="text-[10px] text-slate-500 font-medium px-2">{dateLabel}</span>
+                                        <div className="flex-1 h-px bg-slate-800" />
+                                    </div>
+                                )}
+                                <div className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`flex max-w-[80%] flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        {isGroup && !isMe && showAvatar && (
+                                            <span className="text-[10px] text-slate-500 ml-9 mb-0.5">{msg.authorName || 'User'}</span>
+                                        )}
 
-                                    <div className={`group flex ${isMe ? 'items-end justify-end' : 'items-end gap-2'}`}>
-                                        {!isMe && (
-                                            <div className="w-6 h-6 rounded-full bg-slate-800 overflow-hidden shrink-0 mb-1 opacity-80 border border-slate-700">
-                                                {showAvatar && (
-                                                    (isGroup ? msg?.authorPhoto : friend?.photoURL) ? (
-                                                        <img draggable={false} src={isGroup ? msg?.authorPhoto : friend?.photoURL} className="w-full h-full object-cover" />
-                                                    ) : (
-                                                        <div className="w-full h-full flex items-center justify-center text-[8px] font-bold text-slate-500">
-                                                            {(isGroup ? msg?.authorName : friend?.displayName)?.[0] || '?'}
-                                                        </div>
-                                                    )
+                                        <div className={`group flex ${isMe ? 'items-end justify-end' : 'items-end gap-2'}`}>
+                                            {!isMe && (
+                                                <div className="w-6 h-6 rounded-full bg-slate-800 overflow-hidden shrink-0 mb-1 opacity-80 border border-slate-700">
+                                                    {showAvatar && (
+                                                        (isGroup ? msg?.authorPhoto : friend?.photoURL) ? (
+                                                            <img draggable={false} src={isGroup ? msg?.authorPhoto : friend?.photoURL} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-[8px] font-bold text-slate-500">
+                                                                {(isGroup ? msg?.authorName : friend?.displayName)?.[0] || '?'}
+                                                            </div>
+                                                        )
+                                                    )}
+                                                </div>
+                                            )}
+
+                                            {isMe && !isDeleted && (
+                                                <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-all mb-1 shrink-0">
+                                                    <button onClick={() => setReplyingTo(msg)} className="p-1 text-slate-600 hover:text-primary-400 transition-colors" title="Reply">
+                                                        <CornerUpLeft className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    {msg.text && <button onClick={() => handleCopyMessage(msg.text || '')} className="p-1 text-slate-600 hover:text-slate-300 transition-colors" title="Copy">
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    </button>}
+                                                    <button onClick={() => window.confirm('Delete this message for everyone?') && handleDeleteMessage(msg)} className="p-1 text-slate-600 hover:text-red-500 transition-colors" title="Delete">
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            <div className={`relative px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm
+                                              ${isMe
+                                                    ? 'bg-primary-600 text-white rounded-br-none'
+                                                    : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}
+                                          `}>
+                                                {isDeleted ? (
+                                                    <span className={`italic text-xs ${isMe ? 'text-white/50' : 'text-slate-500'}`}>Message deleted</span>
+                                                ) : (
+                                                    <>
+                                                        {msg.replyTo && (
+                                                            <div className={`mb-2 -mx-1 px-3 py-1.5 rounded-lg border-l-2 text-xs ${isMe ? 'bg-black/20 border-white/40' : 'bg-slate-700/60 border-primary-500'}`}>
+                                                                <p className={`font-bold mb-0.5 truncate ${isMe ? 'text-white/80' : 'text-primary-400'}`}>
+                                                                    {msg.replyTo.fromName}
+                                                                </p>
+                                                                <p className={`truncate ${isMe ? 'text-white/60' : 'text-slate-400'}`}>
+                                                                    {msg.replyTo.mediaType === 'image' ? '📷 Photo' : msg.replyTo.text}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {msg.mediaType === 'image' && (
+                                                            <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxUrl(msg.mediaUrl || null)}>
+                                                                <img src={msg.mediaUrl} alt="Sent image" className="max-w-full h-auto object-cover max-h-64 sm:max-h-80" />
+                                                            </div>
+                                                        )}
+                                                        <span className={/^[\p{Emoji}\s]+$/u.test(msg?.text || "") && (msg?.text?.length || 0) <= 6 ? "text-4xl block py-1" : ""}>
+                                                            {msg?.text}
+                                                        </span>
+                                                    </>
                                                 )}
+                                                <p className={`text-[9px] mt-1 ${isMe ? 'text-white/40 text-right' : 'text-slate-600'}`}>{msgTime}</p>
                                             </div>
-                                        )}
 
-                                        {isMe && (
-                                            <button
-                                                onClick={() => setReplyingTo(msg)}
-                                                className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-600 hover:text-primary-400 transition-all mb-1 shrink-0"
-                                                title="Reply"
-                                            >
-                                                <CornerUpLeft className="w-3.5 h-3.5" />
-                                            </button>
-                                        )}
-
-                                        <div className={`relative px-4 py-2.5 rounded-2xl text-sm leading-relaxed break-words shadow-sm
-                                          ${isMe
-                                                ? 'bg-primary-600 text-white rounded-br-none'
-                                                : 'bg-slate-800 text-slate-200 rounded-bl-none border border-slate-700'}
-                                      `}>
-                                            {msg.replyTo && (
-                                                <div className={`mb-2 -mx-1 px-3 py-1.5 rounded-lg border-l-2 text-xs ${isMe ? 'bg-black/20 border-white/40' : 'bg-slate-700/60 border-primary-500'}`}>
-                                                    <p className={`font-bold mb-0.5 truncate ${isMe ? 'text-white/80' : 'text-primary-400'}`}>
-                                                        {msg.replyTo.fromName}
-                                                    </p>
-                                                    <p className={`truncate ${isMe ? 'text-white/60' : 'text-slate-400'}`}>
-                                                        {msg.replyTo.mediaType === 'image' ? '📷 Photo' : msg.replyTo.text}
-                                                    </p>
+                                            {!isMe && !isDeleted && (
+                                                <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-all mb-1 shrink-0">
+                                                    <button onClick={() => setReplyingTo(msg)} className="p-1 text-slate-600 hover:text-primary-400 transition-colors" title="Reply">
+                                                        <CornerUpLeft className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    {msg.text && <button onClick={() => handleCopyMessage(msg.text || '')} className="p-1 text-slate-600 hover:text-slate-300 transition-colors" title="Copy">
+                                                        <Copy className="w-3.5 h-3.5" />
+                                                    </button>}
+                                                    <button onClick={() => handleReportMessage(msg)} className="p-1 text-slate-600 hover:text-yellow-500 transition-colors" title="Report">
+                                                        <Flag className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
                                             )}
-                                            {msg.mediaType === 'image' && (
-                                                <div className="mb-2 -mx-1 -mt-1 rounded-xl overflow-hidden border border-white/10 shadow-lg cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setLightboxUrl(msg.mediaUrl || null)}>
-                                                    <img src={msg.mediaUrl} alt="Sent image" className="max-w-full h-auto object-cover max-h-64 sm:max-h-80" />
-                                                </div>
-                                            )}
-                                            <span className={/^[\p{Emoji}\s]+$/u.test(msg?.text || "") && (msg?.text?.length || 0) <= 6 ? "text-4xl block py-1" : ""}>
-                                                {msg?.text}
-                                            </span>
                                         </div>
-
-                                        {!isMe && (
-                                            <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-all mb-1 shrink-0">
-                                                <button
-                                                    onClick={() => setReplyingTo(msg)}
-                                                    className="p-1 text-slate-600 hover:text-primary-400 transition-colors"
-                                                    title="Reply"
-                                                >
-                                                    <CornerUpLeft className="w-3.5 h-3.5" />
-                                                </button>
-                                                <button
-                                                    onClick={() => handleReportMessage(msg)}
-                                                    className="p-1 text-slate-600 hover:text-yellow-500 transition-colors"
-                                                    title="Report"
-                                                >
-                                                    <Flag className="w-3.5 h-3.5" />
-                                                </button>
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
-                            </div>
+                            </React.Fragment>
                         );
                     })
                 )}

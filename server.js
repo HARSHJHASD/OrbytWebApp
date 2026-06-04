@@ -2106,6 +2106,50 @@ app.post('/api/chat/mark-read', async (req, res) => {
   }
 });
 
+// Delete (unsend) a single message — only the sender can do this
+app.delete('/api/chat/message/:messageId', async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { messageId } = req.params;
+    const { fromUid } = req.body;
+    if (!fromUid) return res.status(400).json({ error: "fromUid required" });
+
+    const messages = db.collection('messages');
+    const { ObjectId } = require('mongodb');
+    let query;
+    try { query = { _id: new ObjectId(messageId), fromUid }; }
+    catch { return res.status(400).json({ error: "Invalid message ID" }); }
+
+    const result = await messages.updateOne(query, { $set: { deleted: true, text: '', mediaUrl: null } });
+    if (result.matchedCount === 0) return res.status(403).json({ error: "Not found or not your message" });
+
+    // Broadcast deletion to WebSocket clients
+    const broadcastDelete = (uid) => {
+      if (clients.has(uid)) {
+        clients.get(uid).forEach(ws => {
+          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'message_deleted', messageId }));
+        });
+      }
+    };
+
+    // Get message to find the recipient to notify
+    const msg = await messages.findOne({ _id: new ObjectId(messageId) });
+    if (msg) {
+      if (msg.toUid) broadcastDelete(msg.toUid);
+      if (msg.groupId) {
+        // broadcast to all group members via their open sockets
+        clients.forEach((_, uid) => broadcastDelete(uid));
+      }
+    }
+    broadcastDelete(fromUid);
+
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Delete message error:", e);
+    res.status(500).json({ error: "Failed to delete message" });
+  }
+});
+
 app.get('/api/chat/unread-count/:uid', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {

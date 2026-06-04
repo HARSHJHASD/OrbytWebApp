@@ -352,6 +352,14 @@ export const api = {
         return 0;
       }
     },
+    deleteMessage: async (messageId: string, fromUid: string): Promise<void> => {
+      const response = await fetch(`${API_BASE}/chat/message/${messageId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromUid }),
+      });
+      if (!response?.ok) throw new Error('Failed to delete message');
+    },
     subscribe: (uid: string, onMessage: (msg: Message) => void) => {
       const { protocol, hostname, port } = window?.location;
 
