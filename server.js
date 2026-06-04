@@ -2333,7 +2333,7 @@ app.post('/api/chats/:chatId/revive', requireAuth, async (req, res) => {
 app.post('/api/communities', async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const { uid, name, description } = req.body;
+    const { uid, name, description, tags, isPrivate } = req.body;
     if (!uid || !name || typeof name !== 'string' || name.trim().length === 0) {
       return res.status(400).json({ error: 'uid and name are required' });
     }
@@ -2347,6 +2347,10 @@ app.post('/api/communities', async (req, res) => {
       members: [uid],
       createdAt: Date.now(),
       lastActivity: Date.now(),
+      tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => String(t).slice(0, 30)) : [],
+      isPrivate: isPrivate === true,
+      pinnedMessageId: null,
+      pinnedMessageText: null,
     });
     res.json({ success: true, id: result.insertedId.toString() });
   } catch (e) {
@@ -2440,6 +2444,8 @@ app.put('/api/communities/:id', async (req, res) => {
     const updates = {};
     if (name && name.trim().length >= 2) updates.name = name.trim().slice(0, 80);
     if (description !== undefined) updates.description = (description || '').trim().slice(0, 300);
+    if (Array.isArray(req.body.tags)) updates.tags = req.body.tags.slice(0, 5).map(t => String(t).slice(0, 30));
+    if (typeof req.body.isPrivate === 'boolean') updates.isPrivate = req.body.isPrivate;
     await communities.updateOne({ _id: new ObjectId(id) }, { $set: updates });
     res.json({ success: true });
   } catch (e) {
@@ -2464,6 +2470,52 @@ app.delete('/api/communities/:id', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete community' });
+  }
+});
+
+// Delete a single group message (sender or room owner)
+app.delete('/api/communities/:id/messages/:msgId', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id, msgId } = req.params;
+    const { uid } = req.body;
+    if (!uid || !ObjectId.isValid(msgId) || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const messages = db.collection('messages');
+    const msg = await messages.findOne({ _id: new ObjectId(msgId) });
+    if (!msg) return res.status(404).json({ error: 'Message not found' });
+    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
+    const isOwner = community?.ownerUid === uid;
+    if (msg.fromUid !== uid && !isOwner) return res.status(403).json({ error: 'Not authorized' });
+    await messages.updateOne({ _id: new ObjectId(msgId) }, { $set: { deleted: true, text: '', mediaUrl: null } });
+    // Broadcast deletion to room subscribers
+    const roomWs = rooms?.get(id);
+    if (roomWs) {
+      const payload = JSON.stringify({ type: 'message_deleted', messageId: msgId });
+      roomWs.forEach(ws => { try { ws.send(payload); } catch {} });
+    }
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Pin a message (room owner only)
+app.put('/api/communities/:id/pin', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { uid, messageId, messageText } = req.body;
+    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
+    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can pin messages' });
+    await db.collection('communities').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { pinnedMessageId: messageId || null, pinnedMessageText: messageText || null } }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to pin message' });
   }
 });
 

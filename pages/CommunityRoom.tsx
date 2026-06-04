@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Community, Message, UserProfile } from '../types';
 import {
-  ArrowLeft, Hash, Users, Send, Loader2, Image as ImageIcon, X, Crown
+  ArrowLeft, Hash, Users, Send, Loader2, Image as ImageIcon, X, Crown,
+  Copy, Trash2, Reply, Pin, AtSign
 } from 'lucide-react';
 import { compressImage } from '../util/ImageCompression';
 
@@ -82,6 +83,9 @@ const CommunityRoom: React.FC = () => {
   const [showMembers, setShowMembers] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [showMentions, setShowMentions] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -137,7 +141,14 @@ const CommunityRoom: React.FC = () => {
   // ── Real-time subscription ─────────────────────────────────────────────────
   useEffect(() => {
     if (!user || !communityId) return;
-    const unsub = api.chat.subscribe(user.uid, (msg: Message) => {
+    const unsub = api.chat.subscribe(user.uid, (payload: any) => {
+      if (payload?.type === 'message_deleted') {
+        setMessages(prev => prev.map(m =>
+          m._id === payload.messageId ? { ...m, deleted: true, text: '', mediaUrl: undefined } : m
+        ));
+        return;
+      }
+      const msg = payload as Message;
       if (msg.groupId !== communityId) return;
       setMessages(prev => prev.some(m => m._id === msg._id) ? prev : [...prev, msg]);
     });
@@ -152,10 +163,12 @@ const CommunityRoom: React.FC = () => {
     setSending(true);
     setText('');
     setImagePreview(null);
+    setReplyTo(null);
     try {
       const sent = await api.chat.send(
         user.uid, undefined, msgText, communityId,
-        imgUrl ? 'image' : undefined, imgUrl
+        imgUrl ? 'image' : undefined, imgUrl,
+        replyTo?._id, replyTo?.text?.slice(0, 80),
       );
       setMessages(prev => prev.some(m => m._id === sent._id) ? prev : [...prev, sent]);
     } catch (e) {
@@ -165,7 +178,66 @@ const CommunityRoom: React.FC = () => {
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [user, communityId, text]);
+  }, [user, communityId, text, replyTo]);
+
+  const handleDeleteMessage = async (msg: Message) => {
+    if (!user || !communityId) return;
+    try {
+      await api.communities.deleteMessage(communityId, msg._id, user.uid);
+      setMessages(prev => prev.map(m =>
+        m._id === msg._id ? { ...m, deleted: true, text: '', mediaUrl: undefined } : m
+      ));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handlePinMessage = async (msg: Message) => {
+    if (!user || !communityId || !community) return;
+    const isAlreadyPinned = community.pinnedMessageId === msg._id;
+    try {
+      await api.communities.pinMessage(
+        communityId, user.uid,
+        isAlreadyPinned ? null : msg._id,
+        isAlreadyPinned ? null : (msg.text || '').slice(0, 100),
+      );
+      setCommunity(prev => prev ? {
+        ...prev,
+        pinnedMessageId: isAlreadyPinned ? undefined : msg._id,
+        pinnedMessageText: isAlreadyPinned ? undefined : (msg.text || '').slice(0, 100),
+      } : prev);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setText(val);
+    // @mention detection
+    const words = val.split(/\s/);
+    const last = words[words.length - 1] ?? '';
+    if (last.startsWith('@') && last.length > 1) {
+      setMentionQuery(last.slice(1).toLowerCase());
+      setShowMentions(true);
+    } else {
+      setShowMentions(false);
+      setMentionQuery('');
+    }
+  };
+
+  const insertMention = (displayName: string) => {
+    const words = text.split(/\s/);
+    words[words.length - 1] = `@${displayName}`;
+    setText(words.join(' ') + ' ');
+    setShowMentions(false);
+    setMentionQuery('');
+    inputRef.current?.focus();
+  };
+
+  const mentionSuggestions = showMentions
+    ? members.filter(m => m.uid !== user?.uid && m.displayName?.toLowerCase().includes(mentionQuery)).slice(0, 5)
+    : [];
 
   const handleImagePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -234,7 +306,7 @@ const CommunityRoom: React.FC = () => {
 
         <div className="flex-1 min-w-0 cursor-pointer" onClick={() => setShowMembers(true)}>
           <h1 className="font-bold text-white text-sm truncate">{community?.name}</h1>
-          <p className="text-slate-500 text-xs">{community?.members.length} members</p>
+          <p className="text-slate-500 text-xs">{community?.members.length} members{community?.isPrivate ? ' · 🔒 Private' : ''}</p>
         </div>
 
         <button
@@ -245,6 +317,22 @@ const CommunityRoom: React.FC = () => {
           <span className="text-xs font-semibold">{community?.members.length}</span>
         </button>
       </div>
+
+      {/* Pinned Message Banner */}
+      {community?.pinnedMessageId && community?.pinnedMessageText && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20">
+          <Pin className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" />
+          <p className="text-xs text-yellow-200/80 truncate flex-1">{community.pinnedMessageText}</p>
+          {community.ownerUid === user?.uid && (
+            <button
+              onClick={() => handlePinMessage({ _id: community.pinnedMessageId! } as Message)}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
@@ -261,9 +349,11 @@ const CommunityRoom: React.FC = () => {
           const prevMsg = messages[i - 1];
           const showAvatar = !mine && (i === 0 || prevMsg?.fromUid !== msg.fromUid);
           const showName = !mine && showAvatar;
+          const isOwner = community?.ownerUid === user?.uid;
+          const isPinned = community?.pinnedMessageId === msg._id;
 
           return (
-            <div key={msg._id ?? i} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+            <div key={msg._id ?? i} className={`flex items-end gap-2 group ${mine ? 'justify-end' : 'justify-start'}`}>
               {/* Avatar for others */}
               {!mine && (
                 <div className="w-7 flex-shrink-0">
@@ -291,16 +381,67 @@ const CommunityRoom: React.FC = () => {
 
               <div className={`flex flex-col max-w-[75%] ${mine ? 'items-end' : 'items-start'}`}>
                 {showName && (
-                  <span className="text-xs text-slate-500 font-medium mb-1 px-1">
+                  <span
+                    className="text-xs text-slate-500 font-medium mb-1 px-1 cursor-pointer hover:text-slate-300 transition-colors"
+                    onClick={() => navigate(`/app/profile/${msg.fromUid}`)}
+                  >
                     {sender?.displayName ?? msg.authorName ?? 'Member'}
                   </span>
+                )}
+
+                {/* Hover actions row */}
+                {!(msg as any).deleted && (
+                  <div className={`flex items-center gap-1 mb-1 opacity-0 group-hover:opacity-100 transition-opacity ${mine ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <button
+                      title="Reply"
+                      onClick={() => setReplyTo(msg)}
+                      className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                    >
+                      <Reply className="w-3.5 h-3.5" />
+                    </button>
+                    {msg.text && (
+                      <button
+                        title="Copy"
+                        onClick={() => navigator.clipboard.writeText(msg.text ?? '')}
+                        className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {isOwner && (
+                      <button
+                        title={isPinned ? 'Unpin' : 'Pin'}
+                        onClick={() => handlePinMessage(msg)}
+                        className={`p-1 rounded-lg bg-slate-800 hover:bg-slate-700 transition-colors ${isPinned ? 'text-yellow-400' : 'text-slate-400 hover:text-white'}`}
+                      >
+                        <Pin className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    {(mine || isOwner) && (
+                      <button
+                        title="Delete"
+                        onClick={() => handleDeleteMessage(msg)}
+                        className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-red-400 hover:bg-slate-700 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 <div className={`rounded-2xl px-3 py-2 ${mine
                   ? 'bg-primary-500 text-white rounded-br-sm'
                   : 'bg-slate-800 text-slate-100 rounded-bl-sm'
-                }`}>
-                  {msg.mediaType === 'image' && msg.mediaUrl ? (
+                } ${isPinned ? 'ring-1 ring-yellow-400/40' : ''}`}>
+                  {/* Reply-to quote */}
+                  {(msg as any).replyToId && (msg as any).replyToText && (
+                    <div className={`text-xs border-l-2 pl-2 py-0.5 mb-1.5 rounded-sm ${mine ? 'border-white/40 text-white/60' : 'border-primary-500/40 text-slate-400'}`}>
+                      {(msg as any).replyToText}
+                    </div>
+                  )}
+                  {(msg as any).deleted ? (
+                    <p className={`text-sm italic ${mine ? 'text-white/50' : 'text-slate-500'}`}>Message deleted</p>
+                  ) : msg.mediaType === 'image' && msg.mediaUrl ? (
                     <img
                       src={msg.mediaUrl}
                       alt="Image"
@@ -326,6 +467,42 @@ const CommunityRoom: React.FC = () => {
       {/* Input or Join Gate */}
       {isMember ? (
         <div className="border-t border-slate-800/70 bg-slate-900/80 backdrop-blur-xl px-3 py-3 pb-[max(env(safe-area-inset-bottom),12px)]">
+          {/* Reply-to preview */}
+          {replyTo && (
+            <div className="flex items-center gap-2 mb-2 px-3 py-1.5 bg-slate-800 rounded-xl">
+              <Reply className="w-3.5 h-3.5 text-primary-400 flex-shrink-0" />
+              <p className="text-xs text-slate-400 flex-1 truncate">
+                <span className="text-primary-400 font-semibold">{senderProfile(replyTo.fromUid)?.displayName ?? replyTo.authorName} · </span>
+                {replyTo.text}
+              </p>
+              <button onClick={() => setReplyTo(null)}>
+                <X className="w-4 h-4 text-slate-500 hover:text-slate-300 transition-colors" />
+              </button>
+            </div>
+          )}
+
+          {/* @mention dropdown */}
+          {mentionSuggestions.length > 0 && (
+            <div className="mb-2 bg-slate-800 rounded-xl overflow-hidden divide-y divide-slate-700/50">
+              {mentionSuggestions.map(m => (
+                <button
+                  key={m.uid}
+                  onClick={() => insertMention(m.displayName ?? m.uid)}
+                  className="w-full flex items-center gap-2 px-3 py-2 hover:bg-slate-700/50 transition-colors text-left"
+                >
+                  {m.photoURL ? (
+                    <img src={m.photoURL} alt={m.displayName} className="w-6 h-6 rounded-full object-cover" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-primary-500/20 flex items-center justify-center">
+                      <span className="text-primary-400 text-[10px] font-bold">{m.displayName?.[0]?.toUpperCase()}</span>
+                    </div>
+                  )}
+                  <span className="text-sm text-white font-medium">@{m.displayName}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 bg-slate-800 rounded-2xl px-3 py-2">
             {/* Image attach */}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
@@ -336,13 +513,21 @@ const CommunityRoom: React.FC = () => {
               <ImageIcon className="w-5 h-5" />
             </button>
 
+            <button
+              onClick={() => { setText(t => t + '@'); inputRef.current?.focus(); }}
+              className="w-8 h-8 flex items-center justify-center text-slate-500 hover:text-primary-400 transition-colors flex-shrink-0 mb-0.5"
+              title="Mention someone"
+            >
+              <AtSign className="w-4 h-4" />
+            </button>
+
             <textarea
               ref={inputRef}
               className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none max-h-32 min-h-[20px] leading-snug py-1"
               placeholder="Message the room…"
               rows={1}
               value={text}
-              onChange={e => setText(e.target.value)}
+              onChange={handleTextChange}
               onKeyDown={handleKeyDown}
               style={{ height: 'auto' }}
               onInput={e => {

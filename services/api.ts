@@ -633,11 +633,11 @@ export const api = {
   },
 
   communities: {
-    create: async (uid: string, name: string, description?: string) => {
+    create: async (uid: string, name: string, description?: string, tags?: string[], isPrivate?: boolean) => {
       const response = await fetch(`${API_BASE}/communities`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid, name, description }),
+        body: JSON.stringify({ uid, name, description, tags, isPrivate }),
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to create room");
@@ -674,11 +674,11 @@ export const api = {
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to leave room");
     },
-    update: async (id: string, uid: string, name: string, description?: string) => {
+    update: async (id: string, uid: string, name: string, description?: string, tags?: string[], isPrivate?: boolean) => {
       const response = await fetch(`${API_BASE}/communities/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uid, name, description }),
+        body: JSON.stringify({ uid, name, description, tags, isPrivate }),
       });
       if (!response?.ok) throw new Error("Failed to update room");
     },
@@ -689,6 +689,22 @@ export const api = {
         body: JSON.stringify({ uid }),
       });
       if (!response?.ok) throw new Error("Failed to delete room");
+    },
+    deleteMessage: async (communityId: string, messageId: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/communities/${communityId}/messages/${messageId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid }),
+      });
+      if (!response?.ok) throw new Error("Failed to delete message");
+    },
+    pinMessage: async (communityId: string, uid: string, messageId: string | null, messageText: string | null) => {
+      const response = await fetch(`${API_BASE}/communities/${communityId}/pin`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, messageId, messageText }),
+      });
+      if (!response?.ok) throw new Error("Failed to pin message");
     },
   },
 };

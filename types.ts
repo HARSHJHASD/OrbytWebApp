@@ -161,4 +161,8 @@ export interface Community {
   members: string[];
   createdAt: number;
   lastActivity: number;
+  tags?: string[];
+  isPrivate?: boolean;
+  pinnedMessageId?: string;
+  pinnedMessageText?: string;
 }

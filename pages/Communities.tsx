@@ -5,21 +5,42 @@ import { api } from '../services/api';
 import { Community } from '../types';
 import {
   Hash, Plus, Users, ArrowRight, Trash2, Pencil, LogOut,
-  Loader2, Search, X, Crown, MessageCircle
+  Loader2, Search, X, Crown, MessageCircle, Globe, Lock, Tag
 } from 'lucide-react';
+
+const ROOM_TAGS = [
+  { id: 'fitness', label: 'Fitness', emoji: '🏃' },
+  { id: 'food', label: 'Food', emoji: '🍽️' },
+  { id: 'music', label: 'Music', emoji: '🎵' },
+  { id: 'tech', label: 'Tech', emoji: '💻' },
+  { id: 'outdoors', label: 'Outdoors', emoji: '🌍' },
+  { id: 'books', label: 'Books', emoji: '📚' },
+  { id: 'gaming', label: 'Gaming', emoji: '🎮' },
+  { id: 'art', label: 'Art', emoji: '🎨' },
+  { id: 'wellness', label: 'Wellness', emoji: '🌿' },
+  { id: 'travel', label: 'Travel', emoji: '✈️' },
+  { id: 'parenting', label: 'Parenting', emoji: '👶' },
+  { id: 'social', label: 'Social', emoji: '🎉' },
+];
 
 // ─── Create / Edit Modal ────────────────────────────────────────────────────
 interface RoomModalProps {
-  initial?: { name: string; description: string };
+  initial?: { name: string; description: string; tags?: string[]; isPrivate?: boolean };
   onClose: () => void;
-  onSave: (name: string, description: string) => Promise<void>;
+  onSave: (name: string, description: string, tags: string[], isPrivate: boolean) => Promise<void>;
 }
 
 const RoomModal: React.FC<RoomModalProps> = ({ initial, onClose, onSave }) => {
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
+  const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
+  const [isPrivate, setIsPrivate] = useState(initial?.isPrivate ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleTag = (id: string) => {
+    setTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : prev.length < 3 ? [...prev, id] : prev);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,7 +48,7 @@ const RoomModal: React.FC<RoomModalProps> = ({ initial, onClose, onSave }) => {
     setSaving(true);
     setError('');
     try {
-      await onSave(name.trim(), description.trim());
+      await onSave(name.trim(), description.trim(), tags, isPrivate);
       onClose();
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
@@ -39,7 +60,7 @@ const RoomModal: React.FC<RoomModalProps> = ({ initial, onClose, onSave }) => {
   return (
     <div className="fixed inset-0 z-[3000] flex items-end justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md bg-slate-900 rounded-t-3xl p-6 border-t border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+      <div className="relative w-full max-w-md bg-slate-900 rounded-t-3xl p-6 border-t border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[92vh] overflow-y-auto">
         <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-6" />
         <h2 className="text-xl font-bold text-white mb-5">
           {initial ? 'Edit Room' : 'Create a Room'}
@@ -72,6 +93,63 @@ const RoomModal: React.FC<RoomModalProps> = ({ initial, onClose, onSave }) => {
               maxLength={300}
               onChange={e => setDescription(e.target.value)}
             />
+          </div>
+
+          {/* Topic Tags */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Tag className="w-3.5 h-3.5" /> Topics <span className="text-slate-600 font-normal normal-case">(pick up to 3)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {ROOM_TAGS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => toggleTag(t.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                    tags.includes(t.id)
+                      ? 'bg-primary-500 border-primary-500 text-white'
+                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-primary-500/50'
+                  } ${!tags.includes(t.id) && tags.length >= 3 ? 'opacity-40 cursor-not-allowed' : ''}`}
+                >
+                  {t.emoji} {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Privacy Toggle */}
+          <div>
+            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 block">
+              Visibility
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPrivate(false)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                  !isPrivate
+                    ? 'bg-primary-500 border-primary-500 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                <Globe className="w-4 h-4" /> Public
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPrivate(true)}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+                  isPrivate
+                    ? 'bg-primary-500 border-primary-500 text-white'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
+                }`}
+              >
+                <Lock className="w-4 h-4" /> Private
+              </button>
+            </div>
+            <p className="text-xs text-slate-600 mt-1.5">
+              {isPrivate ? 'Private rooms are hidden from Discover — share the link to invite.' : 'Public rooms appear in Discover for anyone to find and join.'}
+            </p>
           </div>
 
           {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -131,24 +209,25 @@ const Communities: React.FC = () => {
   const myRooms = allRooms.filter(r => user && r.members.includes(user.uid));
   const searchLower = search.toLowerCase();
 
-  const visibleRooms = (tab === 'my' ? myRooms : allRooms).filter(r =>
+  const visibleRooms = (tab === 'my' ? myRooms : allRooms.filter(r => !r.isPrivate || (user && r.members.includes(user.uid)))).filter(r =>
     r.name.toLowerCase().includes(searchLower) ||
-    (r.description || '').toLowerCase().includes(searchLower)
+    (r.description || '').toLowerCase().includes(searchLower) ||
+    (r.tags || []).some(t => t.toLowerCase().includes(searchLower))
   );
 
   // ── Actions ──────────────────────────────────────────────────────────────
 
-  const handleCreate = async (name: string, description: string) => {
+  const handleCreate = async (name: string, description: string, tags: string[], isPrivate: boolean) => {
     if (!user) return;
-    const { id } = await api.communities.create(user.uid, name, description);
+    const { id } = await api.communities.create(user.uid, name, description, tags, isPrivate);
     await fetchRooms();
     navigate(`/app/rooms/${id}`);
   };
 
-  const handleEdit = async (name: string, description: string) => {
+  const handleEdit = async (name: string, description: string, tags: string[], isPrivate: boolean) => {
     if (!user || !editRoom) return;
-    await api.communities.update(editRoom._id, user.uid, name, description);
-    setAllRooms(prev => prev.map(r => r._id === editRoom._id ? { ...r, name, description } : r));
+    await api.communities.update(editRoom._id, user.uid, name, description, tags, isPrivate);
+    setAllRooms(prev => prev.map(r => r._id === editRoom._id ? { ...r, name, description, tags, isPrivate } : r));
   };
 
   const handleJoin = async (room: Community) => {
@@ -294,9 +373,24 @@ const Communities: React.FC = () => {
                       {owner && (
                         <Crown className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
                       )}
+                      {room.isPrivate && (
+                        <Lock className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                      )}
                     </div>
                     {room.description && (
                       <p className="text-slate-400 text-xs mt-0.5 line-clamp-2">{room.description}</p>
+                    )}
+                    {(room.tags || []).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {(room.tags || []).map(t => {
+                          const tag = ROOM_TAGS.find(rt => rt.id === t);
+                          return tag ? (
+                            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">
+                              {tag.emoji} {tag.label}
+                            </span>
+                          ) : null;
+                        })}
+                      </div>
                     )}
                     <div className="flex items-center gap-1 mt-1.5 text-slate-500 text-xs">
                       <Users className="w-3 h-3" />
@@ -371,7 +465,7 @@ const Communities: React.FC = () => {
       {/* Edit Room Modal */}
       {editRoom && (
         <RoomModal
-          initial={{ name: editRoom.name, description: editRoom.description || '' }}
+          initial={{ name: editRoom.name, description: editRoom.description || '', tags: editRoom.tags, isPrivate: editRoom.isPrivate }}
           onClose={() => setEditRoom(null)}
           onSave={handleEdit}
         />
