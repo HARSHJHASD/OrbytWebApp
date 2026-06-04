@@ -15,6 +15,10 @@ export interface MeetupDetails {
   startTime: string; // HH:mm
   endTime: string; // HH:mm
   meetingUrl?: string;
+  venueName?: string;
+  category?: string;
+  rsvpDeadline?: string; // YYYY-MM-DD
+  repeatFrequency?: 'once' | 'weekly' | 'biweekly' | 'monthly';
 }
 
 export interface UserProfile {

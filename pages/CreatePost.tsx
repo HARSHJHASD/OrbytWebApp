@@ -20,6 +20,9 @@ import {
   Loader2,
   Eye,
   Smile,
+  Repeat2,
+  Tag,
+  Home,
 } from "lucide-react";
 import { useUserLocation } from "../components/LocationGuard";
 import { MEETUP_ACTIVITIES, FEE_TYPES } from "../types";
@@ -30,6 +33,23 @@ import ImageCropperModal from "../components/ImageCropperModal";
 const MOODS = ['😄','🎉','😤','🥲','😍','🤔','😴','🔥','❤️','💪'];
 const POPULAR_TAGS = ['#local','#vibes','#meetup','#explore','#foodie','#fitness','#travel','#art','#music','#tech'];
 const DRAFT_KEY = 'create_post_draft';
+const MEETUP_DRAFT_KEY = 'create_meetup_draft';
+const MEETUP_CATEGORIES = [
+  { id: 'active', label: 'Active', emoji: '🏃' },
+  { id: 'food', label: 'Food & Drink', emoji: '🍽️' },
+  { id: 'music', label: 'Music & Arts', emoji: '🎵' },
+  { id: 'tech', label: 'Tech', emoji: '💻' },
+  { id: 'wellness', label: 'Wellness', emoji: '🌿' },
+  { id: 'social', label: 'Social', emoji: '🎉' },
+  { id: 'creative', label: 'Creative', emoji: '🎨' },
+  { id: 'outdoors', label: 'Outdoors', emoji: '🌍' },
+];
+const REPEAT_OPTIONS = [
+  { id: 'once', label: 'Once' },
+  { id: 'weekly', label: 'Weekly' },
+  { id: 'biweekly', label: 'Bi-weekly' },
+  { id: 'monthly', label: 'Monthly' },
+] as const;
 
 const CreatePost: React.FC = () => {
   const { user } = useAuth();
@@ -58,6 +78,11 @@ const CreatePost: React.FC = () => {
   const [maxGuests, setMaxGuests] = useState<number | "">("");
   const [meetupUrl, setMeetupUrl] = useState("");
   const [visibility, setVisibility] = useState<'public' | 'friends'>('public');
+  // New meetup fields
+  const [venueName, setVenueName] = useState("");
+  const [category, setCategory] = useState<string>("");
+  const [rsvpDeadline, setRsvpDeadline] = useState("");
+  const [repeatFrequency, setRepeatFrequency] = useState<'once' | 'weekly' | 'biweekly' | 'monthly'>('once');
 
   // Draft
   const draftSaved = useRef(false);
@@ -83,6 +108,20 @@ const CreatePost: React.FC = () => {
         if (d.content) setContent(d.content);
         if (d.selectedMood) setSelectedMood(d.selectedMood);
       }
+      const meetupSaved = localStorage.getItem(MEETUP_DRAFT_KEY);
+      if (meetupSaved) {
+        const m = JSON.parse(meetupSaved);
+        if (m.meetupTitle) setMeetupTitle(m.meetupTitle);
+        if (m.activity) setActivity(m.activity);
+        if (m.date) setDate(m.date);
+        if (m.startTime) setStartTime(m.startTime);
+        if (m.endTime) setEndTime(m.endTime);
+        if (m.content) setContent(m.content);
+        if (m.venueName) setVenueName(m.venueName);
+        if (m.category) setCategory(m.category);
+        if (m.rsvpDeadline) setRsvpDeadline(m.rsvpDeadline);
+        if (m.repeatFrequency) setRepeatFrequency(m.repeatFrequency);
+      }
     } catch {}
   }, []);
 
@@ -96,8 +135,21 @@ const CreatePost: React.FC = () => {
     return () => clearTimeout(timer);
   }, [content, selectedMood]);
 
+  // Auto-save meetup draft
+  useEffect(() => {
+    if (!meetupTitle && !date && !venueName) return;
+    const timer = setTimeout(() => {
+      localStorage.setItem(MEETUP_DRAFT_KEY, JSON.stringify({
+        meetupTitle, activity, date, startTime, endTime, content,
+        venueName, category, rsvpDeadline, repeatFrequency,
+      }));
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [meetupTitle, activity, date, startTime, endTime, content, venueName, category, rsvpDeadline, repeatFrequency]);
+
   const clearDraft = useCallback(() => {
     localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(MEETUP_DRAFT_KEY);
     draftSaved.current = false;
   }, []);
 
@@ -105,7 +157,7 @@ const CreatePost: React.FC = () => {
     setContent(txt);
     if (error) setError(null);
     const words = txt.split(/\s/);
-    const last = words[words.length - 1];
+    const last = words[words.length - 1] ?? '';
     if (last.startsWith('#') && last.length > 1) {
       setHashtagQuery(last.toLowerCase());
       setShowHashtagSuggestions(true);
@@ -254,6 +306,10 @@ const CreatePost: React.FC = () => {
           endTime,
           maxGuests: maxGuests || undefined,
           meetingUrl: meetupUrl || undefined,
+          venueName: venueName.trim() || undefined,
+          category: category || undefined,
+          rsvpDeadline: rsvpDeadline || undefined,
+          repeatFrequency,
         };
         // For meetups, the 'content' field in the DB acts as the description
         payload.content = content;
@@ -533,6 +589,76 @@ const CreatePost: React.FC = () => {
               value={meetupUrl}
               onChange={(e) => setMeetupUrl(e.target.value)}
             />
+
+            {/* Venue Name */}
+            <Input
+              placeholder="Venue / Location name (e.g. Central Park, Blue Bottle Coffee)"
+              icon={<Home className="w-4 h-4" />}
+              value={venueName}
+              onChange={(e) => setVenueName(e.target.value)}
+            />
+
+            {/* Category Pills */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Tag className="w-3.5 h-3.5" /> Category
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {MEETUP_CATEGORIES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setCategory(category === c.id ? '' : c.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                      category === c.id
+                        ? 'bg-primary-500 border-primary-500 text-white'
+                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-primary-500/50'
+                    }`}
+                  >
+                    <span>{c.emoji}</span>
+                    <span>{c.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* RSVP Deadline */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                RSVP Deadline <span className="text-slate-600 font-normal normal-case">(optional)</span>
+              </label>
+              <input
+                type="date"
+                className="w-full rounded-2xl border-2 border-slate-800 bg-slate-900 px-4 py-3 text-white outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 text-sm"
+                value={rsvpDeadline}
+                min={new Date().toISOString().split('T')[0]}
+                max={date || undefined}
+                onChange={(e) => setRsvpDeadline(e.target.value)}
+              />
+            </div>
+
+            {/* Repeat Frequency */}
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1">
+                <Repeat2 className="w-3.5 h-3.5" /> Repeats
+              </label>
+              <div className="flex gap-2">
+                {REPEAT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setRepeatFrequency(opt.id)}
+                    className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      repeatFrequency === opt.id
+                        ? 'bg-primary-500 border-primary-500 text-white'
+                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-primary-500/50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

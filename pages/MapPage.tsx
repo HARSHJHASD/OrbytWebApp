@@ -2,8 +2,8 @@ import L from "leaflet";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet/dist/leaflet.css";
-import { ChevronRight, Instagram, Loader2, LocateFixed, User, X, MapPin } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, ChevronRight, Instagram, Loader2, LocateFixed, MessageCircle, RefreshCw, User, UserPlus, X, MapPin } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-markercluster";
 import { useNavigate } from "react-router-dom";
@@ -91,6 +91,9 @@ const MapPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedUser, setSelectedUser] = useState<NearbyUser | null>(null);
   const [isListOpen, setIsListOpen] = useState(false);
+  const [connecting, setConnecting] = useState<Set<string>>(new Set());
+  const [connected, setConnected] = useState<Set<string>>(new Set());
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
   type FilterType = "all" | "friends" | "interests";
   const [filter, setFilter] = useState<FilterType>("all");
@@ -105,20 +108,44 @@ const MapPage: React.FC = () => {
 
   /* ---------------- FETCH USERS ---------------- */
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const data = await api.profile.getAllWithLocation(currentUser?.uid);
-        setUsers(data);
-      } catch (e) {
-        console.error("Failed to load map users", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUsers();
+  const fetchMapData = useCallback(async () => {
+    if (!currentUser?.uid) return;
+    try {
+      const [data, profile] = await Promise.all([
+        api.profile.getAllWithLocation(currentUser.uid),
+        api.profile.get(currentUser.uid),
+      ]);
+      setUsers(data);
+      setCurrentUserProfile(profile);
+      setLastRefreshed(new Date());
+    } catch (e) {
+      console.error("Failed to load map users", e);
+    } finally {
+      setLoading(false);
+    }
   }, [currentUser]);
+
+  useEffect(() => { fetchMapData(); }, [fetchMapData]);
+
+  useEffect(() => {
+    const interval = setInterval(() => fetchMapData(), 60_000);
+    return () => clearInterval(interval);
+  }, [fetchMapData]);
+
+  /* ---------------- CONNECT ---------------- */
+
+  const handleConnect = async (targetUid: string) => {
+    if (!currentUser?.uid || connecting.has(targetUid) || connected.has(targetUid)) return;
+    setConnecting(prev => new Set(prev).add(targetUid));
+    try {
+      await api.friends.sendRequest(currentUser.uid, targetUid);
+      setConnected(prev => new Set(prev).add(targetUid));
+    } catch (e) {
+      console.error("Failed to send request", e);
+    } finally {
+      setConnecting(prev => { const n = new Set(prev); n.delete(targetUid); return n; });
+    }
+  };
 
   /* ---------------- NEARBY USERS ---------------- */
 
@@ -298,33 +325,50 @@ const MapPage: React.FC = () => {
       {/* SELECTED USER CARD */}
       {selectedUser && (
         <div className="absolute bottom-6 left-4 right-4 z-[1002] bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xl transition-colors duration-300">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
               {selectedUser.photoURL ? (
-                <img
-                 draggable={false}
-                  src={selectedUser.photoURL}
-                  className="w-full h-full object-cover"
-                />
+                <img draggable={false} src={selectedUser.photoURL} className="w-full h-full object-cover" />
               ) : (
                 <User className="w-8 h-8 m-auto text-slate-400 dark:text-slate-500" />
               )}
             </div>
-
-            <div className="flex-1">
-              <h3 className="font-bold text-slate-900 dark:text-white text-lg">
-                {selectedUser.displayName}
-              </h3>
-              <p className="text-sm text-primary-600 dark:text-primary-400 font-medium">
-                {selectedUser.distanceBand || selectedUser.distDisplay} away (approx.)
-              </p>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-bold text-slate-900 dark:text-white text-base truncate">{selectedUser.displayName}</h3>
+              <p className="text-xs text-primary-600 dark:text-primary-400 font-medium">{selectedUser.distanceBand || selectedUser.distDisplay} away</p>
+              {(() => {
+                const mutual = (selectedUser.friends || []).filter(f => currentUserFriends.includes(f)).length;
+                return mutual > 0 ? <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">{mutual} mutual friend{mutual > 1 ? 's' : ''}</p> : null;
+              })()}
             </div>
-
+            <button onClick={() => setSelectedUser(null)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {selectedUser.bio && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 italic mb-3 line-clamp-1">"{selectedUser.bio}"</p>
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate(`/app/chat/${selectedUser.uid}`)}
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            >
+              <MessageCircle className="w-3.5 h-3.5" /> Message
+            </button>
+            {!currentUserFriends.includes(selectedUser.uid) ? (
+              <button
+                onClick={() => handleConnect(selectedUser.uid)}
+                disabled={connecting.has(selectedUser.uid) || connected.has(selectedUser.uid)}
+                className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-primary-600 transition-colors disabled:opacity-60"
+              >
+                {connected.has(selectedUser.uid) ? <><Check className="w-3.5 h-3.5" /> Sent</> : <><UserPlus className="w-3.5 h-3.5" /> Connect</>}
+              </button>
+            ) : null}
             <button
               onClick={() => navigate(`/app/profile/${selectedUser.uid}`)}
-              className="h-12 w-12 bg-primary-500 dark:bg-primary-600 rounded-xl flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+              className="h-9 w-9 bg-slate-900 dark:bg-slate-700 rounded-xl flex items-center justify-center shrink-0"
             >
-              <ChevronRight className="w-6 h-6 text-white" />
+              <ChevronRight className="w-4 h-4 text-white" />
             </button>
           </div>
         </div>
@@ -375,8 +419,11 @@ const MapPage: React.FC = () => {
         </button>
       )}
 
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] bg-slate-900/90 text-slate-200 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-slate-700 shadow-lg">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1001] bg-slate-900/90 text-slate-200 text-[11px] font-semibold px-3 py-1.5 rounded-full border border-slate-700 shadow-lg flex items-center gap-2">
         Approximate locations for safety
+        <button onClick={() => fetchMapData()} className="text-slate-400 hover:text-white transition-colors">
+          <RefreshCw className="w-3 h-3" />
+        </button>
       </div>
 
       {/* BOTTOM DRAWER */}
@@ -403,6 +450,19 @@ const MapPage: React.FC = () => {
 
             {/* FILTERS BAR */}
             <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950/50 border-b border-slate-100 dark:border-slate-800 space-y-4">
+              {/* Show filter */}
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Show</span>
+                <div className="flex gap-2">
+                  {(["all", "friends", "interests"] as const).map((f) => (
+                    <button key={f} onClick={() => setFilter(f)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold capitalize border transition-all ${filter === f ? "bg-primary-500 border-primary-500 text-white shadow-lg shadow-primary-500/20" : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300 dark:hover:border-slate-700"}`}>
+                      {f === "all" ? "Everyone" : f === "friends" ? "Friends" : "Shared Interests"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2">
                 <div className="flex justify-between items-center">
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Search Radius</span>
@@ -478,6 +538,12 @@ const MapPage: React.FC = () => {
                               {(u.distanceBand || u.distDisplay)} away
                             </p>
                           )}
+                          {(() => {
+                            const mutual = (u.friends || []).filter(f => currentUserFriends.includes(f)).length;
+                            return mutual > 0 ? (
+                              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{mutual} mutual friend{mutual > 1 ? 's' : ''}</p>
+                            ) : null;
+                          })()}
                         </div>
                         {u.instagramHandle && (
                           <a
@@ -526,13 +592,31 @@ const MapPage: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Action Button */}
-                  <button
-                    onClick={() => navigate(`/app/profile/${u.uid}`)}
-                    className="w-full py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md hover:bg-slate-800 dark:hover:bg-slate-700 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4 border border-slate-800 dark:border-slate-700"
-                  >
-                    View Full Profile <ChevronRight className="w-4 h-4" />
-                  </button>
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={() => navigate(`/app/chat/${u.uid}`)}
+                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors border border-slate-200 dark:border-slate-700"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5" /> Message
+                    </button>
+                    {!currentUserFriends.includes(u.uid) ? (
+                      <button
+                        onClick={() => handleConnect(u.uid)}
+                        disabled={connecting.has(u.uid) || connected.has(u.uid)}
+                        className="flex-1 py-2.5 bg-primary-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-primary-600 transition-colors disabled:opacity-60 border border-primary-500"
+                      >
+                        {connected.has(u.uid) ? <><Check className="w-3.5 h-3.5" /> Sent</> : <><UserPlus className="w-3.5 h-3.5" /> Connect</>}
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => navigate(`/app/profile/${u.uid}`)}
+                        className="flex-1 py-2.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-colors border border-slate-800 dark:border-slate-700"
+                      >
+                        View Profile <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
 
