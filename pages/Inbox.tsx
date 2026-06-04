@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Users,
   Calendar,
+  Search,
+  X,
 } from "lucide-react";
 
 interface InboxItem {
@@ -24,6 +26,8 @@ const Inbox: React.FC = () => {
   const navigate = useNavigate();
   const [conversations, setConversations] = useState<InboxItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
 
   const fetchInbox = async () => {
     if (!user) return;
@@ -125,6 +129,18 @@ const Inbox: React.FC = () => {
 
   const meetupChats = conversations.filter((c) => c.type === "group");
   const friendChats = conversations.filter((c) => c.type === "direct");
+
+  const filterConvs = (list: InboxItem[]) => {
+    if (!searchQuery.trim()) return list;
+    const q = searchQuery.toLowerCase();
+    return list.filter(c => {
+      const name = c.type === "group"
+        ? (c.lastMessage?.groupTitle || "Group Chat")
+        : (c.partner?.displayName || "");
+      const preview = c.lastMessage?.text || "";
+      return name.toLowerCase().includes(q) || preview.toLowerCase().includes(q);
+    });
+  };
 
   const renderChatList = (chats: InboxItem[]) => {
     if (chats.length === 0)
@@ -233,7 +249,36 @@ const Inbox: React.FC = () => {
     <div className="min-h-screen bg-slate-950 flex flex-col pb-20">
       {/* Header */}
       <div className="bg-slate-900/80 backdrop-blur-md px-4 py-4 shadow-sm border-b border-slate-800 sticky top-0 z-20">
-        <h1 className="text-xl font-bold text-white">Messages</h1>
+        {showSearch ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 bg-slate-800 rounded-xl px-3 py-2 border border-slate-700">
+              <Search className="w-4 h-4 text-slate-500 shrink-0" />
+              <input
+                autoFocus
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search conversations..."
+                className="bg-transparent text-white text-sm flex-1 outline-none placeholder-slate-500"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="text-slate-500 hover:text-white">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} className="text-slate-400 hover:text-white text-sm">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-bold text-white">Messages</h1>
+            <button onClick={() => setShowSearch(true)} className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors">
+              <Search className="w-5 h-5" />
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 p-4 max-w-md mx-auto w-full overflow-y-auto">
@@ -257,7 +302,7 @@ const Inbox: React.FC = () => {
                   MeetUps
                 </h2>
               </div>
-              {renderChatList(meetupChats)}
+              {renderChatList(filterConvs(meetupChats))}
             </div>
 
             {/* Friends Section */}
@@ -268,7 +313,7 @@ const Inbox: React.FC = () => {
                   Friends
                 </h2>
               </div>
-              {renderChatList(friendChats)}
+              {renderChatList(filterConvs(friendChats))}
             </div>
           </div>
         )}
