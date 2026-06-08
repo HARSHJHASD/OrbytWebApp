@@ -31,8 +31,8 @@ webpush.setVapidDetails(
 );
 //this is for hosting frontend in render
 app.use(express.static(path.join(__dirname, "dist")));
-//this is for hosting frontend in render
-app.get("/app", (req, res) => {
+// SPA catch-all: serve index.html for any non-API route so React Router (HashRouter) handles it
+app.get(/^\/(?!api\/).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
@@ -2516,6 +2516,236 @@ app.put('/api/communities/:id/pin', async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to pin message' });
+  }
+});
+
+// ============================================================
+// SUPER ADMIN ROUTES
+// All routes require the X-Admin-Secret header to match
+// SUPER_ADMIN_SECRET in the environment.
+// ============================================================
+const SUPER_ADMIN_SECRET = process.env.SUPER_ADMIN_SECRET || 'orbyt_super_admin_secret_change_me';
+
+function requireAdmin(req, res, next) {
+  const provided = req.headers['x-admin-secret'];
+  if (!provided || provided !== SUPER_ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  next();
+}
+
+// Admin login — just validates the secret and returns a session token
+app.post('/api/admin/login', authLimiter, (req, res) => {
+  const { secret } = req.body;
+  if (!secret || secret !== SUPER_ADMIN_SECRET) {
+    return res.status(403).json({ error: 'Invalid admin credentials' });
+  }
+  // Return the secret itself as the "token" — the client stores it
+  // and sends it back as X-Admin-Secret on every subsequent request.
+  res.json({ success: true, token: SUPER_ADMIN_SECRET });
+});
+
+// GET /api/admin/users — list all users with basic profile info
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const users = db.collection('users');
+    const profiles = db.collection('profiles');
+    const posts = db.collection('posts');
+    const stories = db.collection('stories');
+    const reports = db.collection('reports');
+
+    const allUsers = await users.find({}).project({ _id: 1, email: 1, createdAt: 1, authType: 1 }).toArray();
+    const allProfiles = await profiles.find({}).project({
+      uid: 1, displayName: 1, photoURL: 1, email: 1,
+      createdAt: 1, dob: 1, jobRole: 1, bio: 1, interests: 1, friends: 1, isSuspended: 1
+    }).toArray();
+    const profileMap = {};
+    allProfiles.forEach(p => { profileMap[p.uid] = p; });
+
+    // Get post/story/report counts per user in one pass
+    const [postCounts, storyCounts, reportCounts] = await Promise.all([
+      posts.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
+      stories.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
+      reports.aggregate([{ $group: { _id: '$targetUid', count: { $sum: 1 } } }]).toArray(),
+    ]);
+    const postCountMap = {};
+    postCounts.forEach(r => { postCountMap[r._id] = r.count; });
+    const storyCountMap = {};
+    storyCounts.forEach(r => { storyCountMap[r._id] = r.count; });
+    const reportCountMap = {};
+    reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
+
+    const result = allUsers.map(u => {
+      const uid = u._id.toString();
+      const profile = profileMap[uid] || {};
+      return {
+        uid,
+        email: u.email,
+        authType: u.authType || 'email',
+        displayName: profile.displayName || u.email?.split('@')[0] || 'Unknown',
+        photoURL: profile.photoURL || '',
+        bio: profile.bio || '',
+        jobRole: profile.jobRole || '',
+        createdAt: u.createdAt,
+        postCount: postCountMap[uid] || 0,
+        storyCount: storyCountMap[uid] || 0,
+        reportCount: reportCountMap[uid] || 0,
+        friendCount: (profile.friends || []).length,
+        isSuspended: profile.isSuspended || false,
+      };
+    });
+
+    // Sort: most reported first, then newest
+    result.sort((a, b) => (b.reportCount - a.reportCount) || (new Date(b.createdAt) - new Date(a.createdAt)));
+
+    res.json({ users: result, total: result.length });
+  } catch (e) {
+    console.error('Admin get users error:', e);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// DELETE /api/admin/users/:uid — permanently delete a user and ALL their data
+app.delete('/api/admin/users/:uid', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+
+    const collections = {
+      users: db.collection('users'),
+      profiles: db.collection('profiles'),
+      posts: db.collection('posts'),
+      stories: db.collection('stories'),
+      messages: db.collection('messages'),
+      notifications: db.collection('notifications'),
+      reports: db.collection('reports'),
+      profile_views: db.collection('profile_views'),
+      communities: db.collection('communities'),
+    };
+
+    // 1. Delete user auth record
+    if (ObjectId.isValid(uid)) {
+      await collections.users.deleteOne({ _id: new ObjectId(uid) });
+    }
+
+    // 2. Delete profile
+    await collections.profiles.deleteOne({ uid });
+
+    // 3. Delete all posts
+    await collections.posts.deleteMany({ uid });
+
+    // 4. Delete all stories
+    await collections.stories.deleteMany({ uid });
+
+    // 5. Delete all messages sent or received
+    await collections.messages.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+
+    // 6. Delete all notifications involving this user
+    await collections.notifications.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+
+    // 7. Delete all reports by or against this user
+    await collections.reports.deleteMany({ $or: [{ reporterUid: uid }, { targetUid: uid }] });
+
+    // 8. Delete profile views
+    await collections.profile_views.deleteMany({ $or: [{ viewerUid: uid }, { targetUid: uid }] });
+
+    // 9. Remove this user from all friend/block lists
+    await collections.profiles.updateMany({}, {
+      $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid, blockedUsers: uid, passedUsers: uid }
+    });
+
+    // 10. Remove from community member lists
+    await collections.communities.updateMany({}, {
+      $pull: { members: uid }
+    });
+
+    // 11. Remove comments & likes left by this user on posts
+    await collections.posts.updateMany({}, {
+      $pull: { comments: { uid }, likedBy: uid }
+    });
+    // Re-calculate like counts
+    const affectedPosts = await collections.posts.find({ likedBy: { $exists: true } }).toArray();
+    for (const post of affectedPosts) {
+      await collections.posts.updateOne({ _id: post._id }, { $set: { likes: (post.likedBy || []).length } });
+    }
+
+    // Log admin action
+    auditLogs.push({
+      timestamp: new Date().toISOString(),
+      action: 'admin_delete_user',
+      targetUid: uid,
+      ip: req.ip,
+    });
+
+    res.json({ success: true, message: `User ${uid} and all their data have been permanently deleted.` });
+  } catch (e) {
+    console.error('Admin delete user error:', e);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// GET /api/admin/reports — list all pending reports
+app.get('/api/admin/reports', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const reports = await db.collection('reports').find({}).sort({ createdAt: -1 }).limit(200).toArray();
+    const profiles = db.collection('profiles');
+
+    // Enrich with reporter/target display names
+    const uids = [...new Set(reports.flatMap(r => [r.reporterUid, r.targetUid].filter(Boolean)))];
+    const profileDocs = await profiles.find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const profileMap = {};
+    profileDocs.forEach(p => { profileMap[p.uid] = p; });
+
+    const enriched = reports.map(r => ({
+      ...r,
+      reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
+      targetName: profileMap[r.targetUid]?.displayName || 'Unknown',
+    }));
+
+    res.json({ reports: enriched, total: enriched.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch reports' });
+  }
+});
+
+// PATCH /api/admin/reports/:id — update report status (resolve / dismiss)
+app.patch('/api/admin/reports/:id', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // 'resolved' | 'dismissed'
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
+    await db.collection('reports').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status, resolvedAt: Date.now() } }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update report' });
+  }
+});
+
+// GET /api/admin/stats — dashboard overview numbers
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const [users, posts, stories, reports, communities] = await Promise.all([
+      db.collection('users').countDocuments(),
+      db.collection('posts').countDocuments(),
+      db.collection('stories').countDocuments(),
+      db.collection('reports').countDocuments({ status: 'pending' }),
+      db.collection('communities').countDocuments(),
+    ]);
+    // New users in last 7 days
+    const since7d = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const newUsers7d = await db.collection('users').countDocuments({ createdAt: { $gte: new Date(since7d) } });
+
+    res.json({ users, posts, stories, pendingReports: reports, communities, newUsers7d });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 

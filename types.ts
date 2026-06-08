@@ -166,3 +166,31 @@ export interface Community {
   pinnedMessageId?: string;
   pinnedMessageText?: string;
 }
+
+export interface AdminUser {
+  uid: string;
+  email: string;
+  authType: string;
+  displayName: string;
+  photoURL: string;
+  bio: string;
+  jobRole: string;
+  createdAt: Date | number;
+  postCount: number;
+  storyCount: number;
+  reportCount: number;
+  friendCount: number;
+  isSuspended: boolean;
+}
+
+export interface AdminReport {
+  _id: string;
+  reporterUid: string;
+  reporterName: string;
+  targetUid: string;
+  targetName: string;
+  reason: string;
+  postId?: string;
+  createdAt: number;
+  status: 'pending' | 'resolved' | 'dismissed';
+}

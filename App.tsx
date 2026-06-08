@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
@@ -35,6 +35,8 @@ import Contact from './pages/Contact';
 import DeleteAccount from './pages/DeleteAccount';
 import Communities from './pages/Communities';
 import CommunityRoom from './pages/CommunityRoom';
+import AdminLogin from './pages/AdminLogin';
+import AdminDashboard from './pages/AdminDashboard';
 
 
 // Guard component to protect routes and check profile existence
@@ -106,6 +108,10 @@ const AppRoutes = () => {
     <NotificationProvider>
       <div className={`antialiased ${isDark ? 'dark' : ''} bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 min-h-screen`}>
         <Routes>
+          {/* Admin — completely isolated, no auth provider dependency */}
+          <Route path="/admin" element={<AdminLogin />} />
+          <Route path="/admin/dashboard" element={<AdminDashboard />} />
+
           {/* Public landing — always root */}
           <Route path="/" element={<DesktopLanding />} />
 

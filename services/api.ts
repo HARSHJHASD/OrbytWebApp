@@ -1,6 +1,5 @@
-import { Message, Notification, Post, UserProfile, Community } from "../types";
-import { API_CONFIG, API_ERROR_MESSAGES } from "../constants/config";
-import { getErrorMessage } from "../util/apiErrorHandler";
+import { API_CONFIG } from "../constants/config";
+import { AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
 
 /**
  * API SERVICE
@@ -707,16 +706,77 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to pin message");
     },
   },
+
+  admin: {
+    login: async (secret: string) => {
+      const response = await fetch(`${API_BASE}/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secret }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Invalid admin credentials");
+      return data as { success: boolean; token: string };
+    },
+
+    getStats: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/stats`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch stats");
+      return data as { users: number; posts: number; stories: number; pendingReports: number; communities: number; newUsers7d: number };
+    },
+
+    getUsers: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/users`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch users");
+      return data as { users: AdminUser[]; total: number };
+    },
+
+    deleteUser: async (token: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/admin/users/${uid}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete user");
+      return data;
+    },
+
+    getReports: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/reports`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch reports");
+      return data as { reports: AdminReport[]; total: number };
+    },
+
+    resolveReport: async (token: string, reportId: string, status: 'resolved' | 'dismissed') => {
+      const response = await fetch(`${API_BASE}/admin/reports/${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify({ status }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to update report");
+      return data;
+    },
+  },
 };
 
 // --- Revive Chat API ---
-export async function reviveChat(chatId: string) {
-  const response = await fetch(`/api/chats/${chatId}/revive`, {
+export async function reviveChat(chatId: string, uid: string) {
+  const response = await fetch(`${API_BASE}/chats/${chatId}/revive`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ uid: getCurrentUserId() }),
+    body: JSON.stringify({ uid }),
   });
 
   if (!response.ok) {
