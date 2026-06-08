@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
 
@@ -39,6 +39,8 @@ function getNotifMeta(type: Notification['type']) {
             return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'planned something. could be great, could be terrible.' };
         case 'new_event':
             return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created an event nearby. social obligations incoming 🔥' };
+        case 'announcement':
+            return { icon: <Megaphone className="w-4 h-4" />, color: 'bg-violet-600', label: '' };
         default:
             return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'did something. unclear what.' };
     }
@@ -60,6 +62,8 @@ function getNotifLink(n: Notification): string {
             return '/app';
         case 'new_event':
             return '/app?tab=meetup';
+        case 'announcement':
+            return `/app/notifications`;
         default:
             return `/app/notifications`;
     }
@@ -69,6 +73,30 @@ function getNotifLink(n: Notification): string {
 
 const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap }) => {
     const { icon, color, label } = getNotifMeta(n.type);
+
+    // Announcement card — different layout, no user avatar
+    if (n.type === 'announcement') {
+        return (
+            <button
+                onClick={onTap}
+                className={`
+          w-full flex items-center gap-3 px-4 py-3.5 text-left
+          transition-all duration-200 active:bg-slate-800/60
+          ${!n.read ? 'bg-violet-500/5 border-l-2 border-violet-500' : 'border-l-2 border-transparent'}
+        `}
+            >
+                <div className={`w-12 h-12 rounded-full ${color} flex items-center justify-center text-white shrink-0`}>
+                    {icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white leading-snug">{n.title || 'Orbyt'}</p>
+                    <p className="text-sm text-slate-300 leading-snug line-clamp-2">{n.message}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
+                </div>
+                {!n.read && <div className="w-2 h-2 rounded-full bg-violet-500 shrink-0" />}
+            </button>
+        );
+    }
 
     return (
         <button

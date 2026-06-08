@@ -2829,7 +2829,7 @@ app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
     const allUsers = await db.collection('users').find({}).project({ _id: 1 }).toArray();
     const now = Date.now();
     const notifications = allUsers.map(u => ({
-      uid: u._id.toString(),
+      toUid: u._id.toString(),
       type: 'announcement',
       title: (title || 'Orbyt').trim(),
       message: message.trim(),
@@ -2837,7 +2837,14 @@ app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
       read: false,
     }));
     if (notifications.length > 0) {
-      await db.collection('notifications').insertMany(notifications);
+      const result = await db.collection('notifications').insertMany(notifications);
+      // Push real-time WebSocket notification to every online user
+      notifications.forEach((notif, i) => {
+        sendToUser(notif.toUid, {
+          type: 'notification',
+          notification: { ...notif, _id: result.insertedIds[i] },
+        });
+      });
     }
     res.json({ success: true, sent: notifications.length });
   } catch (e) {

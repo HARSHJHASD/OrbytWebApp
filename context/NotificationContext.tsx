@@ -21,7 +21,7 @@ const NEARBY_INITIAL_DELAY_MS = 30 * 1000;            // 30 seconds after mount
 
 const KNOWN_NOTIFICATION_TYPES = [
     'friend_request', 'friend_accept', 'like', 'comment',
-    'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event',
+    'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event', 'announcement',
 ] as const;
 
 // Only check during times when metro-city users are typically free:
@@ -180,37 +180,48 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
         const unsubscribe = api.chat.subscribe(user.uid, (data: any) => {
             if (data?.type === 'notification' && data?.notification) {
-                if (data.notification.fromUid === user.uid) return;
                 // room_message no longer creates notification docs — skip that type here
                 if (data.notification.type === 'room_message') return;
                 // Skip unknown / generic notification types
                 if (!KNOWN_NOTIFICATION_TYPES.includes(data.notification.type)) return;
-                
+                // Skip own actions (announcements have no fromUid, so only skip when fromUid matches)
+                if (data.notification.fromUid && data.notification.fromUid === user.uid) return;
+
                 setNotifications(prev => {
                     if (prev.find(n => n._id === data?.notification?._id)) return prev;
-                    
-                    addToast({
-                        title: data.notification.type === 'friend_post'
-                            ? `📸 ${data.notification.fromName} graced the feed`
-                            : data.notification.type === 'friend_event'
-                            ? `🎉 ${data.notification.fromName} allegedly has a plan`
-                            : data.notification.type === 'new_event'
-                            ? `🔥 Someone nearby made plans. No pressure.`
-                            : data.notification.fromName,
-                        body: data.notification.type === 'like' ? 'actually noticed your post. wild, right?' : 
-                              data.notification.type === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
-                              data.notification.type === 'friend_request' ? 'slid into your orbit' :
-                              data.notification.type === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
-                              data.notification.type === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
-                              data.notification.type === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
-                              data.notification.type === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
-                              data.notification.type === 'friend_event' ? 'planned something. probably involves leaving the house.' :
-                              data.notification.type === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
-                              'did something. unclear what.',
-                        icon: data.notification.fromPhoto,
-                        url: data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
-                        type: 'notification'
-                    });
+
+                    if (data.notification.type === 'announcement') {
+                        addToast({
+                            title: data.notification.title || 'Orbyt',
+                            body: data.notification.message || '',
+                            icon: undefined,
+                            url: '/app/notifications',
+                            type: 'notification',
+                        });
+                    } else {
+                        addToast({
+                            title: data.notification.type === 'friend_post'
+                                ? `📸 ${data.notification.fromName} graced the feed`
+                                : data.notification.type === 'friend_event'
+                                ? `🎉 ${data.notification.fromName} allegedly has a plan`
+                                : data.notification.type === 'new_event'
+                                ? `🔥 Someone nearby made plans. No pressure.`
+                                : data.notification.fromName,
+                            body: data.notification.type === 'like' ? 'actually noticed your post. wild, right?' :
+                                  data.notification.type === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
+                                  data.notification.type === 'friend_request' ? 'slid into your orbit' :
+                                  data.notification.type === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
+                                  data.notification.type === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
+                                  data.notification.type === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
+                                  data.notification.type === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
+                                  data.notification.type === 'friend_event' ? 'planned something. probably involves leaving the house.' :
+                                  data.notification.type === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
+                                  'did something. unclear what.',
+                            icon: data.notification.fromPhoto,
+                            url: data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
+                            type: 'notification',
+                        });
+                    }
 
                     playSound('notification');
                     return [data?.notification as Notification, ...prev];
