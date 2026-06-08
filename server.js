@@ -2728,6 +2728,56 @@ app.patch('/api/admin/reports/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// PATCH /api/admin/users/:uid/suspend — toggle user suspension
+app.patch('/api/admin/users/:uid/suspend', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+    const profile = await db.collection('profiles').findOne({ uid });
+    const current = profile?.isSuspended || false;
+    await db.collection('profiles').updateOne({ uid }, { $set: { isSuspended: !current } }, { upsert: true });
+    res.json({ success: true, isSuspended: !current });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update suspension' });
+  }
+});
+
+// GET /api/admin/communities — list all communities with member/message counts
+app.get('/api/admin/communities', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const communities = await db.collection('communities').find({}).toArray();
+    const result = communities.map(c => ({
+      id: c._id.toString(),
+      name: c.name,
+      description: c.description || '',
+      createdBy: c.uid || c.createdBy || '',
+      memberCount: (c.members || []).length,
+      isPrivate: c.isPrivate || false,
+      createdAt: c.createdAt || null,
+      tags: c.tags || [],
+    }));
+    result.sort((a, b) => b.memberCount - a.memberCount);
+    res.json({ communities: result, total: result.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch communities' });
+  }
+});
+
+// DELETE /api/admin/communities/:id — hard-delete a community
+app.delete('/api/admin/communities/:id', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
+    await db.collection('communities').deleteOne({ _id: new ObjectId(id) });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete community' });
+  }
+});
+
 // GET /api/admin/stats — dashboard overview numbers
 app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });

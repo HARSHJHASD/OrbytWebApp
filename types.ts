@@ -194,3 +194,14 @@ export interface AdminReport {
   createdAt: number;
   status: 'pending' | 'resolved' | 'dismissed';
 }
+
+export interface AdminCommunity {
+  id: string;
+  name: string;
+  description: string;
+  createdBy: string;
+  memberCount: number;
+  isPrivate: boolean;
+  createdAt: number | null;
+  tags: string[];
+}

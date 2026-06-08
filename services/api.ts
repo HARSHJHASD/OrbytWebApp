@@ -1,5 +1,5 @@
 import { API_CONFIG } from "../constants/config";
-import { AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
+import { AdminCommunity, AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
 
 /**
  * API SERVICE
@@ -764,6 +764,35 @@ export const api = {
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to update report");
+      return data;
+    },
+
+    suspendUser: async (token: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/admin/users/${uid}/suspend`, {
+        method: "PATCH",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to toggle suspension");
+      return data as { success: boolean; isSuspended: boolean };
+    },
+
+    getCommunities: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/communities`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch communities");
+      return data as { communities: AdminCommunity[]; total: number };
+    },
+
+    deleteCommunity: async (token: string, id: string) => {
+      const response = await fetch(`${API_BASE}/admin/communities/${id}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete community");
       return data;
     },
   },
