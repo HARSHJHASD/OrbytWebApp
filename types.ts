@@ -205,3 +205,17 @@ export interface AdminCommunity {
   createdAt: number | null;
   tags: string[];
 }
+
+export interface AdminPost {
+  _id: string;
+  uid: string;
+  authorName: string;
+  authorPhoto: string;
+  content: string;
+  imageURL?: string | null;
+  likeCount: number;
+  commentCount: number;
+  reportCount: number;
+  createdAt: number;
+  type?: string;
+}

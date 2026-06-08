@@ -2743,6 +2743,108 @@ app.patch('/api/admin/users/:uid/suspend', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/posts — paginated list of all posts with author + report counts
+app.get('/api/admin/posts', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const flaggedOnly = req.query.flagged === 'true';
+
+    let pipeline = [];
+    if (flaggedOnly) {
+      // Only posts that have at least one pending report
+      const reportedPostIds = await db.collection('reports')
+        .distinct('postId', { status: 'pending', postId: { $exists: true, $ne: null } });
+      pipeline.push({ $match: { _id: { $in: reportedPostIds.filter(Boolean).map(id => { try { return new ObjectId(id); } catch { return null; } }).filter(Boolean) } } });
+    }
+    pipeline.push({ $sort: { createdAt: -1 } });
+    pipeline.push({ $skip: (page - 1) * limit });
+    pipeline.push({ $limit: limit });
+
+    const posts = await db.collection('posts').aggregate(pipeline).toArray();
+    const total = flaggedOnly
+      ? posts.length
+      : await db.collection('posts').countDocuments();
+
+    const postIds = posts.map(p => p._id.toString());
+    const reportCounts = await db.collection('reports')
+      .aggregate([
+        { $match: { postId: { $in: postIds }, status: 'pending' } },
+        { $group: { _id: '$postId', count: { $sum: 1 } } },
+      ]).toArray();
+    const reportCountMap = {};
+    reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
+
+    const uids = [...new Set(posts.map(p => p.uid).filter(Boolean))];
+    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const profileMap = {};
+    profiles.forEach(p => { profileMap[p.uid] = p; });
+
+    const result = posts.map(p => {
+      const profile = profileMap[p.uid] || {};
+      const createdAt = p.createdAt instanceof Date ? p.createdAt.getTime() : (typeof p.createdAt === 'number' ? p.createdAt : 0);
+      return {
+        _id: p._id.toString(),
+        uid: p.uid || '',
+        authorName: profile.displayName || p.uid || 'Unknown',
+        authorPhoto: profile.photoURL || '',
+        content: p.content || '',
+        imageURL: p.imageURL || null,
+        likeCount: (p.likes || []).length,
+        commentCount: (p.comments || []).length,
+        reportCount: reportCountMap[p._id.toString()] || 0,
+        createdAt,
+        type: p.type || 'post',
+      };
+    });
+
+    res.json({ posts: result, total, page, pages: Math.ceil(total / limit) });
+  } catch (e) {
+    console.error('Admin get posts error:', e);
+    res.status(500).json({ error: 'Failed to fetch posts' });
+  }
+});
+
+// DELETE /api/admin/posts/:postId — admin force-delete any post
+app.delete('/api/admin/posts/:postId', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { postId } = req.params;
+    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: 'Invalid post id' });
+    await db.collection('posts').deleteOne({ _id: new ObjectId(postId) });
+    await db.collection('reports').deleteMany({ postId });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+// POST /api/admin/broadcast — send a system notification to all users
+app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { title, message } = req.body;
+    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+    const allUsers = await db.collection('users').find({}).project({ _id: 1 }).toArray();
+    const now = Date.now();
+    const notifications = allUsers.map(u => ({
+      uid: u._id.toString(),
+      type: 'announcement',
+      title: (title || 'Orbyt').trim(),
+      message: message.trim(),
+      createdAt: now,
+      read: false,
+    }));
+    if (notifications.length > 0) {
+      await db.collection('notifications').insertMany(notifications);
+    }
+    res.json({ success: true, sent: notifications.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to broadcast' });
+  }
+});
+
 // GET /api/admin/communities — list all communities with member/message counts
 app.get('/api/admin/communities', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });

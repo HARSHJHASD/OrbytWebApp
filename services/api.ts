@@ -1,5 +1,5 @@
 import { API_CONFIG } from "../constants/config";
-import { AdminCommunity, AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
+import { AdminCommunity, AdminPost, AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
 
 /**
  * API SERVICE
@@ -794,6 +794,35 @@ export const api = {
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to delete community");
       return data;
+    },
+
+    getPosts: async (token: string, page = 1, flaggedOnly = false) => {
+      const url = `${API_BASE}/admin/posts?page=${page}&limit=50${flaggedOnly ? '&flagged=true' : ''}`;
+      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch posts");
+      return data as { posts: AdminPost[]; total: number; page: number; pages: number };
+    },
+
+    deletePost: async (token: string, postId: string) => {
+      const response = await fetch(`${API_BASE}/admin/posts/${postId}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete post");
+      return data;
+    },
+
+    broadcast: async (token: string, title: string, message: string) => {
+      const response = await fetch(`${API_BASE}/admin/broadcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify({ title, message }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to broadcast");
+      return data as { success: boolean; sent: number };
     },
   },
 };
