@@ -725,7 +725,7 @@ export const api = {
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch stats");
-      return data as { users: number; posts: number; stories: number; pendingReports: number; communities: number; newUsers7d: number };
+      return data as { users: number; posts: number; stories: number; pendingReports: number; communities: number; newUsers7d: number; onlineUsers: number; pushSubscriptions: number };
     },
 
     getUsers: async (token: string) => {
@@ -814,15 +814,63 @@ export const api = {
       return data;
     },
 
-    broadcast: async (token: string, title: string, message: string) => {
+    broadcast: async (token: string, title: string, message: string, segment = 'all') => {
       const response = await fetch(`${API_BASE}/admin/broadcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
-        body: JSON.stringify({ title, message }),
+        body: JSON.stringify({ title, message, segment }),
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to broadcast");
       return data as { success: boolean; sent: number };
+    },
+
+    getAnalytics: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/analytics`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch analytics");
+      return data as { chartData: { date: string; signups: number; posts: number }[]; dau: number; wau: number; mau: number };
+    },
+
+    getAuditLogs: async (token: string, limit = 200) => {
+      const response = await fetch(`${API_BASE}/admin/audit-logs?limit=${limit}`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch audit logs");
+      return data as { logs: { timestamp: string; method: string; url: string; path: string; uid: string; statusCode: number; duration: string; ip: string }[]; total: number };
+    },
+
+    getSettings: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/settings`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch settings");
+      return data as { autoSuspendThreshold: number };
+    },
+
+    saveSettings: async (token: string, autoSuspendThreshold: number) => {
+      const response = await fetch(`${API_BASE}/admin/settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify({ autoSuspendThreshold }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to save settings");
+      return data;
+    },
+
+    bulkDeleteFlagged: async (token: string, minReports = 3) => {
+      const response = await fetch(`${API_BASE}/admin/posts/bulk-flagged?minReports=${minReports}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to bulk delete");
+      return data as { success: boolean; deleted: number };
     },
   },
 };

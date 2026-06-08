@@ -193,6 +193,8 @@ export interface AdminReport {
   targetName: string;
   reason: string;
   postId?: string;
+  postContent?: string | null;
+  postImageURL?: string | null;
   createdAt: number;
   status: 'pending' | 'resolved' | 'dismissed';
 }

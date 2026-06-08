@@ -312,9 +312,10 @@ function createAuditLog(req, res, next) {
 app.use(createAuditLog);
 
 // --- AUDIT LOG RETRIEVAL ENDPOINT ---
-app.get('/api/admin/audit-logs', (req, res) => {
-  // Note: In production, add proper authentication before exposing logs
-  res.json({ logs: auditLogs, total: auditLogs.length });
+app.get('/api/admin/audit-logs', requireAdmin, (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
+  const logs = [...auditLogs].reverse().slice(0, limit);
+  res.json({ logs, total: auditLogs.length });
 });
 
 // Input Validation Schemas
@@ -1336,6 +1337,17 @@ app.post('/api/report', async (req, res) => {
       reporterUid, targetUid, reason, postId: postId || null,
       createdAt: Date.now(), status: 'pending'
     });
+    // Auto-suspend if report count meets the configured threshold
+    try {
+      const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
+      const threshold = settings?.autoSuspendThreshold || 0;
+      if (threshold > 0) {
+        const reportCount = await reports.countDocuments({ targetUid, status: 'pending' });
+        if (reportCount >= threshold) {
+          await db.collection('profiles').updateOne({ uid: targetUid }, { $set: { isSuspended: true } }, { upsert: true });
+        }
+      }
+    } catch (_) { /* non-fatal */ }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to submit report" });
@@ -2699,10 +2711,21 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     const profileMap = {};
     profileDocs.forEach(p => { profileMap[p.uid] = p; });
 
+    // Enrich with post content for post reports
+    const postIds = reports.filter(r => r.postId && ObjectId.isValid(r.postId)).map(r => new ObjectId(r.postId));
+    const postDocs = postIds.length > 0
+      ? await db.collection('posts').find({ _id: { $in: postIds } }).project({ _id: 1, content: 1, imageURL: 1 }).toArray()
+      : [];
+    const postMap = {};
+    postDocs.forEach(p => { postMap[p._id.toString()] = p; });
+
     const enriched = reports.map(r => ({
       ...r,
+      _id: r._id.toString(),
       reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
       targetName: profileMap[r.targetUid]?.displayName || 'Unknown',
+      postContent: r.postId ? (postMap[r.postId]?.content || null) : null,
+      postImageURL: r.postId ? (postMap[r.postId]?.imageURL || null) : null,
     }));
 
     res.json({ reports: enriched, total: enriched.length });
@@ -2820,13 +2843,25 @@ app.delete('/api/admin/posts/:postId', requireAdmin, async (req, res) => {
   }
 });
 
-// POST /api/admin/broadcast — send a system notification to all users
+// POST /api/admin/broadcast — send a system notification to a segment of users
 app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const { title, message } = req.body;
+    const { title, message, segment } = req.body; // segment: 'all' | 'new' | 'flagged' | 'suspended'
     if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
-    const allUsers = await db.collection('users').find({}).project({ _id: 1 }).toArray();
+    let query = {};
+    if (segment === 'new') {
+      query = { createdAt: { $gte: new Date(Date.now() - 7 * 86400000) } };
+    }
+    let allUsers = await db.collection('users').find(query).project({ _id: 1 }).toArray();
+    if (segment === 'flagged') {
+      const reporterUids = await db.collection('reports').distinct('targetUid', { status: 'pending' });
+      allUsers = allUsers.filter(u => reporterUids.includes(u._id.toString()));
+    } else if (segment === 'suspended') {
+      const suspendedProfiles = await db.collection('profiles').find({ isSuspended: true }).project({ uid: 1 }).toArray();
+      const suspendedUids = new Set(suspendedProfiles.map(p => p.uid));
+      allUsers = allUsers.filter(u => suspendedUids.has(u._id.toString()));
+    }
     const now = Date.now();
     const notifications = allUsers.map(u => ({
       toUid: u._id.toString(),
@@ -2902,9 +2937,95 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
     const since7d = Date.now() - 7 * 24 * 60 * 60 * 1000;
     const newUsers7d = await db.collection('users').countDocuments({ createdAt: { $gte: new Date(since7d) } });
 
-    res.json({ users, posts, stories, pendingReports: reports, communities, newUsers7d });
+    const onlineUsers = clients.size;
+    const pushSubscriptions = await db.collection('profiles').countDocuments({
+      $or: [{ webPushSubscription: { $exists: true, $ne: null } }, { expoPushToken: { $exists: true, $ne: null } }]
+    });
+    res.json({ users, posts, stories, pendingReports: reports, communities, newUsers7d, onlineUsers, pushSubscriptions });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch stats' });
+  }
+});
+
+// GET /api/admin/analytics — signups/posts per day (30d), DAU/WAU/MAU
+app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const now = Date.now();
+    const DAY = 86400000;
+    const days30ago = now - 30 * DAY;
+    const [userDocs, postDocs] = await Promise.all([
+      db.collection('users').find({ createdAt: { $gte: new Date(days30ago) } }).project({ createdAt: 1 }).toArray(),
+      db.collection('posts').find({ createdAt: { $gte: days30ago } }).project({ createdAt: 1, uid: 1 }).toArray(),
+    ]);
+    const buckets = {};
+    for (let i = 0; i < 30; i++) {
+      const key = new Date(now - (29 - i) * DAY).toISOString().slice(0, 10);
+      buckets[key] = { date: key, signups: 0, posts: 0 };
+    }
+    userDocs.forEach(u => {
+      const key = new Date(u.createdAt instanceof Date ? u.createdAt.getTime() : u.createdAt).toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].signups++;
+    });
+    postDocs.forEach(p => {
+      const ts = p.createdAt instanceof Date ? p.createdAt.getTime() : (typeof p.createdAt === 'number' ? p.createdAt : 0);
+      const key = new Date(ts).toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].posts++;
+    });
+    const [dauUids, wauUids, mauUids] = await Promise.all([
+      db.collection('posts').distinct('uid', { createdAt: { $gte: now - DAY } }),
+      db.collection('posts').distinct('uid', { createdAt: { $gte: now - 7 * DAY } }),
+      db.collection('posts').distinct('uid', { createdAt: { $gte: days30ago } }),
+    ]);
+    res.json({ chartData: Object.values(buckets), dau: dauUids.length, wau: wauUids.length, mau: mauUids.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+// GET /api/admin/settings — fetch global admin settings
+app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
+    res.json({ autoSuspendThreshold: settings?.autoSuspendThreshold ?? 0 });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch settings' });
+  }
+});
+
+// POST /api/admin/settings — save global admin settings
+app.post('/api/admin/settings', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const threshold = parseInt(req.body.autoSuspendThreshold) || 0;
+    await db.collection('admin_settings').updateOne(
+      { _id: 'global' }, { $set: { autoSuspendThreshold: threshold } }, { upsert: true }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// DELETE /api/admin/posts/bulk-flagged — bulk delete posts with >= minReports
+app.delete('/api/admin/posts/bulk-flagged', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const minReports = parseInt(req.query.minReports) || 3;
+    const pendingReports = await db.collection('reports').find({ status: 'pending' }).toArray();
+    const countMap = {};
+    pendingReports.forEach(r => { if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1; });
+    const postIdsToDelete = Object.entries(countMap)
+      .filter(([, cnt]) => cnt >= minReports)
+      .map(([id]) => id);
+    if (postIdsToDelete.length === 0) return res.json({ success: true, deleted: 0 });
+    const validIds = postIdsToDelete.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+    await db.collection('posts').deleteMany({ _id: { $in: validIds } });
+    await db.collection('reports').deleteMany({ postId: { $in: postIdsToDelete } });
+    res.json({ success: true, deleted: validIds.length });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to bulk delete' });
   }
 });
 
