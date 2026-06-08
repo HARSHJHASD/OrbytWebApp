@@ -56,7 +56,6 @@ export async function parseApiResponse<T>(
       success: false,
       error: errorMessage,
       statusCode: response.status,
-      details: data,
     };
   }
 
