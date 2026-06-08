@@ -1,6 +1,6 @@
 import {
   Activity, AlertTriangle, Ban, BookOpen, CheckCircle, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, Clock, Download, ExternalLink, FileText, Globe,
+  ChevronRight, ChevronUp, Download, ExternalLink, FileText, Globe,
   Image, LogOut, Megaphone, RefreshCw, Search, Settings, Shield, Trash2,
   TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap,
 } from 'lucide-react';
@@ -56,25 +56,121 @@ function FilterPill({ label, active, onClick, count }: { label: string; active: 
   );
 }
 
-// ── Mini bar-chart (SVG, no library needed) ───────────────────────────────────
-function MiniBarChart({ data, color, valueKey }: { data: { date: string; [k: string]: number | string }[]; color: string; valueKey: string }) {
+// ── SVG Chart Components ─────────────────────────────────────────────────────
+type ChartRow = { date: string; signups: number; posts: number; reports: number };
+
+function MultiLineChart({ data }: { data: ChartRow[] }) {
+  const W = 600; const H = 160; const PAD = { t: 10, r: 10, b: 28, l: 32 };
+  const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
+  const allVals = data.flatMap(d => [d.signups, d.posts, d.reports]);
+  const max = Math.max(...allVals, 1);
+  const scaleY = (v: number) => PAD.t + iH - (v / max) * iH;
+  const scaleX = (i: number) => PAD.l + (i / (data.length - 1 || 1)) * iW;
+  const line = (key: keyof ChartRow) =>
+    data.map((d, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i).toFixed(1)},${scaleY(d[key] as number).toFixed(1)}`).join(' ');
+  const area = (key: keyof ChartRow) =>
+    `${line(key)} L${scaleX(data.length - 1).toFixed(1)},${(PAD.t + iH).toFixed(1)} L${PAD.l},${(PAD.t + iH).toFixed(1)} Z`;
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * max));
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <defs>
+        <linearGradient id="gv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" /><stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" /></linearGradient>
+        <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient>
+        <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity="0.15" /><stop offset="100%" stopColor="#ef4444" stopOpacity="0" /></linearGradient>
+      </defs>
+      {/* grid lines */}
+      {yTicks.map((v, i) => (
+        <g key={i}>
+          <line x1={PAD.l} y1={scaleY(v)} x2={W - PAD.r} y2={scaleY(v)} stroke="#334155" strokeWidth="0.5" strokeDasharray="3,3" />
+          <text x={PAD.l - 4} y={scaleY(v) + 4} textAnchor="end" fontSize="8" fill="#64748b">{v}</text>
+        </g>
+      ))}
+      {/* area fills */}
+      <path d={area('signups')} fill="url(#gv)" />
+      <path d={area('posts')} fill="url(#gb)" />
+      <path d={area('reports')} fill="url(#gr)" />
+      {/* lines */}
+      <path d={line('signups')} fill="none" stroke="#8b5cf6" strokeWidth="2" strokeLinejoin="round" />
+      <path d={line('posts')} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
+      <path d={line('reports')} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="4,2" />
+      {/* data dots */}
+      {data.map((d, i) => (
+        <g key={i}>
+          <circle cx={scaleX(i)} cy={scaleY(d.signups)} r="2.5" fill="#8b5cf6" />
+          <circle cx={scaleX(i)} cy={scaleY(d.posts)} r="2.5" fill="#3b82f6" />
+          <title>{d.date}\nSignups: {d.signups}\nPosts: {d.posts}\nReports: {d.reports}</title>
+        </g>
+      ))}
+      {/* x-axis labels — show every 5th */}
+      {data.map((d, i) => i % 5 === 0 ? (
+        <text key={i} x={scaleX(i)} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{d.date.slice(5)}</text>
+      ) : null)}
+    </svg>
+  );
+}
+
+function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof ChartRow; color: string }) {
+  const W = 600; const H = 100; const PAD = { t: 8, r: 8, b: 24, l: 28 };
+  const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
   const values = data.map(d => d[valueKey] as number);
   const max = Math.max(...values, 1);
-  const W = 600; const H = 80; const barW = W / values.length - 2;
+  const barW = iW / values.length - 2;
+  const yTicks = [0, Math.round(max / 2), max];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      {yTicks.map((v, i) => {
+        const y = PAD.t + iH - (v / max) * iH;
+        return <g key={i}><line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#1e293b" strokeWidth="1" /><text x={PAD.l - 4} y={y + 3} textAnchor="end" fontSize="8" fill="#64748b">{v}</text></g>;
+      })}
       {values.map((v, i) => {
-        const h = (v / max) * (H - 4);
-        const x = i * (W / values.length);
-        const y = H - h;
+        const h = Math.max((v / max) * iH, 1);
+        const x = PAD.l + i * (iW / values.length) + 1;
+        const y = PAD.t + iH - h;
         return (
           <g key={i}>
-            <rect x={x + 1} y={y} width={barW} height={h} rx="2" className={color} opacity="0.85" />
+            <rect x={x} y={y} width={barW} height={h} rx="2" fill={color} opacity="0.85" />
+            {i % 5 === 0 && <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{data[i].date.slice(5)}</text>}
             <title>{data[i].date}: {v}</title>
           </g>
         );
       })}
     </svg>
+  );
+}
+
+function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
+  const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+  const R = 40; const cx = 60; const cy = 60;
+  let angle = -Math.PI / 2;
+  const arcs = segments.map(seg => {
+    const a = (seg.value / total) * 2 * Math.PI;
+    const x1 = cx + R * Math.cos(angle);
+    const y1 = cy + R * Math.sin(angle);
+    angle += a;
+    const x2 = cx + R * Math.cos(angle);
+    const y2 = cy + R * Math.sin(angle);
+    const large = a > Math.PI ? 1 : 0;
+    return { ...seg, d: `M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)} Z`, pct: Math.round((seg.value / total) * 100) };
+  });
+  return (
+    <div className="flex items-center gap-6">
+      <svg viewBox="0 0 120 120" className="w-28 h-28 flex-shrink-0">
+        <circle cx={cx} cy={cy} r={R} fill="#1e293b" />
+        {arcs.map((arc, i) => <path key={i} d={arc.d} fill={arc.color}><title>{arc.label}: {arc.value} ({arc.pct}%)</title></path>)}
+        <circle cx={cx} cy={cy} r={R * 0.55} fill="#0f172a" />
+        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="13" fontWeight="bold" fill="white">{total}</text>
+      </svg>
+      <div className="space-y-2">
+        {arcs.map((arc, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: arc.color }} />
+            <span className="text-slate-300 text-sm">{arc.label}</span>
+            <span className="text-slate-500 text-xs">({arc.pct}%)</span>
+            <span className="text-white font-bold text-sm ml-auto">{arc.value.toLocaleString()}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -327,7 +423,6 @@ const AdminDashboard: React.FC = () => {
   // Analytics
   const [analytics, setAnalytics] = useState<any>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [analyticsMetric, setAnalyticsMetric] = useState<'signups' | 'posts'>('signups');
 
   // Audit log
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -808,42 +903,85 @@ const AdminDashboard: React.FC = () => {
         {/* ── ANALYTICS TAB ── */}
         {tab === 'analytics' && (
           <div className="space-y-6">
-            {analyticsLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : !analytics ? null : (
+            {analyticsLoading ? (
+              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div>
+            ) : !analytics ? (
+              <div className="text-center text-slate-500 py-16">No analytics data</div>
+            ) : (
               <>
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
-                    <p className="text-3xl font-extrabold text-violet-400">{analytics.dau}</p>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">DAU</p>
-                    <p className="text-xs text-slate-600 mt-0.5">Active today</p>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
-                    <p className="text-3xl font-extrabold text-blue-400">{analytics.wau}</p>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">WAU</p>
-                    <p className="text-xs text-slate-600 mt-0.5">Active this week</p>
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 text-center">
-                    <p className="text-3xl font-extrabold text-emerald-400">{analytics.mau}</p>
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">MAU</p>
-                    <p className="text-xs text-slate-600 mt-0.5">Active this month</p>
-                  </div>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-violet-400" /><h3 className="text-white font-bold text-base">30-Day Activity</h3></div>
-                    <div className="flex gap-2">
-                      <FilterPill label="Signups" active={analyticsMetric === 'signups'} onClick={() => setAnalyticsMetric('signups')} />
-                      <FilterPill label="Posts" active={analyticsMetric === 'posts'} onClick={() => setAnalyticsMetric('posts')} />
+                {/* KPI row */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {[
+                    { label: 'DAU', value: analytics.dau, sub: 'active today', color: 'text-violet-400' },
+                    { label: 'WAU', value: analytics.wau, sub: 'active this week', color: 'text-blue-400' },
+                    { label: 'MAU', value: analytics.mau, sub: 'active this month', color: 'text-emerald-400' },
+                    { label: 'Total Users', value: analytics.totalUsers, sub: 'all time', color: 'text-white' },
+                    { label: 'Total Posts', value: analytics.totalPosts, sub: 'all time', color: 'text-white' },
+                    { label: 'Total Reports', value: analytics.totalReports, sub: 'all time', color: analytics.reportStatus?.pending > 0 ? 'text-red-400' : 'text-white' },
+                  ].map(k => (
+                    <div key={k.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
+                      <p className={`text-2xl font-extrabold ${k.color}`}>{k.value.toLocaleString()}</p>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">{k.label}</p>
+                      <p className="text-xs text-slate-600 mt-0.5">{k.sub}</p>
                     </div>
-                  </div>
-                  <MiniBarChart data={analytics.chartData} valueKey={analyticsMetric} color={analyticsMetric === 'signups' ? 'fill-violet-500' : 'fill-blue-500'} />
-                  <div className="flex justify-between mt-2 text-xs text-slate-600">
-                    <span>{analytics.chartData[0]?.date}</span>
-                    <span>{analytics.chartData[analytics.chartData.length - 1]?.date}</span>
-                  </div>
-                  <p className="text-center text-slate-500 text-xs mt-1">Total: {analytics.chartData.reduce((s: number, d: any) => s + (d[analyticsMetric] as number), 0)} {analyticsMetric} in 30 days</p>
+                  ))}
                 </div>
-                <div className="flex justify-end">
-                  <button onClick={() => { setAnalytics(null); }} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"><RefreshCw className="w-3.5 h-3.5" /> Refresh</button>
+
+                {/* Multi-line chart */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-violet-400" /><h3 className="text-white font-bold">30-Day Trend</h3></div>
+                    <button onClick={() => setAnalytics(null)} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-xs px-3 py-1.5 rounded-xl hover:bg-slate-800 transition-colors"><RefreshCw className="w-3 h-3" /> Refresh</button>
+                  </div>
+                  <div className="flex items-center gap-4 mb-3 text-xs">
+                    <span className="flex items-center gap-1.5"><span className="w-6 h-0.5 bg-violet-500 inline-block" /> Signups</span>
+                    <span className="flex items-center gap-1.5"><span className="w-6 h-0.5 bg-blue-500 inline-block" /> Posts</span>
+                    <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-red-500 inline-block" /> Reports</span>
+                  </div>
+                  <MultiLineChart data={analytics.chartData} />
+                  <div className="grid grid-cols-3 gap-3 mt-4 text-center">
+                    {[
+                      { label: 'Total signups (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.signups, 0), color: 'text-violet-400' },
+                      { label: 'Total posts (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.posts, 0), color: 'text-blue-400' },
+                      { label: 'Total reports (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.reports, 0), color: 'text-red-400' },
+                    ].map(s => (
+                      <div key={s.label} className="bg-slate-800 rounded-xl p-3">
+                        <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Bar charts */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><Users className="w-4 h-4 text-violet-400" /> Daily Signups</h4>
+                    <BarChart data={analytics.chartData} valueKey="signups" color="#8b5cf6" />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Daily Posts</h4>
+                    <BarChart data={analytics.chartData} valueKey="posts" color="#3b82f6" />
+                  </div>
+                </div>
+
+                {/* Donut charts */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-4">Auth Type Breakdown</h4>
+                    <DonutChart segments={[
+                      { label: 'Google', value: analytics.authTypes?.google || 0, color: '#3b82f6' },
+                      { label: 'Email', value: analytics.authTypes?.email || 0, color: '#8b5cf6' },
+                    ]} />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-4">Report Status</h4>
+                    <DonutChart segments={[
+                      { label: 'Pending', value: analytics.reportStatus?.pending || 0, color: '#ef4444' },
+                      { label: 'Resolved', value: analytics.reportStatus?.resolved || 0, color: '#10b981' },
+                      { label: 'Dismissed', value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
+                    ]} />
+                  </div>
                 </div>
               </>
             )}

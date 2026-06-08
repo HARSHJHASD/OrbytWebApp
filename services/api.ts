@@ -831,7 +831,13 @@ export const api = {
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch analytics");
-      return data as { chartData: { date: string; signups: number; posts: number }[]; dau: number; wau: number; mau: number };
+      return data as {
+        chartData: { date: string; signups: number; posts: number; reports: number }[];
+        dau: number; wau: number; mau: number;
+        authTypes: { google: number; email: number };
+        reportStatus: { pending: number; resolved: number; dismissed: number };
+        totalUsers: number; totalPosts: number; totalReports: number;
+      };
     },
 
     getAuditLogs: async (token: string, limit = 200) => {

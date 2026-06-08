@@ -2954,32 +2954,70 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
     const now = Date.now();
     const DAY = 86400000;
     const days30ago = now - 30 * DAY;
-    const [userDocs, postDocs] = await Promise.all([
-      db.collection('users').find({ createdAt: { $gte: new Date(days30ago) } }).project({ createdAt: 1 }).toArray(),
-      db.collection('posts').find({ createdAt: { $gte: days30ago } }).project({ createdAt: 1, uid: 1 }).toArray(),
+
+    // Fetch raw docs and process in Node to avoid Date/number type mismatch
+    const [allUsers, allPosts, allReports] = await Promise.all([
+      db.collection('users').find({}).project({ createdAt: 1, authType: 1 }).toArray(),
+      db.collection('posts').find({}).project({ createdAt: 1, uid: 1 }).toArray(),
+      db.collection('reports').find({}).project({ createdAt: 1, status: 1 }).toArray(),
     ]);
+
+    // Normalise createdAt to ms timestamp
+    const toMs = (v) => {
+      if (!v) return 0;
+      if (v instanceof Date) return v.getTime();
+      if (typeof v === 'number') return v;
+      return new Date(v).getTime();
+    };
+
+    // Build 30-day buckets
     const buckets = {};
     for (let i = 0; i < 30; i++) {
       const key = new Date(now - (29 - i) * DAY).toISOString().slice(0, 10);
-      buckets[key] = { date: key, signups: 0, posts: 0 };
+      buckets[key] = { date: key, signups: 0, posts: 0, reports: 0 };
     }
-    userDocs.forEach(u => {
-      const key = new Date(u.createdAt instanceof Date ? u.createdAt.getTime() : u.createdAt).toISOString().slice(0, 10);
+
+    allUsers.forEach(u => {
+      const key = new Date(toMs(u.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].signups++;
     });
-    postDocs.forEach(p => {
-      const ts = p.createdAt instanceof Date ? p.createdAt.getTime() : (typeof p.createdAt === 'number' ? p.createdAt : 0);
-      const key = new Date(ts).toISOString().slice(0, 10);
+    allPosts.forEach(p => {
+      const key = new Date(toMs(p.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].posts++;
     });
-    const [dauUids, wauUids, mauUids] = await Promise.all([
-      db.collection('posts').distinct('uid', { createdAt: { $gte: now - DAY } }),
-      db.collection('posts').distinct('uid', { createdAt: { $gte: now - 7 * DAY } }),
-      db.collection('posts').distinct('uid', { createdAt: { $gte: days30ago } }),
-    ]);
-    res.json({ chartData: Object.values(buckets), dau: dauUids.length, wau: wauUids.length, mau: mauUids.length });
+    allReports.forEach(r => {
+      const key = new Date(toMs(r.createdAt)).toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].reports++;
+    });
+
+    // DAU / WAU / MAU — unique uids with posts in window
+    const postsByUid = allPosts.map(p => ({ uid: p.uid, ms: toMs(p.createdAt) }));
+    const dauUids = new Set(postsByUid.filter(p => p.ms >= now - DAY).map(p => p.uid));
+    const wauUids = new Set(postsByUid.filter(p => p.ms >= now - 7 * DAY).map(p => p.uid));
+    const mauUids = new Set(postsByUid.filter(p => p.ms >= days30ago).map(p => p.uid));
+
+    // Auth type breakdown
+    const authTypes = { google: 0, email: 0 };
+    allUsers.forEach(u => { const t = u.authType === 'google' ? 'google' : 'email'; authTypes[t]++; });
+
+    // Report status breakdown
+    const reportStatus = { pending: 0, resolved: 0, dismissed: 0 };
+    allReports.forEach(r => { if (reportStatus[r.status] !== undefined) reportStatus[r.status]++; });
+
+    res.json({
+      chartData: Object.values(buckets),
+      dau: dauUids.size,
+      wau: wauUids.size,
+      mau: mauUids.size,
+      authTypes,
+      reportStatus,
+      totalUsers: allUsers.length,
+      totalPosts: allPosts.length,
+      totalReports: allReports.length,
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch analytics' });
+    console.error('Analytics error:', e);
+    res.status(500).json({ error: 'Failed to fetch analytics', detail: e.message });
   }
 });
 
