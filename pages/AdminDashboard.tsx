@@ -1026,6 +1026,28 @@ const AdminDashboard: React.FC = () => {
     finally { setDeletingPost(null); }
   };
 
+  const handleDeleteStory = async (storyId: string) => {
+    setDeletingStory(storyId);
+    try {
+      await api.admin.deleteStory(token, storyId);
+      setStories(prev => prev.filter(s => s._id !== storyId));
+      setStoriesTotal(t => t - 1);
+      showToast('Story deleted.', 'success');
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setDeletingStory(null); }
+  };
+
+  const handleDeleteEvent = async (eventId: string) => {
+    setDeletingEvent(eventId);
+    try {
+      await api.admin.deleteEvent(token, eventId);
+      setEvents(prev => prev.filter(e => e._id !== eventId));
+      setEventsTotal(t => t - 1);
+      showToast('Event deleted.', 'success');
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setDeletingEvent(null); }
+  };
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     try {
@@ -1111,6 +1133,8 @@ const AdminDashboard: React.FC = () => {
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'users', label: 'Users' },
     { id: 'posts', label: 'Posts' },
+    { id: 'stories', label: 'Stories' },
+    { id: 'events', label: 'Events' },
     { id: 'reports', label: 'Reports', badge: pendingCount },
     { id: 'communities', label: 'Communities' },
     { id: 'analytics', label: 'Analytics' },
