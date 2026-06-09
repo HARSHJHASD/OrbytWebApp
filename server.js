@@ -3455,6 +3455,156 @@ app.delete('/api/admin/posts/bulk-flagged', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/stories — paginated list of all stories
+app.get('/api/admin/stories', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const search = (req.query.search || '').trim();
+
+    const filter = {};
+    if (search) filter.caption = { $regex: search, $options: 'i' };
+
+    const total = await db.collection('stories').countDocuments(filter);
+    const stories = await db.collection('stories')
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
+
+    const uids = [...new Set(stories.map(s => s.uid).filter(Boolean))];
+    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const profileMap = {};
+    profiles.forEach(p => { profileMap[p.uid] = p; });
+
+    // Report counts per story
+    const storyIds = stories.map(s => s._id.toString());
+    const reportDocs = await db.collection('reports').aggregate([
+      { $match: { storyId: { $in: storyIds }, status: 'pending' } },
+      { $group: { _id: '$storyId', count: { $sum: 1 } } },
+    ]).toArray();
+    const reportMap = {};
+    reportDocs.forEach(r => { reportMap[r._id] = r.count; });
+
+    const enriched = stories.map(s => ({
+      _id: s._id.toString(),
+      uid: s.uid,
+      authorName:  profileMap[s.uid]?.displayName || 'Unknown',
+      authorPhoto: profileMap[s.uid]?.photoURL    || null,
+      imageURL:  s.imageURL  || null,
+      videoURL:  s.videoURL  || null,
+      caption:   s.caption   || s.text || null,
+      createdAt: s.createdAt ? (s.createdAt instanceof Date ? s.createdAt.getTime() : s.createdAt) : 0,
+      reportCount: reportMap[s._id.toString()] || 0,
+    }));
+
+    res.json({ stories: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch stories' });
+  }
+});
+
+// DELETE /api/admin/stories/:storyId — admin force-delete a story
+app.delete('/api/admin/stories/:storyId', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { storyId } = req.params;
+    if (!ObjectId.isValid(storyId)) return res.status(400).json({ error: 'Invalid story ID' });
+    await db.collection('stories').deleteOne({ _id: new ObjectId(storyId) });
+    await db.collection('reports').deleteMany({ storyId });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete story' });
+  }
+});
+
+// GET /api/admin/events — paginated list of all meetup posts
+app.get('/api/admin/events', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const search  = (req.query.search  || '').trim();
+    const filter  = req.query.filter   || 'all'; // all | upcoming | past | flagged
+
+    const now = Date.now();
+    const query = { type: 'meetup' };
+    if (search) query['meetupDetails.title'] = { $regex: search, $options: 'i' };
+
+    const total = await db.collection('posts').countDocuments(query);
+    let events = await db.collection('posts')
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
+
+    const uids = [...new Set(events.map(e => e.uid).filter(Boolean))];
+    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const profileMap = {};
+    profiles.forEach(p => { profileMap[p.uid] = p; });
+
+    // Pending report counts
+    const eventIds = events.map(e => e._id.toString());
+    const reportDocs = await db.collection('reports').aggregate([
+      { $match: { $or: [{ postId: { $in: eventIds } }, { type: 'meetup', postId: { $in: eventIds } }], status: 'pending' } },
+      { $group: { _id: '$postId', count: { $sum: 1 } } },
+    ]).toArray();
+    const reportMap = {};
+    reportDocs.forEach(r => { reportMap[r._id] = r.count; });
+
+    const enriched = events.map(e => {
+      const toMs = v => v instanceof Date ? v.getTime() : (typeof v === 'number' ? v : new Date(v).getTime());
+      const md = e.meetupDetails || {};
+      // Compute event date as ms from YYYY-MM-DD + startTime
+      let eventMs = 0;
+      try {
+        if (md.date && md.startTime) eventMs = new Date(`${md.date}T${md.startTime}`).getTime();
+      } catch (_) {}
+      return {
+        _id:          e._id.toString(),
+        uid:          e.uid,
+        authorName:   profileMap[e.uid]?.displayName || 'Unknown',
+        authorPhoto:  profileMap[e.uid]?.photoURL    || null,
+        title:        md.title        || e.content?.slice(0, 60) || 'Untitled Event',
+        activity:     md.activity     || null,
+        date:         md.date         || null,
+        startTime:    md.startTime    || null,
+        venueName:    md.venueName    || null,
+        feeType:      md.feeType      || null,
+        maxGuests:    md.maxGuests    || null,
+        attendeeCount:   (e.attendees       || []).length,
+        pendingCount:    (e.pendingRequests || []).length,
+        imageURL:     e.imageURL      || null,
+        createdAt:    toMs(e.createdAt),
+        eventMs,
+        isPast:       eventMs > 0 && eventMs < now,
+        reportCount:  reportMap[e._id.toString()] || 0,
+      };
+    });
+
+    res.json({ events: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+// DELETE /api/admin/events/:eventId — admin force-delete a meetup post
+app.delete('/api/admin/events/:eventId', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { eventId } = req.params;
+    if (!ObjectId.isValid(eventId)) return res.status(400).json({ error: 'Invalid event ID' });
+    await db.collection('posts').deleteOne({ _id: new ObjectId(eventId), type: 'meetup' });
+    await db.collection('reports').deleteMany({ postId: eventId });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete event' });
+  }
+});
+
 server.listen(port, '0.0.0.0', () => {
   console.log(`Server + WebSocket running on port ${port}`);
 });

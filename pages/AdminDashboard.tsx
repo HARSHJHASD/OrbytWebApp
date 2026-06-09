@@ -8,7 +8,7 @@ import {
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { AdminCommunity, AdminPost, AdminReport, AdminUser } from '../types';
+import { AdminCommunity, AdminEvent, AdminPost, AdminReport, AdminStory, AdminUser } from '../types';
 
 function timeAgo(ts: number | Date | null | undefined): string {
   if (!ts) return '-';
@@ -791,7 +791,7 @@ function UserDrawer({ user, onClose, onSuspend, onDelete, suspending }: {
   );
 }
 
-type Tab = 'users' | 'posts' | 'reports' | 'communities' | 'analytics' | 'audit' | 'settings';
+type Tab = 'users' | 'posts' | 'stories' | 'events' | 'reports' | 'communities' | 'analytics' | 'audit' | 'settings';
 type SortField = 'createdAt' | 'reportCount' | 'postCount' | 'displayName';
 type UserFilter = 'all' | 'flagged' | 'suspended';
 type ReportFilter = 'all' | 'pending' | 'resolved' | 'dismissed';
@@ -833,10 +833,29 @@ const AdminDashboard: React.FC = () => {
   const [postsTotal, setPostsTotal] = useState(0);
   const [postsPages, setPostsPages] = useState(1);
   const [postsFilter, setPostsFilter] = useState<'all' | 'flagged'>('all');
+  const [postsSearch, setPostsSearch] = useState('');
   const [deletingPost, setDeletingPost] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkThreshold, setBulkThreshold] = useState(3);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+
+  // Stories
+  const [stories, setStories] = useState<AdminStory[]>([]);
+  const [storiesLoading, setStoriesLoading] = useState(false);
+  const [storiesPage, setStoriesPage] = useState(1);
+  const [storiesTotal, setStoriesTotal] = useState(0);
+  const [storiesPages, setStoriesPages] = useState(1);
+  const [storiesSearch, setStoriesSearch] = useState('');
+  const [deletingStory, setDeletingStory] = useState<string | null>(null);
+
+  // Events
+  const [events, setEvents] = useState<AdminEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsPages, setEventsPages] = useState(1);
+  const [eventsSearch, setEventsSearch] = useState('');
+  const [deletingEvent, setDeletingEvent] = useState<string | null>(null);
 
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
@@ -886,17 +905,41 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const fetchPosts = useCallback(async (page = 1, flagged = false) => {
+  const fetchPosts = useCallback(async (page = 1, flagged = false, search = '') => {
     if (!token) return;
     setPostsLoading(true);
     try {
+      const url = `${page}`;
       const data = await api.admin.getPosts(token, page, flagged);
+      void url;
       setPosts(data.posts); setPostsTotal(data.total); setPostsPages(data.pages); setPostsPage(page);
     } catch (e: any) { showToast(e?.message || 'Failed to load posts', 'error'); }
     finally { setPostsLoading(false); }
   }, [token]);
 
+  const fetchStories = useCallback(async (page = 1, search = '') => {
+    if (!token) return;
+    setStoriesLoading(true);
+    try {
+      const data = await api.admin.getStories(token, page, search);
+      setStories(data.stories); setStoriesTotal(data.total); setStoriesPages(data.pages); setStoriesPage(page);
+    } catch (e: any) { showToast(e?.message || 'Failed to load stories', 'error'); }
+    finally { setStoriesLoading(false); }
+  }, [token]);
+
+  const fetchEvents = useCallback(async (page = 1, search = '') => {
+    if (!token) return;
+    setEventsLoading(true);
+    try {
+      const data = await api.admin.getEvents(token, page, search);
+      setEvents(data.events); setEventsTotal(data.total); setEventsPages(data.pages); setEventsPage(page);
+    } catch (e: any) { showToast(e?.message || 'Failed to load events', 'error'); }
+    finally { setEventsLoading(false); }
+  }, [token]);
+
   useEffect(() => { if (tab === 'posts') fetchPosts(1, postsFilter === 'flagged'); }, [tab, postsFilter, fetchPosts]);
+  useEffect(() => { if (tab === 'stories') fetchStories(1, ''); }, [tab, fetchStories]);
+  useEffect(() => { if (tab === 'events') fetchEvents(1, ''); }, [tab, fetchEvents]);
 
   useEffect(() => {
     if (tab !== 'analytics' || analytics) return;

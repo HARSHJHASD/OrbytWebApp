@@ -235,3 +235,36 @@ export interface AdminPost {
   createdAt: number;
   type?: string;
 }
+
+export interface AdminStory {
+  _id: string;
+  uid: string;
+  authorName: string;
+  authorPhoto: string | null;
+  imageURL: string | null;
+  videoURL: string | null;
+  caption: string | null;
+  createdAt: number;
+  reportCount: number;
+}
+
+export interface AdminEvent {
+  _id: string;
+  uid: string;
+  authorName: string;
+  authorPhoto: string | null;
+  title: string;
+  activity: string | null;
+  date: string | null;
+  startTime: string | null;
+  venueName: string | null;
+  feeType: string | null;
+  maxGuests: number | null;
+  attendeeCount: number;
+  pendingCount: number;
+  imageURL: string | null;
+  createdAt: number;
+  eventMs: number;
+  isPast: boolean;
+  reportCount: number;
+}

@@ -1,5 +1,5 @@
 import { API_CONFIG } from "../constants/config";
-import { AdminCommunity, AdminPost, AdminReport, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
+import { AdminCommunity, AdminEvent, AdminPost, AdminReport, AdminStory, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
 
 /**
  * API SERVICE
@@ -820,6 +820,42 @@ export const api = {
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to delete post");
+      return data;
+    },
+
+    getStories: async (token: string, page = 1, search = '') => {
+      const url = `${API_BASE}/admin/stories?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
+      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch stories");
+      return data as { stories: AdminStory[]; total: number; page: number; pages: number };
+    },
+
+    deleteStory: async (token: string, storyId: string) => {
+      const response = await fetch(`${API_BASE}/admin/stories/${storyId}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete story");
+      return data;
+    },
+
+    getEvents: async (token: string, page = 1, search = '') => {
+      const url = `${API_BASE}/admin/events?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
+      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch events");
+      return data as { events: AdminEvent[]; total: number; page: number; pages: number };
+    },
+
+    deleteEvent: async (token: string, eventId: string) => {
+      const response = await fetch(`${API_BASE}/admin/events/${eventId}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete event");
       return data;
     },
 
