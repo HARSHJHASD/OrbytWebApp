@@ -3017,11 +3017,20 @@ app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
     }));
     if (notifications.length > 0) {
       const result = await db.collection('notifications').insertMany(notifications);
-      // Push real-time WebSocket notification to every online user
+      // Push real-time WebSocket notification to every online user + Expo push for offline users
       notifications.forEach((notif, i) => {
+        const insertedId = result.insertedIds[i];
+        const fullNotif = { ...notif, _id: insertedId };
+        // WebSocket for online users
         sendToUser(notif.toUid, {
           type: 'notification',
-          notification: { ...notif, _id: result.insertedIds[i] },
+          notification: fullNotif,
+        });
+        // Expo push notification for offline / background users
+        sendPushNotification(notif.toUid, null, {
+          title: notif.title || 'Orbyt',
+          body: notif.message,
+          data: { url: '/notifications', notificationId: insertedId.toString() },
         });
       });
     }
