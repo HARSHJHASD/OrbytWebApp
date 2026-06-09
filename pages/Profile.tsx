@@ -317,7 +317,7 @@ export default function Profile() {
     if (!user || !profile || !reportReason) return;
     setActionLoading(true);
     try {
-      await api.userAction.report(user?.uid, profile?.uid, reportReason);
+      await api.userAction.report(user?.uid, profile?.uid, reportReason, undefined, { type: 'user' });
       setReportModalOpen(false);
       setReportReason("");
       alert("User has been reported. Thank you for helping keep our community safe.");
@@ -404,7 +404,7 @@ export default function Profile() {
   const handleSubmitReport = async () => {
     if (!user || !profile) return;
     try {
-      await api.userAction.report(user?.uid, profile?.uid, reportReason);
+      await api.userAction.report(user?.uid, profile?.uid, reportReason, undefined, { type: 'user' });
       alert("Report submitted. We will review this user.");
       setReportModalOpen(false);
       setShowMenu(false);

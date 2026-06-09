@@ -187,16 +187,24 @@ export interface AdminUser {
 
 export interface AdminReport {
   _id: string;
+  type: 'user' | 'post' | 'story' | 'meetup' | 'community' | string;
   reporterUid: string;
   reporterName: string;
   reporterPhoto?: string | null;
-  targetUid: string;
+  targetUid?: string | null;
   targetName: string;
   targetPhoto?: string | null;
   reason: string;
   postId?: string;
+  storyId?: string | null;
+  communityId?: string | null;
   postContent?: string | null;
   postImageURL?: string | null;
+  postType?: string | null;
+  storyImageURL?: string | null;
+  storyCaption?: string | null;
+  communityName?: string | null;
+  communityDescription?: string | null;
   createdAt: number;
   status: 'pending' | 'resolved' | 'dismissed';
 }
@@ -208,8 +216,10 @@ export interface AdminCommunity {
   createdBy: string;
   memberCount: number;
   isPrivate: boolean;
-  createdAt: number | null;
+  isFlagged?: boolean;
+  createdAt: number;
   tags: string[];
+  reportCount: number;
 }
 
 export interface AdminPost {

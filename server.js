@@ -1331,23 +1331,45 @@ app.post('/api/user/pass', async (req, res) => {
 app.post('/api/report', async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { reporterUid, targetUid, reason, postId } = req.body;
+    const { reporterUid, targetUid, reason, postId, storyId, communityId, type } = req.body;
+    if (!reporterUid || !reason) return res.status(400).json({ error: 'reporterUid and reason are required' });
+
+    // Infer type from provided IDs if not given explicitly
+    let resolvedType = type;
+    if (!resolvedType) {
+      if (storyId)     resolvedType = 'story';
+      else if (communityId) resolvedType = 'community';
+      else if (postId) resolvedType = 'post';
+      else             resolvedType = 'user';
+    }
+
     const reports = db.collection('reports');
     await reports.insertOne({
-      reporterUid, targetUid, reason, postId: postId || null,
-      createdAt: Date.now(), status: 'pending'
+      type: resolvedType,
+      reporterUid,
+      targetUid: targetUid || null,
+      reason,
+      postId:      postId      || null,
+      storyId:     storyId     || null,
+      communityId: communityId || null,
+      createdAt: Date.now(),
+      status: 'pending',
     });
-    // Auto-suspend if report count meets the configured threshold
-    try {
-      const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
-      const threshold = settings?.autoSuspendThreshold || 0;
-      if (threshold > 0) {
-        const reportCount = await reports.countDocuments({ targetUid, status: 'pending' });
-        if (reportCount >= threshold) {
-          await db.collection('profiles').updateOne({ uid: targetUid }, { $set: { isSuspended: true } }, { upsert: true });
+
+    // Auto-suspend if threshold met (user-level reports only)
+    if (targetUid && (resolvedType === 'user' || resolvedType === 'post' || resolvedType === 'story' || resolvedType === 'meetup')) {
+      try {
+        const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
+        const threshold = settings?.autoSuspendThreshold || 0;
+        if (threshold > 0) {
+          const reportCount = await reports.countDocuments({ targetUid, status: 'pending' });
+          if (reportCount >= threshold) {
+            await db.collection('profiles').updateOne({ uid: targetUid }, { $set: { isSuspended: true } }, { upsert: true });
+          }
         }
-      }
-    } catch (_) { /* non-fatal */ }
+      } catch (_) { /* non-fatal */ }
+    }
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to submit report" });
@@ -2729,33 +2751,83 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
     const status = req.query.status || 'all';  // all|pending|resolved|dismissed
     const search = (req.query.search || '').trim().toLowerCase();
+    const typeFilter = req.query.type || 'all'; // all|user|post|story|meetup|community
 
     const allReports = await db.collection('reports').find({}).sort({ createdAt: -1 }).toArray();
 
+    // Enrich reporter / target profiles
     const uids = [...new Set(allReports.flatMap(r => [r.reporterUid, r.targetUid].filter(Boolean)))];
     const profileDocs = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
     const profileMap = {};
     profileDocs.forEach(p => { profileMap[p.uid] = p; });
 
+    // Enrich posts (post / meetup type)
     const postIds = allReports.filter(r => r.postId && ObjectId.isValid(r.postId)).map(r => new ObjectId(r.postId));
     const postDocs = postIds.length > 0
-      ? await db.collection('posts').find({ _id: { $in: postIds } }).project({ _id: 1, content: 1, imageURL: 1 }).toArray()
+      ? await db.collection('posts').find({ _id: { $in: postIds } }).project({ _id: 1, content: 1, imageURL: 1, type: 1, meetupDetails: 1 }).toArray()
       : [];
     const postMap = {};
     postDocs.forEach(p => { postMap[p._id.toString()] = p; });
 
-    let enriched = allReports.map(r => ({
-      ...r,
-      _id: r._id.toString(),
-      reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
-      reporterPhoto: profileMap[r.reporterUid]?.photoURL || null,
-      targetName: profileMap[r.targetUid]?.displayName || 'Unknown',
-      targetPhoto: profileMap[r.targetUid]?.photoURL || null,
-      postContent: r.postId ? (postMap[r.postId]?.content || null) : null,
-      postImageURL: r.postId ? (postMap[r.postId]?.imageURL || null) : null,
-    }));
+    // Enrich stories
+    const storyIds = allReports.filter(r => r.storyId).map(r => r.storyId);
+    const storyDocs = storyIds.length > 0
+      ? await db.collection('stories').find({
+          $or: [
+            { _id: { $in: storyIds.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id)) } },
+            { _id: { $in: storyIds } },
+          ]
+        }).project({ _id: 1, uid: 1, imageURL: 1, videoURL: 1, text: 1, caption: 1 }).toArray()
+      : [];
+    const storyMap = {};
+    storyDocs.forEach(s => { storyMap[s._id.toString()] = s; });
 
-    // Status counts before any filtering (for filter pill badges)
+    // Enrich communities
+    const comIds = allReports
+      .filter(r => r.communityId && ObjectId.isValid(r.communityId))
+      .map(r => new ObjectId(r.communityId));
+    const comDocs = comIds.length > 0
+      ? await db.collection('communities').find({ _id: { $in: comIds } }).project({ _id: 1, name: 1, description: 1 }).toArray()
+      : [];
+    const comMap = {};
+    comDocs.forEach(c => { comMap[c._id.toString()] = c; });
+
+    let enriched = allReports.map(r => {
+      // Infer type for legacy records without a type field
+      let resolvedType = r.type;
+      if (!resolvedType) {
+        if (r.storyId)      resolvedType = 'story';
+        else if (r.communityId) resolvedType = 'community';
+        else if (r.postId)  resolvedType = 'post';
+        else                resolvedType = 'user';
+      }
+
+      const post = r.postId ? postMap[r.postId] : null;
+      const story = r.storyId ? storyMap[r.storyId] : null;
+      const community = r.communityId ? comMap[r.communityId] : null;
+
+      return {
+        ...r,
+        _id: r._id.toString(),
+        type: resolvedType,
+        reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
+        reporterPhoto: profileMap[r.reporterUid]?.photoURL || null,
+        targetName: profileMap[r.targetUid]?.displayName || (community?.name ? `Room: ${community.name}` : 'Unknown'),
+        targetPhoto: profileMap[r.targetUid]?.photoURL || null,
+        // Post content (post/meetup)
+        postContent: post?.content || null,
+        postImageURL: post?.imageURL || null,
+        postType: post?.type || null,
+        // Story content
+        storyImageURL: story?.imageURL || story?.videoURL || null,
+        storyCaption: story?.caption || story?.text || null,
+        // Community info
+        communityName: community?.name || null,
+        communityDescription: community?.description || null,
+      };
+    });
+
+    // Status counts before any filtering
     const statusCounts = {
       all:       enriched.length,
       pending:   enriched.filter(r => r.status === 'pending').length,
@@ -2763,21 +2835,27 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
       dismissed: enriched.filter(r => r.status === 'dismissed').length,
     };
 
-    // Apply status filter
-    if (status !== 'all') enriched = enriched.filter(r => r.status === status);
+    // Type counts
+    const typeCounts = {};
+    for (const r of enriched) {
+      typeCounts[r.type] = (typeCounts[r.type] || 0) + 1;
+    }
 
-    // Apply search
+    // Apply filters
+    if (status !== 'all')     enriched = enriched.filter(r => r.status === status);
+    if (typeFilter !== 'all') enriched = enriched.filter(r => r.type === typeFilter);
     if (search) {
       enriched = enriched.filter(r =>
         (r.reason || '').toLowerCase().includes(search) ||
         (r.reporterName || '').toLowerCase().includes(search) ||
-        (r.targetName || '').toLowerCase().includes(search)
+        (r.targetName || '').toLowerCase().includes(search) ||
+        (r.communityName || '').toLowerCase().includes(search)
       );
     }
 
     const total = enriched.length;
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.json({ reports: enriched.slice((page - 1) * limit, page * limit), total, page, pages, statusCounts });
+    res.json({ reports: enriched.slice((page - 1) * limit, page * limit), total, page, pages, statusCounts, typeCounts });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch reports' });
   }
@@ -2827,9 +2905,22 @@ app.get('/api/admin/posts', requireAdmin, async (req, res) => {
     // Build filter query
     const filterQuery = {};
     if (flaggedOnly) {
-      const reportedPostIds = await db.collection('reports')
-        .distinct('postId', { status: 'pending', postId: { $exists: true, $ne: null } });
-      filterQuery._id = { $in: reportedPostIds.filter(Boolean).map(id => { try { return new ObjectId(id); } catch { return null; } }).filter(Boolean) };
+      // Use find+project so postId is always a raw value regardless of how it's stored
+      const reportDocs = await db.collection('reports')
+        .find({ status: 'pending', postId: { $exists: true, $ne: null } })
+        .project({ postId: 1 })
+        .toArray();
+      const postIdStrings = [...new Set(
+        reportDocs.map(r => String(r.postId)).filter(s => s && s !== 'null' && s !== 'undefined' && s.length > 0)
+      )];
+      if (postIdStrings.length === 0) {
+        return res.json({ posts: [], total: 0, page: 1, pages: 0 });
+      }
+      const flaggedIds = postIdStrings.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+      if (flaggedIds.length === 0) {
+        return res.json({ posts: [], total: 0, page: 1, pages: 0 });
+      }
+      filterQuery._id = { $in: flaggedIds };
     }
     if (searchQuery) {
       filterQuery.content = { $regex: searchQuery, $options: 'i' };
@@ -2945,12 +3036,21 @@ app.get('/api/admin/communities', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
     const page    = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const limit   = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
     const search  = (req.query.search  || '').trim().toLowerCase();
-    const sortBy  = req.query.sort    || 'memberCount'; // memberCount|name|createdAt
+    const sortBy  = req.query.sort    || 'reportCount'; // reportCount|memberCount|name|createdAt
     const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
 
     const allComms = await db.collection('communities').find({}).toArray();
+
+    // Count pending community reports per community
+    const communityReportAgg = await db.collection('reports').aggregate([
+      { $match: { type: 'community', status: 'pending', targetCommunityId: { $exists: true } } },
+      { $group: { _id: '$targetCommunityId', count: { $sum: 1 } } },
+    ]).toArray();
+    const comReportMap = {};
+    communityReportAgg.forEach(r => { comReportMap[String(r._id)] = r.count; });
+
     let result = allComms.map(c => ({
       id: c._id.toString(),
       name: c.name,
@@ -2958,8 +3058,10 @@ app.get('/api/admin/communities', requireAdmin, async (req, res) => {
       createdBy: c.uid || c.createdBy || '',
       memberCount: (c.members || []).length,
       isPrivate: c.isPrivate || false,
+      isFlagged: c.isFlagged || false,
       createdAt: c.createdAt || null,
       tags: c.tags || [],
+      reportCount: comReportMap[c._id.toString()] || 0,
     }));
 
     if (search) {
@@ -2973,7 +3075,8 @@ app.get('/api/admin/communities', requireAdmin, async (req, res) => {
       let diff = 0;
       if (sortBy === 'name') diff = (a.name || '').localeCompare(b.name || '');
       else if (sortBy === 'createdAt') diff = (new Date(a.createdAt).getTime()||0) - (new Date(b.createdAt).getTime()||0);
-      else diff = a.memberCount - b.memberCount;
+      else if (sortBy === 'memberCount') diff = a.memberCount - b.memberCount;
+      else diff = a.reportCount - b.reportCount; // reportCount default
       return diff * sortDir;
     });
 
@@ -2995,6 +3098,116 @@ app.delete('/api/admin/communities/:id', requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete community' });
+  }
+});
+
+// PATCH /api/admin/communities/:id/flag — toggle admin-flag on a community
+app.patch('/api/admin/communities/:id/flag', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
+    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+    const isFlagged = !community.isFlagged;
+    await db.collection('communities').updateOne({ _id: new ObjectId(id) }, { $set: { isFlagged } });
+    res.json({ success: true, isFlagged });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to update flag' });
+  }
+});
+
+// GET /api/admin/communities/:id/peek — admin read-only view of a community (messages + members)
+app.get('/api/admin/communities/:id/peek', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { id } = req.params;
+    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
+    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
+    if (!community) return res.status(404).json({ error: 'Community not found' });
+
+    // Get messages (support both ObjectId and string groupId storage)
+    const msgQuery = { $or: [{ groupId: id }, { groupId: new ObjectId(id) }] };
+    const [messages, messageCount] = await Promise.all([
+      db.collection('messages').find(msgQuery).sort({ createdAt: -1 }).limit(100).toArray(),
+      db.collection('messages').countDocuments(msgQuery),
+    ]);
+    messages.reverse(); // oldest first for display
+
+    // Enrich messages with sender profiles
+    const senderUids = [...new Set(messages.map(m => m.fromUid || m.senderId).filter(Boolean))];
+    const senderProfiles = await db.collection('profiles').find({ uid: { $in: senderUids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const profileMap = {}; senderProfiles.forEach(p => { profileMap[p.uid] = p; });
+
+    const enrichedMessages = messages.map(m => {
+      const uid = m.fromUid || m.senderId || '';
+      const p = profileMap[uid] || {};
+      return {
+        _id: m._id.toString(), uid,
+        senderName: p.displayName || 'Unknown',
+        senderPhoto: p.photoURL || null,
+        text: m.text || m.content || m.message || '',
+        mediaType: m.mediaType || null,
+        mediaUrl: m.mediaUrl || m.imageURL || null,
+        createdAt: m.createdAt,
+      };
+    });
+
+    // Get member profiles
+    const memberUids = community.members || [];
+    const memberProfiles = await db.collection('profiles')
+      .find({ uid: { $in: memberUids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1, jobRole: 1, isSuspended: 1 })
+      .toArray();
+
+    // Community report count
+    const reportCount = await db.collection('reports').countDocuments({
+      type: 'community', targetCommunityId: id, status: 'pending'
+    });
+
+    res.json({
+      community: {
+        id: community._id.toString(),
+        name: community.name,
+        description: community.description || '',
+        isPrivate: community.isPrivate || false,
+        isFlagged: community.isFlagged || false,
+        tags: community.tags || [],
+        memberCount: memberUids.length,
+        messageCount,
+        ownerUid: community.ownerUid || community.uid || '',
+        createdAt: community.createdAt,
+        reportCount,
+      },
+      messages: enrichedMessages,
+      members: memberProfiles,
+    });
+  } catch (e) {
+    console.error('Admin community peek error:', e);
+    res.status(500).json({ error: 'Failed to peek community' });
+  }
+});
+
+// POST /api/report-community — users report a community (kept for back-compat, delegates to /api/report)
+app.post('/api/report-community', async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const { reporterUid, communityId, reason } = req.body;
+    if (!reporterUid || !communityId || !reason) {
+      return res.status(400).json({ error: 'reporterUid, communityId, and reason are required' });
+    }
+    await db.collection('reports').insertOne({
+      type: 'community',
+      reporterUid,
+      targetUid: null,
+      communityId: String(communityId),
+      reason,
+      createdAt: Date.now(),
+      status: 'pending',
+    });
+    res.json({ success: true });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to submit report' });
   }
 });
 

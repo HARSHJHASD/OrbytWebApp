@@ -1,6 +1,6 @@
 import {
   Activity, AlertTriangle, Ban, BookOpen, CheckCircle, ChevronDown, ChevronLeft,
-  ChevronRight, ChevronUp, Download, ExternalLink, FileText, Globe,
+  ChevronRight, ChevronUp, Download, ExternalLink, Eye, FileText, Flag, Globe,
   Image, LogOut, Megaphone, RefreshCw, Search,
   Shield, Trash2,
   TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap
@@ -280,6 +280,22 @@ function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget
   const reporterUser = users.find(u => u.uid === report.reporterUid);
   const targetUser = users.find(u => u.uid === report.targetUid);
 
+  const TYPE_COLORS: Record<string, string> = {
+    user:      'bg-violet-950 text-violet-400 border-violet-900',
+    post:      'bg-blue-950 text-blue-400 border-blue-900',
+    story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
+    meetup:    'bg-orange-950 text-orange-400 border-orange-900',
+    community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
+  };
+  const reportType = report.type || 'post';
+  const typeColor = TYPE_COLORS[reportType] ?? 'bg-slate-800 text-slate-400 border-slate-700';
+
+  const hasContent = !!(
+    report.postContent || report.postImageURL ||
+    report.storyImageURL || report.storyCaption ||
+    report.communityName
+  );
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -293,6 +309,7 @@ function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${typeColor}`}>{reportType.toUpperCase()}</span>
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
               report.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' :
               report.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' :
@@ -353,51 +370,106 @@ function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget
 
             {/* Target */}
             <div className="bg-slate-800 border border-red-900/40 rounded-xl p-4">
-              <p className="text-xs font-semibold text-red-500/70 uppercase tracking-wider mb-3">Reported User (target)</p>
-              <div className="flex items-center gap-3 mb-3">
-                <Avatar src={report.targetPhoto ?? undefined} name={report.targetName} size={44} />
-                <div className="min-w-0">
-                  <p className="text-white font-bold text-sm truncate">{report.targetName}</p>
-                  <p className="text-slate-500 text-xs font-mono truncate">{report.targetUid.slice(0, 16)}…</p>
+              <p className="text-xs font-semibold text-red-500/70 uppercase tracking-wider mb-3">
+                {reportType === 'community' ? 'Reported Room' : reportType === 'user' ? 'Reported User' : 'Content Owner'}
+              </p>
+              {reportType === 'community' && report.communityName ? (
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-11 h-11 rounded-xl bg-emerald-900/40 border border-emerald-700/30 flex items-center justify-center flex-shrink-0">
+                    <span className="text-emerald-400 text-lg font-bold">#</span>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-white font-bold text-sm truncate">{report.communityName}</p>
+                    {report.communityDescription && <p className="text-slate-500 text-xs truncate">{report.communityDescription}</p>}
+                    <p className="text-slate-600 text-xs font-mono truncate">{report.communityId?.slice(0, 16)}…</p>
+                  </div>
                 </div>
-              </div>
-              {targetUser && (
-                <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
-                  <span>{targetUser.postCount} posts</span>
-                  <span>·</span>
-                  <span className={targetUser.reportCount >= 3 ? 'text-red-400 font-bold' : targetUser.reportCount > 0 ? 'text-amber-400' : 'text-slate-500'}>{targetUser.reportCount} report{targetUser.reportCount !== 1 ? 's' : ''} against them</span>
-                  <span>·</span>
-                  <span className={targetUser.isSuspended ? 'text-orange-400 font-semibold' : 'text-emerald-400 font-semibold'}>{targetUser.isSuspended ? 'Suspended' : 'Active'}</span>
-                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <Avatar src={report.targetPhoto ?? undefined} name={report.targetName} size={44} />
+                    <div className="min-w-0">
+                      <p className="text-white font-bold text-sm truncate">{report.targetName}</p>
+                      <p className="text-slate-500 text-xs font-mono truncate">{(report.targetUid ?? '').slice(0, 16)}…</p>
+                    </div>
+                  </div>
+                  {targetUser && (
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                      <span>{targetUser.postCount} posts</span>
+                      <span>·</span>
+                      <span className={targetUser.reportCount >= 3 ? 'text-red-400 font-bold' : targetUser.reportCount > 0 ? 'text-amber-400' : 'text-slate-500'}>{targetUser.reportCount} report{targetUser.reportCount !== 1 ? 's' : ''} against them</span>
+                      <span>·</span>
+                      <span className={targetUser.isSuspended ? 'text-orange-400 font-semibold' : 'text-emerald-400 font-semibold'}>{targetUser.isSuspended ? 'Suspended' : 'Active'}</span>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    {report.targetUid && (
+                      <button
+                        onClick={() => onViewProfile(report.targetUid!)}
+                        className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> View Profile
+                      </button>
+                    )}
+                    {report.status === 'pending' && report.targetUid && (
+                      <button
+                        onClick={onDeleteTarget}
+                        className="flex items-center justify-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </>
               )}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => onViewProfile(report.targetUid)}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> View Profile
-                </button>
-                {report.status === 'pending' && (
-                  <button
-                    onClick={onDeleteTarget}
-                    className="flex items-center justify-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
             </div>
           </div>
 
-          {/* Reported Post content */}
-          {(report.postContent || report.postImageURL) && (
+          {/* Reported Content — type-specific */}
+          {reportType === 'user' && (
+            <div className="bg-violet-950/30 border border-violet-900/40 rounded-xl px-4 py-3">
+              <p className="text-xs font-semibold text-violet-400/70 uppercase tracking-wider mb-1">Report Type</p>
+              <p className="text-slate-300 text-sm">Profile / account report — no specific content attached.</p>
+            </div>
+          )}
+
+          {(reportType === 'post' || reportType === 'meetup') && (report.postContent || report.postImageURL) && (
             <div className="bg-slate-800 border border-amber-900/40 rounded-xl p-4">
-              <p className="text-xs font-semibold text-amber-400/70 uppercase tracking-wider mb-3">Reported Content</p>
+              <p className="text-xs font-semibold text-amber-400/70 uppercase tracking-wider mb-3">
+                {reportType === 'meetup' ? 'Reported Meetup' : 'Reported Post'}
+              </p>
               {report.postImageURL && (
                 <img src={report.postImageURL} alt="Reported post" className="w-full max-h-64 object-cover rounded-xl mb-3 border border-slate-700" />
               )}
               {report.postContent && <p className="text-slate-300 text-sm leading-relaxed">{report.postContent}</p>}
-              {!report.postContent && !report.postImageURL && <p className="text-slate-500 text-sm italic">Post content unavailable</p>}
+            </div>
+          )}
+
+          {reportType === 'story' && (
+            <div className="bg-slate-800 border border-cyan-900/40 rounded-xl p-4">
+              <p className="text-xs font-semibold text-cyan-400/70 uppercase tracking-wider mb-3">Reported Story</p>
+              {report.storyImageURL && (
+                <img src={report.storyImageURL} alt="Reported story" className="w-full max-h-64 object-cover rounded-xl mb-3 border border-slate-700" />
+              )}
+              {report.storyCaption && <p className="text-slate-300 text-sm leading-relaxed">{report.storyCaption}</p>}
+              {!report.storyImageURL && !report.storyCaption && (
+                <p className="text-slate-500 text-sm italic">Story content unavailable (may have expired)</p>
+              )}
+            </div>
+          )}
+
+          {reportType === 'community' && (
+            <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-xl px-4 py-3">
+              <p className="text-xs font-semibold text-emerald-400/70 uppercase tracking-wider mb-1">Reported Room</p>
+              <p className="text-white font-semibold">{report.communityName ?? 'Unknown room'}</p>
+              {report.communityDescription && <p className="text-slate-400 text-sm mt-1">{report.communityDescription}</p>}
+            </div>
+          )}
+
+          {/* Fallback for legacy reports with no type */}
+          {!hasContent && reportType !== 'user' && reportType !== 'community' && reportType !== 'story' && (
+            <div className="bg-slate-800/50 border border-slate-700 rounded-xl px-4 py-3">
+              <p className="text-slate-500 text-sm italic">No content preview available for this report.</p>
             </div>
           )}
 
@@ -417,6 +489,140 @@ function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget
           )}
           {report.status !== 'pending' && (
             <p className="text-center text-slate-600 text-xs pt-2">This report was {report.status} and is now closed.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type PeekMessage = { _id: string; uid: string; senderName: string; senderPhoto: string | null; text: string; mediaType: string | null; mediaUrl: string | null; createdAt: number };
+type PeekMember = { uid: string; displayName: string; photoURL: string; jobRole: string; isSuspended: boolean };
+type PeekData = { community: AdminCommunity & { messageCount: number; ownerUid: string }; messages: PeekMessage[]; members: PeekMember[] };
+
+function CommunityPeekModal({ communityId, token, onClose, onViewMember }: {
+  communityId: string; token: string; onClose: () => void; onViewMember: (uid: string) => void;
+}) {
+  const [peekData, setPeekData] = useState<PeekData | null>(null);
+  const [peekLoading, setPeekLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'messages' | 'members' | 'overview'>('messages');
+
+  useEffect(() => {
+    setPeekLoading(true);
+    api.admin.peekCommunity(token, communityId)
+      .then(d => setPeekData(d as PeekData))
+      .catch(() => {})
+      .finally(() => setPeekLoading(false));
+  }, [communityId, token]);
+
+  return (
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${peekData?.community.isFlagged ? 'bg-amber-950' : 'bg-emerald-950'}`}>
+              {peekData?.community.isFlagged ? <Flag className="w-4 h-4 text-amber-400" /> : <Globe className="w-4 h-4 text-emerald-400" />}
+            </div>
+            <div>
+              <h3 className="text-white font-bold">{peekData?.community.name ?? 'Community'}</h3>
+              <p className="text-slate-500 text-xs flex items-center gap-1"><Eye className="w-3 h-3" /> Admin read-only peek</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300"><X className="w-5 h-5" /></button>
+        </div>
+        {/* Tab bar */}
+        <div className="flex gap-2 px-6 py-3 border-b border-slate-800 flex-shrink-0">
+          {(['messages', 'members', 'overview'] as const).map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all ${activeTab === t ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+              {t}{t === 'messages' && peekData ? ` (${peekData.messages.length})` : ''}{t === 'members' && peekData ? ` (${peekData.members.length})` : ''}
+            </button>
+          ))}
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">
+          {peekLoading ? (
+            <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div>
+          ) : !peekData ? (
+            <div className="text-center text-slate-500 py-16">Failed to load community data</div>
+          ) : activeTab === 'messages' ? (
+            peekData.messages.length === 0 ? <div className="text-center text-slate-500 py-16">No messages yet</div> : (
+              <div className="space-y-3">
+                {peekData.messages.map(msg => (
+                  <div key={msg._id} className="flex items-start gap-3">
+                    <Avatar src={msg.senderPhoto ?? undefined} name={msg.senderName} size={32} />
+                    <div className="flex-1 min-w-0 bg-slate-800/50 rounded-xl px-3 py-2">
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <button onClick={() => onViewMember(msg.uid)} className="text-white font-semibold text-sm hover:text-violet-400 transition-colors">{msg.senderName}</button>
+                        <span className="text-slate-600 text-xs">{timeAgo(msg.createdAt)}</span>
+                      </div>
+                      {msg.text && <p className="text-slate-300 text-sm leading-relaxed">{msg.text}</p>}
+                      {msg.mediaUrl && (
+                        /\.(jpg|jpeg|png|gif|webp)/i.test(msg.mediaUrl) || msg.mediaType === 'image'
+                          ? <img src={msg.mediaUrl} alt="" className="mt-2 max-h-48 rounded-xl border border-slate-700 object-cover" />
+                          : <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="mt-1 text-violet-400 text-xs underline inline-block">View attachment</a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : activeTab === 'members' ? (
+            peekData.members.length === 0 ? <div className="text-center text-slate-500 py-16">No members</div> : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {peekData.members.map(m => (
+                  <button key={m.uid} onClick={() => onViewMember(m.uid)}
+                    className="flex items-center gap-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl px-4 py-3 transition-colors text-left group">
+                    <Avatar src={m.photoURL} name={m.displayName} size={36} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-semibold text-sm truncate group-hover:text-violet-300 transition-colors">{m.displayName}</p>
+                      {m.jobRole && <p className="text-slate-500 text-xs truncate">{m.jobRole}</p>}
+                      {m.isSuspended && <span className="text-xs text-orange-400 font-medium">Suspended</span>}
+                    </div>
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400 flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )
+          ) : (
+            // Overview tab
+            <div className="space-y-4">
+              {peekData.community.description && (
+                <div className="bg-slate-800 rounded-xl p-4"><p className="text-slate-300 text-sm">{peekData.community.description}</p></div>
+              )}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Members', value: peekData.community.memberCount, color: 'text-white' },
+                  { label: 'Messages', value: peekData.community.messageCount, color: 'text-blue-400' },
+                  { label: 'Reports', value: peekData.community.reportCount, color: peekData.community.reportCount > 0 ? 'text-red-400' : 'text-slate-500' },
+                ].map(s => (
+                  <div key={s.label} className="bg-slate-800 rounded-xl p-4 text-center">
+                    <p className={`text-2xl font-extrabold ${s.color}`}>{s.value}</p>
+                    <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-800 rounded-xl p-4"><p className="text-slate-400 text-xs mb-1">Type</p><p className="text-white font-medium text-sm">{peekData.community.isPrivate ? 'Private' : 'Public'}</p></div>
+                <div className="bg-slate-800 rounded-xl p-4"><p className="text-slate-400 text-xs mb-1">Created</p><p className="text-white font-medium text-sm">{timeAgo(peekData.community.createdAt)}</p></div>
+              </div>
+              {peekData.community.tags.length > 0 && (
+                <div className="bg-slate-800 rounded-xl p-4">
+                  <p className="text-slate-400 text-xs mb-2">Tags</p>
+                  <div className="flex flex-wrap gap-1.5">{peekData.community.tags.map(tag => <span key={tag} className="text-xs bg-slate-700 text-slate-300 px-2 py-1 rounded-lg">{tag}</span>)}</div>
+                </div>
+              )}
+              {peekData.community.reportCount > 0 && (
+                <div className="bg-red-950 border border-red-900 rounded-xl p-4 flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
+                  <div>
+                    <p className="text-red-400 font-bold text-sm">{peekData.community.reportCount} pending report{peekData.community.reportCount !== 1 ? 's' : ''}</p>
+                    <p className="text-red-600 text-xs mt-0.5">This community has been reported by users</p>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -524,6 +730,10 @@ const AdminDashboard: React.FC = () => {
 
   const [deleteComTarget, setDeleteComTarget] = useState<AdminCommunity | null>(null);
   const [deletingCom, setDeletingCom] = useState(false);
+  const [comSearch, setComSearch] = useState('');
+  const [comFilter, setComFilter] = useState<'all' | 'flagged'>('all');
+  const [peekTarget, setPeekTarget] = useState<AdminCommunity | null>(null);
+  const [flaggingCom, setFlaggingCom] = useState<string | null>(null);
 
   const [posts, setPosts] = useState<AdminPost[]>([]);
   const [postsLoading, setPostsLoading] = useState(false);
@@ -659,6 +869,16 @@ const AdminDashboard: React.FC = () => {
     finally { setDeletingCom(false); setDeleteComTarget(null); }
   };
 
+  const handleFlagCommunity = async (community: AdminCommunity) => {
+    setFlaggingCom(community.id);
+    try {
+      const res = await api.admin.flagCommunity(token, community.id);
+      setCommunities(prev => prev.map(c => c.id === community.id ? { ...c, isFlagged: res.isFlagged } : c));
+      showToast(res.isFlagged ? `“${community.name}” flagged.` : `“${community.name}” unflagged.`, 'success');
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setFlaggingCom(null); }
+  };
+
   const handleDeletePost = async (postId: string) => {
     setDeletingPost(postId);
     try {
@@ -727,6 +947,18 @@ const AdminDashboard: React.FC = () => {
     });
 
   const filteredReports = reports.filter(r => reportFilter === 'all' || r.status === reportFilter);
+
+  const filteredCommunities = communities
+    .filter(c => {
+      if (comFilter === 'flagged' && !(c.reportCount > 0 || c.isFlagged)) return false;
+      if (comSearch) { const q = comSearch.toLowerCase(); return c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q); }
+      return true;
+    })
+    .sort((a, b) => {
+      const ra = a.reportCount || 0, rb = b.reportCount || 0;
+      if (ra !== rb) return rb - ra;
+      return b.memberCount - a.memberCount;
+    });
 
   const filteredAuditLogs = auditSearch
     ? auditLogs.filter(l => l.path?.includes(auditSearch) || l.uid?.includes(auditSearch) || String(l.statusCode).includes(auditSearch))
@@ -955,15 +1187,25 @@ const AdminDashboard: React.FC = () => {
             {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
               <div className="space-y-3">
                 {filteredReports.length === 0 && <div className="text-center text-slate-500 py-16">No reports found</div>}
-                {filteredReports.map(r => (
+                {filteredReports.map(r => {
+                  const rType = r.type || 'post';
+                  const TYPE_COLORS: Record<string, string> = {
+                    user:      'bg-violet-950 text-violet-400 border-violet-900',
+                    post:      'bg-blue-950 text-blue-400 border-blue-900',
+                    story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
+                    meetup:    'bg-orange-950 text-orange-400 border-orange-900',
+                    community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
+                  };
+                  const typeColor = TYPE_COLORS[rType] ?? 'bg-slate-800 text-slate-400 border-slate-700';
+                  return (
                   <div key={r._id} onClick={() => setSelectedReport(r)} className={`bg-slate-900 border rounded-2xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer hover:bg-slate-800/50 transition-colors ${r.status === 'pending' ? 'border-slate-700' : 'border-slate-800 opacity-60'}`}>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-2">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${r.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' : r.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{r.status.toUpperCase()}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${typeColor}`}>{rType.toUpperCase()}</span>
                         <span className="text-white font-bold text-sm">{r.reason}</span>
-                        {(r.postContent || r.postImageURL) && <span className="text-xs bg-amber-950 text-amber-400 border border-amber-900 px-1.5 py-0.5 rounded-full">has post</span>}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         {/* Reporter chip */}
                         <button
                           onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.reporterUid); if (u) setSelectedUser(u); }}
@@ -974,20 +1216,26 @@ const AdminDashboard: React.FC = () => {
                         </button>
                         <span className="text-slate-600 text-xs">reported</span>
                         {/* Target chip */}
-                        <button
-                          onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.targetUid); if (u) setSelectedUser(u); }}
-                          className="flex items-center gap-1.5 bg-red-950/50 hover:bg-red-950 border border-red-900/50 rounded-lg px-2 py-1 transition-colors"
-                        >
-                          <Avatar src={r.targetPhoto ?? undefined} name={r.targetName} size={18} />
-                          <span className="text-red-300 text-xs font-medium">{r.targetName}</span>
-                        </button>
+                        {rType === 'community' ? (
+                          <span className="flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-900/50 rounded-lg px-2 py-1">
+                            <span className="text-emerald-300 text-xs font-medium">#{r.communityName ?? 'room'}</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={e => { e.stopPropagation(); if (r.targetUid) { const u = users.find(u => u.uid === r.targetUid); if (u) setSelectedUser(u); } }}
+                            className="flex items-center gap-1.5 bg-red-950/50 hover:bg-red-950 border border-red-900/50 rounded-lg px-2 py-1 transition-colors"
+                          >
+                            <Avatar src={r.targetPhoto ?? undefined} name={r.targetName} size={18} />
+                            <span className="text-red-300 text-xs font-medium">{r.targetName}</span>
+                          </button>
+                        )}
                       </div>
-                      {r.postId && <p className="text-slate-600 text-xs mt-1 font-mono">post: {r.postId.slice(0, 12)}…</p>}
                       <p className="text-slate-600 text-xs mt-1">{timeAgo(r.createdAt)}</p>
                     </div>
                     <span className="text-slate-600 text-xs hidden sm:block">Click to review →</span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </>
@@ -996,14 +1244,28 @@ const AdminDashboard: React.FC = () => {
         {/* ── COMMUNITIES TAB ── */}
         {tab === 'communities' && (
           <>
-            <p className="text-slate-600 text-xs mb-4">{communities.length} communities total</p>
-            {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : communities.length === 0 ? <div className="text-center text-slate-500 py-16">No communities yet</div> : (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-3 flex-wrap">
+              <div className="relative flex-1 max-w-xs">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input type="text" value={comSearch} onChange={e => setComSearch(e.target.value)} placeholder="Search communities..."
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                />
+                {comSearch && <button onClick={() => setComSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+              </div>
+              <div className="flex items-center gap-2">
+                <FilterPill label="All" active={comFilter === 'all'} onClick={() => setComFilter('all')} count={communities.length} />
+                <FilterPill label="Flagged" active={comFilter === 'flagged'} onClick={() => setComFilter('flagged')} count={communities.filter(c => c.reportCount > 0 || c.isFlagged).length} />
+              </div>
+            </div>
+            <p className="text-slate-600 text-xs mb-3">{filteredCommunities.length} of {communities.length} communities — click Peek to inspect messages</p>
+            {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : filteredCommunities.length === 0 ? <div className="text-center text-slate-500 py-16">No communities found</div> : (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
                         <th className="text-left px-5 py-4 font-semibold">Community</th>
+                        <th className="text-left px-4 py-4 font-semibold">Reports</th>
                         <th className="text-left px-4 py-4 font-semibold">Members</th>
                         <th className="text-left px-4 py-4 font-semibold hidden sm:table-cell">Type</th>
                         <th className="text-left px-4 py-4 font-semibold hidden md:table-cell">Tags</th>
@@ -1012,19 +1274,44 @@ const AdminDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
-                      {communities.map(c => (
-                        <tr key={c.id} className="hover:bg-slate-800/40 transition-colors group">
+                      {filteredCommunities.map(c => (
+                        <tr key={c.id} className={`hover:bg-slate-800/40 transition-colors group ${(c.reportCount > 0 || c.isFlagged) ? 'bg-red-950/10' : ''}`}>
                           <td className="px-5 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-700 to-teal-700 flex items-center justify-center flex-shrink-0"><Globe className="w-4 h-4 text-white" /></div>
-                              <div className="min-w-0"><p className="font-semibold text-white truncate max-w-[200px]">{c.name}</p>{c.description && <p className="text-slate-500 text-xs truncate max-w-[200px]">{c.description}</p>}</div>
+                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${c.isFlagged ? 'bg-amber-950' : 'bg-gradient-to-br from-emerald-700 to-teal-700'}`}>
+                                {c.isFlagged ? <Flag className="w-4 h-4 text-amber-400" /> : <Globe className="w-4 h-4 text-white" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-white truncate max-w-[180px]">{c.name}</p>
+                                {c.description && <p className="text-slate-500 text-xs truncate max-w-[180px]">{c.description}</p>}
+                              </div>
                             </div>
+                          </td>
+                          <td className="px-4 py-4">
+                            {c.reportCount > 0
+                              ? <span className={`font-bold text-sm px-2 py-0.5 rounded-lg ${c.reportCount >= 3 ? 'bg-red-950 text-red-400' : 'bg-amber-950 text-amber-400'}`}>{c.reportCount}</span>
+                              : <span className="text-slate-600 text-sm">0</span>}
                           </td>
                           <td className="px-4 py-4 text-white font-bold">{c.memberCount}</td>
                           <td className="px-4 py-4 hidden sm:table-cell"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${c.isPrivate ? 'border-violet-700 text-violet-400 bg-violet-950' : 'border-slate-700 text-slate-400 bg-slate-800'}`}>{c.isPrivate ? 'Private' : 'Public'}</span></td>
                           <td className="px-4 py-4 hidden md:table-cell"><div className="flex flex-wrap gap-1">{c.tags.slice(0, 3).map(tag => <span key={tag} className="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{tag}</span>)}{c.tags.length > 3 && <span className="text-xs text-slate-600">+{c.tags.length - 3}</span>}</div></td>
                           <td className="px-4 py-4 text-slate-500 text-xs hidden lg:table-cell">{timeAgo(c.createdAt)}</td>
-                          <td className="px-4 py-4"><button onClick={() => setDeleteComTarget(c)} className="opacity-0 group-hover:opacity-100 flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all"><Trash2 className="w-3.5 h-3.5" /> Delete</button></td>
+                          <td className="px-4 py-4">
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+                              <button onClick={() => setPeekTarget(c)} className="flex items-center gap-1.5 text-violet-400 hover:bg-violet-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors">
+                                <Eye className="w-3.5 h-3.5" /> Peek
+                              </button>
+                              <button
+                                onClick={() => handleFlagCommunity(c)}
+                                disabled={flaggingCom === c.id}
+                                title={c.isFlagged ? 'Unflag' : 'Flag community'}
+                                className={`p-1.5 rounded-xl transition-colors ${c.isFlagged ? 'text-amber-400 bg-amber-950' : 'text-slate-500 hover:text-amber-400 hover:bg-amber-950'}`}
+                              >
+                                <Flag className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => setDeleteComTarget(c)} className="p-1.5 text-red-500 hover:bg-red-950 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -1234,6 +1521,18 @@ const AdminDashboard: React.FC = () => {
           onSuspend={toggleSuspend}
           onDelete={u => { setDeleteTarget(u); setSelectedUser(null); }}
           suspending={suspending === selectedUser.uid}
+        />
+      )}
+      {peekTarget && (
+        <CommunityPeekModal
+          communityId={peekTarget.id}
+          token={token}
+          onClose={() => setPeekTarget(null)}
+          onViewMember={uid => {
+            const u = users.find(u => u.uid === uid);
+            if (u) { setSelectedUser(u); setPeekTarget(null); }
+            else window.open(`/app/profile/${uid}`, '_blank');
+          }}
         />
       )}
     </div>

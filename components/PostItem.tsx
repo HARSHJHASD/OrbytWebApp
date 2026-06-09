@@ -156,7 +156,8 @@ const PostItem: React.FC<any> = ({
     setReportStep(null);
     if (!currentUserId) return;
     try {
-      await api.userAction.report(currentUserId, post?.uid, reason, post?._id);
+      const reportType = isMeetup ? 'meetup' : 'post';
+      await api.userAction.report(currentUserId, post?.uid, reason, post?._id, { type: reportType });
     } catch {}
     setReportStep('done');
   };

@@ -189,14 +189,23 @@ export const api = {
     },
     report: async (
       reporterUid: string,
-      targetUid: string,
+      targetUid: string | null | undefined,
       reason: string,
       postId?: string,
+      options?: { type?: string; storyId?: string; communityId?: string }
     ) => {
       const response = await fetch(`${API_BASE}/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporterUid, targetUid, reason, postId }),
+        body: JSON.stringify({
+          reporterUid,
+          targetUid: targetUid || null,
+          reason,
+          postId: postId || null,
+          type: options?.type || null,
+          storyId: options?.storyId || null,
+          communityId: options?.communityId || null,
+        }),
       });
       if (!response?.ok) throw new Error("Failed to submit report");
     },
@@ -877,6 +886,29 @@ export const api = {
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to bulk delete");
       return data as { success: boolean; deleted: number };
+    },
+
+    flagCommunity: async (token: string, id: string) => {
+      const response = await fetch(`${API_BASE}/admin/communities/${id}/flag`, {
+        method: "PATCH",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to flag community");
+      return data as { success: boolean; isFlagged: boolean };
+    },
+
+    peekCommunity: async (token: string, id: string) => {
+      const response = await fetch(`${API_BASE}/admin/communities/${id}/peek`, {
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to peek community");
+      return data as {
+        community: AdminCommunity & { messageCount: number; ownerUid: string };
+        messages: { _id: string; uid: string; senderName: string; senderPhoto: string | null; text: string; mediaType: string | null; mediaUrl: string | null; createdAt: number }[];
+        members: { uid: string; displayName: string; photoURL: string; jobRole: string; isSuspended: boolean }[];
+      };
     },
   },
 };

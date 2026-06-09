@@ -5,7 +5,7 @@ import { api } from '../services/api';
 import { Community } from '../types';
 import {
   Hash, Plus, Users, ArrowRight, Trash2, Pencil, LogOut,
-  Loader2, Search, X, Crown, MessageCircle, Globe, Lock, Tag
+  Loader2, Search, X, Crown, MessageCircle, Globe, Lock, Tag, Flag
 } from 'lucide-react';
 
 const ROOM_TAGS = [
@@ -191,6 +191,10 @@ const Communities: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null); // roomId being acted on
   const [confirmState, setConfirmState] = useState<{ open: boolean; type: 'leave' | 'delete'; room: Community | null }>({ open: false, type: 'leave', room: null });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<Community | null>(null);
+  const [reportDone, setReportDone] = useState(false);
+
+  const COMMUNITY_REPORT_REASONS = ['Spam', 'Harassment', 'Hate speech', 'Inappropriate content', 'Scam / Fraud', 'Other'];
 
   const fetchRooms = useCallback(async () => {
     try {
@@ -250,6 +254,15 @@ const Communities: React.FC = () => {
 
   const handleDelete = (room: Community) => {
     setConfirmState({ open: true, type: 'delete', room });
+  };
+
+  const handleReportRoom = async (room: Community, reason: string) => {
+    if (!user) return;
+    setReportTarget(null);
+    try {
+      await api.userAction.report(user.uid, null, reason, undefined, { type: 'community', communityId: room._id });
+    } catch { /* non-fatal */ }
+    setReportDone(true);
   };
 
   const handleConfirmAction = async () => {
@@ -450,6 +463,17 @@ const Communities: React.FC = () => {
                       {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
                     </button>
                   )}
+
+                  {/* Report (non-owners only) */}
+                  {!owner && (
+                    <button
+                      onClick={() => setReportTarget(room)}
+                      className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                      title="Report room"
+                    >
+                      <Flag className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -517,6 +541,45 @@ const Communities: React.FC = () => {
                 {confirmState.type === 'delete' ? 'Delete' : 'Leave'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Room Sheet */}
+      {reportTarget && (
+        <div className="fixed inset-0 z-[3000] flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReportTarget(null)} />
+          <div className="relative w-full max-w-md bg-slate-900 rounded-t-3xl p-6 border-t border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
+            <h3 className="font-bold text-white text-lg text-center mb-1">Report Room</h3>
+            <p className="text-slate-500 text-sm text-center mb-5">Why are you reporting "{reportTarget.name}"?</p>
+            <div className="space-y-2">
+              {COMMUNITY_REPORT_REASONS.map(reason => (
+                <button
+                  key={reason}
+                  onClick={() => handleReportRoom(reportTarget, reason)}
+                  className="w-full text-left px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-medium transition-colors"
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setReportTarget(null)} className="mt-4 w-full py-3 text-slate-500 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Report Done Confirmation */}
+      {reportDone && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReportDone(false)} />
+          <div className="relative bg-slate-900 border border-slate-700 rounded-2xl px-8 py-8 text-center max-w-xs mx-4 shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-emerald-900 flex items-center justify-center mx-auto mb-4">
+              <Flag className="w-6 h-6 text-emerald-400" />
+            </div>
+            <p className="text-white font-bold text-base mb-1">Report Submitted</p>
+            <p className="text-slate-400 text-sm mb-5">Thanks for keeping Orbyt safe. We'll review this room.</p>
+            <button onClick={() => setReportDone(false)} className="px-6 py-2.5 bg-slate-800 text-slate-200 rounded-xl text-sm font-semibold">Done</button>
           </div>
         </div>
       )}

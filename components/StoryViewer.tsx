@@ -148,7 +148,10 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ group, onClose, currentUserId
 
   const confirmReport = async () => {
     try {
-      await api.userAction.report(currentUserId!, group.uid, 'Reported from Story Viewer', currentStory?._id);
+      await api.userAction.report(currentUserId!, group.uid, 'Reported from Story Viewer', undefined, {
+        type: 'story',
+        storyId: currentStory?._id,
+      });
       setReportStep('done');
     } catch { setReportStep(null); }
   };

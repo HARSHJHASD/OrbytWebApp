@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Community, Message, UserProfile } from '../types';
 import {
-  ArrowLeft, Hash, Users, Send, Loader2, Image as ImageIcon, X, Crown,
+  ArrowLeft, Flag, Hash, Users, Send, Loader2, Image as ImageIcon, X, Crown,
   Copy, Trash2, Reply, Pin, AtSign
 } from 'lucide-react';
 import { compressImage } from '../util/ImageCompression';
@@ -81,6 +81,8 @@ const CommunityRoom: React.FC = () => {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [reportStep, setReportStep] = useState<null | 'pick' | 'done'>(null);
+  const REPORT_REASONS = ['Spam','Harassment','Hate speech','Inappropriate content','Scam / Fraud','Other'];
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -316,6 +318,16 @@ const CommunityRoom: React.FC = () => {
           <Users className="w-4 h-4" />
           <span className="text-xs font-semibold">{community?.members.length}</span>
         </button>
+        {/* Report room button (non-owners only) */}
+        {user && community && user.uid !== community.ownerUid && (
+          <button
+            onClick={() => setReportStep('pick')}
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+            title="Report this room"
+          >
+            <Flag className="w-4 h-4" />
+          </button>
+        )}
       </div>
 
       {/* Pinned Message Banner */}
@@ -570,6 +582,48 @@ const CommunityRoom: React.FC = () => {
           onClose={() => setShowMembers(false)}
           onNavigate={uid => navigate(`/app/profile/${uid}`)}
         />
+      )}
+
+      {/* Report Room Sheet */}
+      {reportStep === 'pick' && (
+        <div className="fixed inset-0 z-[3000] flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReportStep(null)} />
+          <div className="relative w-full max-w-md bg-slate-900 rounded-t-3xl p-6 border-t border-slate-800 shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-5" />
+            <h3 className="font-bold text-white text-lg text-center mb-1">Report Room</h3>
+            <p className="text-slate-500 text-sm text-center mb-5">Why are you reporting "{community?.name}"?</p>
+            <div className="space-y-2">
+              {REPORT_REASONS.map(reason => (
+                <button
+                  key={reason}
+                  onClick={async () => {
+                    setReportStep(null);
+                    if (!user || !communityId) return;
+                    try {
+                      await api.userAction.report(user.uid, null, reason, undefined, { type: 'community', communityId });
+                    } catch {}
+                    setReportStep('done');
+                  }}
+                  className="w-full text-left px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-medium transition-colors"
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setReportStep(null)} className="mt-4 w-full py-3 text-slate-500 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+      {reportStep === 'done' && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setReportStep(null)} />
+          <div className="relative bg-slate-900 border border-slate-700 rounded-2xl px-8 py-8 text-center max-w-xs mx-4 shadow-2xl">
+            <div className="w-14 h-14 rounded-full bg-emerald-900 flex items-center justify-center mx-auto mb-4"><Flag className="w-6 h-6 text-emerald-400" /></div>
+            <p className="text-white font-bold text-base mb-1">Report Submitted</p>
+            <p className="text-slate-400 text-sm mb-5">Thanks for keeping Orbyt safe. We'll review this room.</p>
+            <button onClick={() => setReportStep(null)} className="px-6 py-2.5 bg-slate-800 text-slate-200 rounded-xl text-sm font-semibold">Done</button>
+          </div>
+        </div>
       )}
 
       {/* Image Lightbox */}
