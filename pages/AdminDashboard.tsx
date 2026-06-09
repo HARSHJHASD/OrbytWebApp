@@ -58,79 +58,131 @@ function FilterPill({ label, active, onClick, count }: { label: string; active: 
 }
 
 // ── SVG Chart Components ─────────────────────────────────────────────────────
-type ChartRow = { date: string; signups: number; posts: number; reports: number };
+type ChartRow = { date: string; signups: number; posts: number; reports: number; communities: number; stories: number };
 
-function MultiLineChart({ data }: { data: ChartRow[] }) {
-  const W = 600; const H = 160; const PAD = { t: 10, r: 10, b: 28, l: 32 };
-  const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
-  const allVals = data.flatMap(d => [d.signups, d.posts, d.reports]);
-  const max = Math.max(...allVals, 1);
-  const scaleY = (v: number) => PAD.t + iH - (v / max) * iH;
-  const scaleX = (i: number) => PAD.l + (i / (data.length - 1 || 1)) * iW;
-  const line = (key: keyof ChartRow) =>
-    data.map((d, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i).toFixed(1)},${scaleY(d[key] as number).toFixed(1)}`).join(' ');
-  const area = (key: keyof ChartRow) =>
-    `${line(key)} L${scaleX(data.length - 1).toFixed(1)},${(PAD.t + iH).toFixed(1)} L${PAD.l},${(PAD.t + iH).toFixed(1)} Z`;
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map(f => Math.round(f * max));
+/** Sparkline used inside KPI cards */
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  const W = 80; const H = 28;
+  if (!values.length) return null;
+  const max = Math.max(...values, 1);
+  const scaleX = (i: number) => (i / (values.length - 1 || 1)) * W;
+  const scaleY = (v: number) => H - 2 - ((v / max) * (H - 4));
+  const d = values.map((v, i) => `${i === 0 ? 'M' : 'L'}${scaleX(i).toFixed(1)},${scaleY(v).toFixed(1)}`).join(' ');
+  const area = `${d} L${W},${H} L0,${H} Z`;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: H }}>
       <defs>
-        <linearGradient id="gv" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.25" /><stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" /></linearGradient>
-        <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6" stopOpacity="0.2" /><stop offset="100%" stopColor="#3b82f6" stopOpacity="0" /></linearGradient>
-        <linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ef4444" stopOpacity="0.15" /><stop offset="100%" stopColor="#ef4444" stopOpacity="0" /></linearGradient>
+        <linearGradient id={`sg-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
+        </linearGradient>
       </defs>
-      {/* grid lines */}
-      {yTicks.map((v, i) => (
-        <g key={i}>
-          <line x1={PAD.l} y1={scaleY(v)} x2={W - PAD.r} y2={scaleY(v)} stroke="#334155" strokeWidth="0.5" strokeDasharray="3,3" />
-          <text x={PAD.l - 4} y={scaleY(v) + 4} textAnchor="end" fontSize="8" fill="#64748b">{v}</text>
-        </g>
-      ))}
-      {/* area fills */}
-      <path d={area('signups')} fill="url(#gv)" />
-      <path d={area('posts')} fill="url(#gb)" />
-      <path d={area('reports')} fill="url(#gr)" />
-      {/* lines */}
-      <path d={line('signups')} fill="none" stroke="#8b5cf6" strokeWidth="2" strokeLinejoin="round" />
-      <path d={line('posts')} fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinejoin="round" />
-      <path d={line('reports')} fill="none" stroke="#ef4444" strokeWidth="1.5" strokeLinejoin="round" strokeDasharray="4,2" />
-      {/* data dots */}
-      {data.map((d, i) => (
-        <g key={i}>
-          <circle cx={scaleX(i)} cy={scaleY(d.signups)} r="2.5" fill="#8b5cf6" />
-          <circle cx={scaleX(i)} cy={scaleY(d.posts)} r="2.5" fill="#3b82f6" />
-          <title>{d.date}\nSignups: {d.signups}\nPosts: {d.posts}\nReports: {d.reports}</title>
-        </g>
-      ))}
-      {/* x-axis labels — show every 5th */}
-      {data.map((d, i) => i % 5 === 0 ? (
-        <text key={i} x={scaleX(i)} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{d.date.slice(5)}</text>
-      ) : null)}
+      <path d={area} fill={`url(#sg-${color.replace('#', '')})`} />
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   );
 }
 
+/** Smooth area chart — primary trend view */
+function AreaLineChart({ data, keys }: {
+  data: ChartRow[];
+  keys: { key: keyof ChartRow; color: string; label: string }[];
+}) {
+  const W = 600; const H = 180; const PAD = { t: 16, r: 16, b: 32, l: 36 };
+  const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
+  const allVals = data.flatMap(d => keys.map(k => d[k.key] as number));
+  const max = Math.max(...allVals, 1);
+  const yTicks = Array.from({ length: 5 }, (_, i) => Math.round((i / 4) * max));
+  const scaleY = (v: number) => PAD.t + iH - (v / max) * iH;
+  const scaleX = (i: number) => PAD.l + (i / (data.length - 1 || 1)) * iW;
+
+  const smooth = (key: keyof ChartRow) => {
+    if (data.length < 2) return '';
+    return data.map((d, i) => {
+      if (i === 0) return `M${scaleX(0).toFixed(1)},${scaleY(d[key] as number).toFixed(1)}`;
+      const x0 = scaleX(i - 1); const y0 = scaleY(data[i - 1][key] as number);
+      const x1 = scaleX(i);     const y1 = scaleY(d[key] as number);
+      const cpx = (x0 + x1) / 2;
+      return `C${cpx.toFixed(1)},${y0.toFixed(1)} ${cpx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+    }).join(' ');
+  };
+
+  const area = (key: keyof ChartRow, color: string) => {
+    const bottom = PAD.t + iH;
+    return `${smooth(key)} L${scaleX(data.length - 1).toFixed(1)},${bottom} L${PAD.l},${bottom} Z`;
+  };
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+      <defs>
+        {keys.map(k => (
+          <linearGradient key={k.key as string} id={`ag-${k.key as string}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={k.color} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={k.color} stopOpacity="0" />
+          </linearGradient>
+        ))}
+      </defs>
+      {/* grid */}
+      {yTicks.map((v, i) => (
+        <g key={i}>
+          <line x1={PAD.l} y1={scaleY(v)} x2={W - PAD.r} y2={scaleY(v)} stroke="#1e293b" strokeWidth="1" />
+          <text x={PAD.l - 6} y={scaleY(v) + 4} textAnchor="end" fontSize="9" fill="#475569">{v}</text>
+        </g>
+      ))}
+      {/* areas */}
+      {keys.map(k => (
+        <path key={`area-${k.key as string}`} d={area(k.key, k.color)} fill={`url(#ag-${k.key as string})`} />
+      ))}
+      {/* lines */}
+      {keys.map(k => (
+        <path key={`line-${k.key as string}`} d={smooth(k.key)} fill="none" stroke={k.color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+      ))}
+      {/* dots + tooltips on every 5th */}
+      {data.map((d, i) => (
+        <g key={i}>
+          {i % 5 === 0 && (
+            <text x={scaleX(i)} y={H - 6} textAnchor="middle" fontSize="8" fill="#475569">{d.date.slice(5)}</text>
+          )}
+          {keys.map(k => (
+            <circle key={k.key as string} cx={scaleX(i)} cy={scaleY(d[k.key] as number)} r="3" fill={k.color} stroke="#0f172a" strokeWidth="1.5">
+              <title>{d.date} · {k.label}: {d[k.key]}</title>
+            </circle>
+          ))}
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+/** Rounded bar chart */
 function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof ChartRow; color: string }) {
-  const W = 600; const H = 100; const PAD = { t: 8, r: 8, b: 24, l: 28 };
+  const W = 600; const H = 110; const PAD = { t: 8, r: 8, b: 26, l: 32 };
   const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
   const values = data.map(d => d[valueKey] as number);
   const max = Math.max(...values, 1);
-  const barW = iW / values.length - 2;
-  const yTicks = [0, Math.round(max / 2), max];
+  const barW = Math.max(4, iW / values.length - 2);
+  const yTicks = [0, Math.round(max * 0.5), max];
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
       {yTicks.map((v, i) => {
         const y = PAD.t + iH - (v / max) * iH;
-        return <g key={i}><line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#1e293b" strokeWidth="1" /><text x={PAD.l - 4} y={y + 3} textAnchor="end" fontSize="8" fill="#64748b">{v}</text></g>;
+        return (
+          <g key={i}>
+            <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#1e293b" strokeWidth="1" />
+            <text x={PAD.l - 4} y={y + 3} textAnchor="end" fontSize="8.5" fill="#475569">{v}</text>
+          </g>
+        );
       })}
       {values.map((v, i) => {
-        const h = Math.max((v / max) * iH, 1);
+        const h = Math.max((v / max) * iH, 2);
         const x = PAD.l + i * (iW / values.length) + 1;
         const y = PAD.t + iH - h;
         return (
           <g key={i}>
-            <rect x={x} y={y} width={barW} height={h} rx="2" fill={color} opacity="0.85" />
-            {i % 5 === 0 && <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{data[i]?.date.slice(5)}</text>}
+            <rect x={x} y={y} width={barW} height={h} rx="2.5" fill={color} opacity={v === 0 ? 0.2 : 0.85} />
+            {i % 5 === 0 && (
+              <text x={x + barW / 2} y={H - 5} textAnchor="middle" fontSize="7.5" fill="#475569">{data[i]?.date.slice(5)}</text>
+            )}
             <title>{data[i]?.date}: {v}</title>
           </g>
         );
@@ -139,12 +191,13 @@ function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof
   );
 }
 
+/** Donut chart with legend */
 function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
-  const R = 40; const cx = 60; const cy = 60;
+  const R = 42; const cx = 64; const cy = 64;
   let angle = -Math.PI / 2;
   const arcs = segments.map(seg => {
-    const a = (seg.value / total) * 2 * Math.PI;
+    const a = Math.max((seg.value / total) * 2 * Math.PI, 0.02);
     const x1 = cx + R * Math.cos(angle);
     const y1 = cy + R * Math.sin(angle);
     angle += a;
@@ -154,23 +207,62 @@ function DonutChart({ segments }: { segments: { label: string; value: number; co
     return { ...seg, d: `M${cx},${cy} L${x1.toFixed(2)},${y1.toFixed(2)} A${R},${R},0,${large},1,${x2.toFixed(2)},${y2.toFixed(2)} Z`, pct: Math.round((seg.value / total) * 100) };
   });
   return (
-    <div className="flex items-center gap-6">
-      <svg viewBox="0 0 120 120" className="w-28 h-28 flex-shrink-0">
-        <circle cx={cx} cy={cy} r={R} fill="#1e293b" />
-        {arcs.map((arc, i) => <path key={i} d={arc.d} fill={arc.color}><title>{arc.label}: {arc.value} ({arc.pct}%)</title></path>)}
-        <circle cx={cx} cy={cy} r={R * 0.55} fill="#0f172a" />
-        <text x={cx} y={cy + 4} textAnchor="middle" fontSize="13" fontWeight="bold" fill="white">{total}</text>
-      </svg>
-      <div className="space-y-2">
+    <div className="flex items-center gap-5">
+      <svg viewBox="0 0 128 128" className="w-28 h-28 flex-shrink-0">
+        <circle cx={cx} cy={cy} r={R + 2} fill="#1e293b" />
         {arcs.map((arc, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: arc.color }} />
-            <span className="text-slate-300 text-sm">{arc.label}</span>
-            <span className="text-slate-500 text-xs">({arc.pct}%)</span>
-            <span className="text-white font-bold text-sm ml-auto">{arc.value.toLocaleString()}</span>
+          <path key={i} d={arc.d} fill={arc.color}>
+            <title>{arc.label}: {arc.value} ({arc.pct}%)</title>
+          </path>
+        ))}
+        <circle cx={cx} cy={cy} r={R * 0.58} fill="#0f172a" />
+        <text x={cx} y={cy - 4} textAnchor="middle" fontSize="13" fontWeight="bold" fill="white">{total.toLocaleString()}</text>
+        <text x={cx} y={cy + 9} textAnchor="middle" fontSize="7" fill="#64748b">TOTAL</text>
+      </svg>
+      <div className="space-y-2.5 flex-1">
+        {arcs.map((arc, i) => (
+          <div key={i} className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: arc.color }} />
+            <span className="text-slate-300 text-xs flex-1">{arc.label}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="h-1.5 rounded-full" style={{ width: `${Math.max(arc.pct, 4)}px`, background: arc.color, opacity: 0.7 }} />
+              <span className="text-white font-bold text-xs w-8 text-right">{arc.value.toLocaleString()}</span>
+              <span className="text-slate-600 text-xs w-7">{arc.pct}%</span>
+            </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Horizontal ranked bar list (for top users) */
+function HBarChart({ items, color }: { items: { label: string; value: number; sublabel?: string; photo?: string | null }[]; color: string }) {
+  const max = Math.max(...items.map(i => i.value), 1);
+  return (
+    <div className="space-y-2.5">
+      {items.map((item, i) => (
+        <div key={i} className="flex items-center gap-3">
+          <span className="text-slate-600 text-xs w-4 flex-shrink-0 font-mono">#{i + 1}</span>
+          {item.photo ? (
+            <img src={item.photo} className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-slate-700" alt={item.label} />
+          ) : (
+            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              {item.label[0]?.toUpperCase()}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-white text-xs font-semibold truncate">{item.label}</span>
+              {item.sublabel && <span className="text-xs text-slate-500 truncate">{item.sublabel}</span>}
+              <span className="ml-auto text-white text-xs font-bold flex-shrink-0">{item.value}</span>
+            </div>
+            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all" style={{ width: `${(item.value / max) * 100}%`, background: color }} />
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1331,79 +1423,288 @@ const AdminDashboard: React.FC = () => {
               <div className="text-center text-slate-500 py-16">No analytics data</div>
             ) : (
               <>
-                {/* KPI row */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {/* ── Section header */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-white font-bold text-lg">Platform Analytics</h2>
+                    <p className="text-slate-500 text-xs mt-0.5">Last 30 days · All times UTC</p>
+                  </div>
+                  <button onClick={() => setAnalytics(null)} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-xs px-3 py-1.5 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
+                    <RefreshCw className="w-3 h-3" /> Refresh
+                  </button>
+                </div>
+
+                {/* ── KPI cards with sparklines ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
                   {[
-                    { label: 'DAU', value: analytics.dau, sub: 'active today', color: 'text-violet-400' },
-                    { label: 'WAU', value: analytics.wau, sub: 'active this week', color: 'text-blue-400' },
-                    { label: 'MAU', value: analytics.mau, sub: 'active this month', color: 'text-emerald-400' },
-                    { label: 'Total Users', value: analytics.totalUsers, sub: 'all time', color: 'text-white' },
-                    { label: 'Total Posts', value: analytics.totalPosts, sub: 'all time', color: 'text-white' },
-                    { label: 'Total Reports', value: analytics.totalReports, sub: 'all time', color: analytics.reportStatus?.pending > 0 ? 'text-red-400' : 'text-white' },
+                    {
+                      label: 'Daily Active',
+                      value: analytics.dau,
+                      sub: 'users today',
+                      color: 'text-violet-400',
+                      bg: 'from-violet-500/10 to-transparent',
+                      border: 'border-violet-900/40',
+                      sparkColor: '#8b5cf6',
+                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
+                    },
+                    {
+                      label: 'Weekly Active',
+                      value: analytics.wau,
+                      sub: 'users this week',
+                      color: 'text-blue-400',
+                      bg: 'from-blue-500/10 to-transparent',
+                      border: 'border-blue-900/40',
+                      sparkColor: '#3b82f6',
+                      sparkValues: (analytics.chartData as ChartRow[]).slice(-7).map((d: ChartRow) => d.signups),
+                    },
+                    {
+                      label: 'Monthly Active',
+                      value: analytics.mau,
+                      sub: 'users this month',
+                      color: 'text-emerald-400',
+                      bg: 'from-emerald-500/10 to-transparent',
+                      border: 'border-emerald-900/40',
+                      sparkColor: '#10b981',
+                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
+                    },
+                    {
+                      label: 'Total Users',
+                      value: analytics.totalUsers,
+                      sub: `+${analytics.usersLast30} this month`,
+                      growth: analytics.userGrowthRate,
+                      color: 'text-white',
+                      bg: 'from-slate-700/20 to-transparent',
+                      border: 'border-slate-700/40',
+                      sparkColor: '#94a3b8',
+                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
+                    },
+                    {
+                      label: 'Total Posts',
+                      value: analytics.totalPosts,
+                      sub: `+${analytics.postsLast30} this month`,
+                      growth: analytics.postGrowthRate,
+                      color: 'text-amber-400',
+                      bg: 'from-amber-500/10 to-transparent',
+                      border: 'border-amber-900/40',
+                      sparkColor: '#f59e0b',
+                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
+                    },
+                    {
+                      label: 'Pending Reports',
+                      value: analytics.reportStatus?.pending || 0,
+                      sub: `${analytics.totalReports} total reports`,
+                      color: analytics.reportStatus?.pending > 0 ? 'text-red-400' : 'text-slate-400',
+                      bg: analytics.reportStatus?.pending > 0 ? 'from-red-500/10 to-transparent' : 'from-slate-700/20 to-transparent',
+                      border: analytics.reportStatus?.pending > 0 ? 'border-red-900/40' : 'border-slate-700/40',
+                      sparkColor: '#ef4444',
+                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.reports),
+                    },
                   ].map(k => (
-                    <div key={k.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center">
-                      <p className={`text-2xl font-extrabold ${k.color}`}>{k.value.toLocaleString()}</p>
-                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">{k.label}</p>
-                      <p className="text-xs text-slate-600 mt-0.5">{k.sub}</p>
+                    <div key={k.label} className={`bg-gradient-to-b ${k.bg} border ${k.border} bg-slate-900 rounded-2xl p-4 flex flex-col gap-1`}>
+                      <p className={`text-2xl font-extrabold ${k.color}`}>{(k.value as number).toLocaleString()}</p>
+                      <p className="text-xs font-bold text-slate-300">{k.label}</p>
+                      <p className="text-xs text-slate-600">{k.sub}</p>
+                      {k.growth !== undefined && (
+                        <span className={`text-xs font-bold ${k.growth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {k.growth >= 0 ? '▲' : '▼'} {Math.abs(k.growth)}% vs prev 30d
+                        </span>
+                      )}
+                      <div className="mt-1">
+                        <Sparkline values={k.sparkValues} color={k.sparkColor} />
+                      </div>
                     </div>
                   ))}
                 </div>
 
-                {/* Multi-line chart */}
+                {/* ── Platform health strip ── */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Communities', value: analytics.totalCommunities, icon: <Globe className="w-4 h-4" />, color: 'text-cyan-400', bg: 'bg-cyan-900/20' },
+                    { label: 'Stories (all time)', value: analytics.totalStories, icon: <Image className="w-4 h-4" />, color: 'text-pink-400', bg: 'bg-pink-900/20' },
+                    { label: 'Suspended Users', value: analytics.suspendedCount, icon: <Ban className="w-4 h-4" />, color: analytics.suspendedCount > 0 ? 'text-orange-400' : 'text-slate-500', bg: 'bg-orange-900/20' },
+                    { label: 'Resolved Reports', value: analytics.reportStatus?.resolved || 0, icon: <CheckCircle className="w-4 h-4" />, color: 'text-emerald-400', bg: 'bg-emerald-900/20' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color}`}>{s.icon}</div>
+                      <div>
+                        <p className={`text-xl font-extrabold ${s.color}`}>{(s.value as number).toLocaleString()}</p>
+                        <p className="text-xs text-slate-500">{s.label}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* ── 30-day trend — main area chart ── */}
                 <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-violet-400" /><h3 className="text-white font-bold">30-Day Trend</h3></div>
-                    <button onClick={() => setAnalytics(null)} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-xs px-3 py-1.5 rounded-xl hover:bg-slate-800 transition-colors"><RefreshCw className="w-3 h-3" /> Refresh</button>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-violet-400" />
+                      <h3 className="text-white font-bold">30-Day Activity Trend</h3>
+                    </div>
+                    {/* Legend */}
+                    <div className="flex items-center gap-4 text-xs flex-wrap">
+                      {[
+                        { color: '#8b5cf6', label: 'Signups' },
+                        { color: '#3b82f6', label: 'Posts' },
+                        { color: '#10b981', label: 'Communities' },
+                        { color: '#ef4444', label: 'Reports' },
+                      ].map(l => (
+                        <span key={l.label} className="flex items-center gap-1.5">
+                          <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: l.color }} />
+                          <span className="text-slate-400">{l.label}</span>
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 mb-3 text-xs">
-                    <span className="flex items-center gap-1.5"><span className="w-6 h-0.5 bg-violet-500 inline-block" /> Signups</span>
-                    <span className="flex items-center gap-1.5"><span className="w-6 h-0.5 bg-blue-500 inline-block" /> Posts</span>
-                    <span className="flex items-center gap-1.5"><span className="w-5 border-t-2 border-dashed border-red-500 inline-block" /> Reports</span>
-                  </div>
-                  <MultiLineChart data={analytics.chartData} />
-                  <div className="grid grid-cols-3 gap-3 mt-4 text-center">
+                  <AreaLineChart
+                    data={analytics.chartData}
+                    keys={[
+                      { key: 'signups',     color: '#8b5cf6', label: 'Signups' },
+                      { key: 'posts',       color: '#3b82f6', label: 'Posts' },
+                      { key: 'communities', color: '#10b981', label: 'Communities' },
+                      { key: 'reports',     color: '#ef4444', label: 'Reports' },
+                    ]}
+                  />
+                  {/* 30d totals row */}
+                  <div className="grid grid-cols-4 gap-3 mt-5">
                     {[
-                      { label: 'Total signups (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.signups, 0), color: 'text-violet-400' },
-                      { label: 'Total posts (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.posts, 0), color: 'text-blue-400' },
-                      { label: 'Total reports (30d)', value: analytics.chartData.reduce((s: number, d: ChartRow) => s + d.reports, 0), color: 'text-red-400' },
+                      { label: 'Signups (30d)',     key: 'signups',     color: 'text-violet-400' },
+                      { label: 'Posts (30d)',        key: 'posts',       color: 'text-blue-400' },
+                      { label: 'Communities (30d)', key: 'communities', color: 'text-emerald-400' },
+                      { label: 'Reports (30d)',      key: 'reports',     color: 'text-red-400' },
                     ].map(s => (
-                      <div key={s.label} className="bg-slate-800 rounded-xl p-3">
-                        <p className={`text-xl font-extrabold ${s.color}`}>{s.value}</p>
+                      <div key={s.label} className="bg-slate-800/60 rounded-xl p-3 text-center">
+                        <p className={`text-xl font-extrabold ${s.color}`}>
+                          {(analytics.chartData as ChartRow[]).reduce((acc: number, d: ChartRow) => acc + (d[s.key as keyof ChartRow] as number), 0)}
+                        </p>
                         <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                {/* Bar charts */}
+                {/* ── Per-metric bar charts ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><Users className="w-4 h-4 text-violet-400" /> Daily Signups</h4>
+                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-violet-400" /> Daily New Users
+                    </h4>
+                    <p className="text-slate-500 text-xs mb-3">User signups per day — last 30 days</p>
                     <BarChart data={analytics.chartData} valueKey="signups" color="#8b5cf6" />
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-3 flex items-center gap-2"><FileText className="w-4 h-4 text-blue-400" /> Daily Posts</h4>
+                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-blue-400" /> Daily Posts Created
+                    </h4>
+                    <p className="text-slate-500 text-xs mb-3">Posts published per day — last 30 days</p>
                     <BarChart data={analytics.chartData} valueKey="posts" color="#3b82f6" />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-emerald-400" /> Daily Rooms Created
+                    </h4>
+                    <p className="text-slate-500 text-xs mb-3">Community rooms created per day — last 30 days</p>
+                    <BarChart data={analytics.chartData} valueKey="communities" color="#10b981" />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-400" /> Daily Reports Filed
+                    </h4>
+                    <p className="text-slate-500 text-xs mb-3">User reports submitted per day — last 30 days</p>
+                    <BarChart data={analytics.chartData} valueKey="reports" color="#ef4444" />
                   </div>
                 </div>
 
-                {/* Donut charts */}
+                {/* ── Donut breakdown row ── */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1">Sign-up Method</h4>
+                    <p className="text-slate-500 text-xs mb-4">How users created their account</p>
+                    <DonutChart segments={[
+                      { label: 'Google OAuth', value: analytics.authTypes?.google || 0, color: '#3b82f6' },
+                      { label: 'Email / Password', value: analytics.authTypes?.email || 0, color: '#8b5cf6' },
+                    ]} />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1">Report Status</h4>
+                    <p className="text-slate-500 text-xs mb-4">Current state of all submitted reports</p>
+                    <DonutChart segments={[
+                      { label: 'Pending Action', value: analytics.reportStatus?.pending || 0,   color: '#ef4444' },
+                      { label: 'Resolved',       value: analytics.reportStatus?.resolved || 0,  color: '#10b981' },
+                      { label: 'Dismissed',      value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
+                    ]} />
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1">Report Types</h4>
+                    <p className="text-slate-500 text-xs mb-4">What content is being reported</p>
+                    <DonutChart segments={[
+                      { label: 'User Profile', value: analytics.reportTypes?.user      || 0, color: '#8b5cf6' },
+                      { label: 'Post',         value: analytics.reportTypes?.post      || 0, color: '#3b82f6' },
+                      { label: 'Story',        value: analytics.reportTypes?.story     || 0, color: '#06b6d4' },
+                      { label: 'Meetup',       value: analytics.reportTypes?.meetup    || 0, color: '#f97316' },
+                      { label: 'Community',    value: analytics.reportTypes?.community || 0, color: '#10b981' },
+                    ]} />
+                  </div>
+                </div>
+
+                {/* ── Content breakdown donut ── */}
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                  <h4 className="text-white font-bold text-sm mb-1">Content Breakdown</h4>
+                  <p className="text-slate-500 text-xs mb-4">All-time content types on the platform</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {(analytics.contentBreakdown as { label: string; value: number }[]).map((item, i) => {
+                      const colors = ['#8b5cf6', '#f97316', '#06b6d4', '#10b981'];
+                      const total = (analytics.contentBreakdown as { value: number }[]).reduce((s, x) => s + x.value, 0) || 1;
+                      const pct = Math.round((item.value / total) * 100);
+                      return (
+                        <div key={i} className="bg-slate-800/60 rounded-xl p-4">
+                          <p className="text-2xl font-extrabold" style={{ color: colors[i] }}>{item.value.toLocaleString()}</p>
+                          <p className="text-xs text-slate-400 font-semibold mt-0.5">{item.label}</p>
+                          <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i] }} />
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1">{pct}% of content</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ── Rankings row ── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-4">Auth Type Breakdown</h4>
-                    <DonutChart segments={[
-                      { label: 'Google', value: analytics.authTypes?.google || 0, color: '#3b82f6' },
-                      { label: 'Email', value: analytics.authTypes?.email || 0, color: '#8b5cf6' },
-                    ]} />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-4">Report Status</h4>
-                    <DonutChart segments={[
-                      { label: 'Pending', value: analytics.reportStatus?.pending || 0, color: '#ef4444' },
-                      { label: 'Resolved', value: analytics.reportStatus?.resolved || 0, color: '#10b981' },
-                      { label: 'Dismissed', value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
-                    ]} />
-                  </div>
+                  {analytics.topReported?.length > 0 && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" /> Most Reported Users
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-4">Users with most pending reports against them</p>
+                      <HBarChart
+                        color="#ef4444"
+                        items={(analytics.topReported as { displayName: string; count: number; isSuspended: boolean; photoURL: string | null }[]).map(u => ({
+                          label: u.displayName,
+                          value: u.count as number,
+                          sublabel: u.isSuspended ? '🔴 suspended' : '',
+                          photo: u.photoURL,
+                        }))}
+                      />
+                    </div>
+                  )}
+                  {analytics.topPosters?.length > 0 && (
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-amber-400" /> Most Active Posters
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-4">Users with most posts in the last 30 days</p>
+                      <HBarChart
+                        color="#f59e0b"
+                        items={(analytics.topPosters as { displayName: string; count: number; photoURL: string | null }[]).map(u => ({
+                          label: u.displayName,
+                          value: u.count as number,
+                          photo: u.photoURL,
+                        }))}
+                      />
+                    </div>
+                  )}
                 </div>
               </>
             )}

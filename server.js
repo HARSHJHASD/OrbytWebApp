@@ -3236,22 +3236,16 @@ app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/analytics — signups/posts per day (30d), DAU/WAU/MAU
+// GET /api/admin/analytics — comprehensive analytics data
 app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
     const now = Date.now();
     const DAY = 86400000;
     const days30ago = now - 30 * DAY;
+    const days7ago  = now - 7  * DAY;
+    const days60ago = now - 60 * DAY;
 
-    // Fetch raw docs and process in Node to avoid Date/number type mismatch
-    const [allUsers, allPosts, allReports] = await Promise.all([
-      db.collection('users').find({}).project({ createdAt: 1, authType: 1 }).toArray(),
-      db.collection('posts').find({}).project({ createdAt: 1, uid: 1 }).toArray(),
-      db.collection('reports').find({}).project({ createdAt: 1, status: 1 }).toArray(),
-    ]);
-
-    // Normalise createdAt to ms timestamp
     const toMs = (v) => {
       if (!v) return 0;
       if (v instanceof Date) return v.getTime();
@@ -3259,11 +3253,24 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       return new Date(v).getTime();
     };
 
-    // Build 30-day buckets
+    // Parallel fetch all collections we need
+    const [allUsers, allPosts, allReports, allCommunities, allStories, allProfiles] = await Promise.all([
+      db.collection('users').find({}).project({ createdAt: 1, authType: 1, uid: 1 }).toArray(),
+      db.collection('posts').find({}).project({ createdAt: 1, uid: 1, type: 1 }).toArray(),
+      db.collection('reports').find({}).project({ createdAt: 1, status: 1, type: 1, reporterUid: 1, targetUid: 1 }).toArray(),
+      db.collection('communities').find({}).project({ createdAt: 1, members: 1 }).toArray(),
+      db.collection('stories').find({}).project({ createdAt: 1, uid: 1 }).toArray(),
+      db.collection('profiles').find({}).project({ uid: 1, isSuspended: 1, displayName: 1, photoURL: 1 }).toArray(),
+    ]);
+
+    const profileMap = {};
+    allProfiles.forEach(p => { profileMap[p.uid] = p; });
+
+    // ── 30-day daily buckets ──────────────────────────────────────────────
     const buckets = {};
     for (let i = 0; i < 30; i++) {
       const key = new Date(now - (29 - i) * DAY).toISOString().slice(0, 10);
-      buckets[key] = { date: key, signups: 0, posts: 0, reports: 0 };
+      buckets[key] = { date: key, signups: 0, posts: 0, reports: 0, communities: 0, stories: 0 };
     }
 
     allUsers.forEach(u => {
@@ -3278,31 +3285,123 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       const key = new Date(toMs(r.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].reports++;
     });
+    allCommunities.forEach(c => {
+      const key = new Date(toMs(c.createdAt)).toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].communities++;
+    });
+    allStories.forEach(s => {
+      const key = new Date(toMs(s.createdAt)).toISOString().slice(0, 10);
+      if (buckets[key]) buckets[key].stories++;
+    });
 
-    // DAU / WAU / MAU — unique uids with posts in window
-    const postsByUid = allPosts.map(p => ({ uid: p.uid, ms: toMs(p.createdAt) }));
-    const dauUids = new Set(postsByUid.filter(p => p.ms >= now - DAY).map(p => p.uid));
-    const wauUids = new Set(postsByUid.filter(p => p.ms >= now - 7 * DAY).map(p => p.uid));
-    const mauUids = new Set(postsByUid.filter(p => p.ms >= days30ago).map(p => p.uid));
+    // ── DAU / WAU / MAU ───────────────────────────────────────────────────
+    const activityByUid = [
+      ...allPosts.map(p => ({ uid: p.uid, ms: toMs(p.createdAt) })),
+      ...allStories.map(s => ({ uid: s.uid, ms: toMs(s.createdAt) })),
+    ];
+    const dauUids = new Set(activityByUid.filter(p => p.ms >= now - DAY).map(p => p.uid));
+    const wauUids = new Set(activityByUid.filter(p => p.ms >= days7ago).map(p => p.uid));
+    const mauUids = new Set(activityByUid.filter(p => p.ms >= days30ago).map(p => p.uid));
 
-    // Auth type breakdown
+    // ── Growth rate (last 30d vs prior 30d) ───────────────────────────────
+    const usersLast30  = allUsers.filter(u => toMs(u.createdAt) >= days30ago).length;
+    const usersPrior30 = allUsers.filter(u => { const ms = toMs(u.createdAt); return ms >= days60ago && ms < days30ago; }).length;
+    const postsLast30  = allPosts.filter(p => toMs(p.createdAt) >= days30ago).length;
+    const postsPrior30 = allPosts.filter(p => { const ms = toMs(p.createdAt); return ms >= days60ago && ms < days30ago; }).length;
+
+    const growthRate = (curr, prev) => prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / prev) * 100);
+
+    // ── Auth type breakdown ───────────────────────────────────────────────
     const authTypes = { google: 0, email: 0 };
     allUsers.forEach(u => { const t = u.authType === 'google' ? 'google' : 'email'; authTypes[t]++; });
 
-    // Report status breakdown
+    // ── Report breakdown ──────────────────────────────────────────────────
     const reportStatus = { pending: 0, resolved: 0, dismissed: 0 };
     allReports.forEach(r => { if (reportStatus[r.status] !== undefined) reportStatus[r.status]++; });
+
+    const reportTypes  = { user: 0, post: 0, story: 0, meetup: 0, community: 0 };
+    allReports.forEach(r => {
+      const t = r.type || 'post';
+      if (reportTypes[t] !== undefined) reportTypes[t]++;
+      else reportTypes['post']++;
+    });
+
+    // ── Content type breakdown ────────────────────────────────────────────
+    const postTypes = { post: 0, meetup: 0 };
+    allPosts.forEach(p => {
+      if (p.type === 'meetup') postTypes.meetup++;
+      else postTypes.post++;
+    });
+    const contentBreakdown = [
+      { label: 'Regular Posts', value: postTypes.post },
+      { label: 'Meetups',       value: postTypes.meetup },
+      { label: 'Stories',       value: allStories.length },
+      { label: 'Rooms',         value: allCommunities.length },
+    ];
+
+    // ── Top reported users (by pending reports against them) ─────────────
+    const targetCounts = {};
+    allReports.filter(r => r.status === 'pending' && r.targetUid).forEach(r => {
+      targetCounts[r.targetUid] = (targetCounts[r.targetUid] || 0) + 1;
+    });
+    const topReported = Object.entries(targetCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([uid, count]) => ({
+        uid, count,
+        displayName: profileMap[uid]?.displayName || uid.slice(0, 8),
+        photoURL: profileMap[uid]?.photoURL || null,
+        isSuspended: profileMap[uid]?.isSuspended || false,
+      }));
+
+    // ── Most active posters (last 30d) ────────────────────────────────────
+    const posterCounts = {};
+    allPosts.filter(p => toMs(p.createdAt) >= days30ago).forEach(p => {
+      posterCounts[p.uid] = (posterCounts[p.uid] || 0) + 1;
+    });
+    const topPosters = Object.entries(posterCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([uid, count]) => ({
+        uid, count,
+        displayName: profileMap[uid]?.displayName || uid.slice(0, 8),
+        photoURL: profileMap[uid]?.photoURL || null,
+      }));
+
+    // ── Suspension stats ──────────────────────────────────────────────────
+    const suspendedCount = allProfiles.filter(p => p.isSuspended).length;
+    const totalUserCount = allUsers.length;
+
+    // ── Community sizes ───────────────────────────────────────────────────
+    const communityActivity = allCommunities
+      .sort((a, b) => (b.members?.length || 0) - (a.members?.length || 0))
+      .slice(0, 5)
+      .map(c => ({
+        members: c.members?.length || 0,
+        id: c._id.toString(),
+      }));
 
     res.json({
       chartData: Object.values(buckets),
       dau: dauUids.size,
       wau: wauUids.size,
       mau: mauUids.size,
+      totalUsers:       totalUserCount,
+      totalPosts:       allPosts.length,
+      totalReports:     allReports.length,
+      totalCommunities: allCommunities.length,
+      totalStories:     allStories.length,
+      suspendedCount,
+      usersLast30,
+      postsLast30,
+      userGrowthRate:  growthRate(usersLast30, usersPrior30),
+      postGrowthRate:  growthRate(postsLast30, postsPrior30),
       authTypes,
       reportStatus,
-      totalUsers: allUsers.length,
-      totalPosts: allPosts.length,
-      totalReports: allReports.length,
+      reportTypes,
+      contentBreakdown,
+      topReported,
+      topPosters,
     });
   } catch (e) {
     console.error('Analytics error:', e);
