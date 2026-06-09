@@ -7,6 +7,7 @@ import {
   Lock,
   MessageCircle,
   RefreshCw,
+  Search,
   Settings,
   UserPlus,
   X,
@@ -74,6 +75,7 @@ const Feed: React.FC = () => {
   const [selectedStoryGroup, setSelectedStoryGroup] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
   const [feedSort, setFeedSort] = useState<'latest' | 'nearby' | 'friends' | 'trending'>('latest');
+  const [searchQuery, setSearchQuery] = useState('');
   const BOOKMARKS_KEY = 'bookmarkedPostIds';
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
     try { const s = localStorage.getItem(BOOKMARKS_KEY); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
@@ -245,8 +247,19 @@ const Feed: React.FC = () => {
     } else if (feedSort === 'friends') {
       filtered = filtered.filter((p: any) => userProfile?.friends?.includes(p.uid) || p.uid === user?.uid);
     }
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((p: any) =>
+        p.content?.toLowerCase().includes(q) ||
+        p.authorName?.toLowerCase().includes(q) ||
+        p.location?.name?.toLowerCase().includes(q) ||
+        p.meetupDetails?.title?.toLowerCase().includes(q) ||
+        p.meetupDetails?.activity?.toLowerCase().includes(q) ||
+        p.meetupDetails?.venueName?.toLowerCase().includes(q)
+      );
+    }
     return filtered;
-  }, [posts, activeTab, blockedUids, feedSort, myLocation, userProfile, user]);
+  }, [posts, activeTab, blockedUids, feedSort, myLocation, userProfile, user, searchQuery]);
 
   const handleAddStory = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -636,6 +649,26 @@ const Feed: React.FC = () => {
           onChange={handleAddStory}
           accept="image/*"
         />
+
+        {/* Search Bar */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search posts, events, people…"
+            className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-9 pr-9 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500/60 transition-colors"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
 
         {/* Tabs Navigation */}
         <div className="flex items-center justify-between mb-2">

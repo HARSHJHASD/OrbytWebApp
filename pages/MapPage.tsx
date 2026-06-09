@@ -2,7 +2,7 @@ import L from "leaflet";
 import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet/dist/leaflet.css";
-import { Check, ChevronRight, Instagram, Loader2, LocateFixed, MessageCircle, RefreshCw, User, UserPlus, X, MapPin } from "lucide-react";
+import { Check, ChevronRight, Instagram, Loader2, LocateFixed, MessageCircle, RefreshCw, Search, User, UserPlus, X, MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-markercluster";
@@ -97,8 +97,9 @@ const MapPage: React.FC = () => {
 
   type FilterType = "all" | "friends" | "interests";
   const [filter, setFilter] = useState<FilterType>("all");
-  const [radiusFilter, setRadiusFilter] = useState<number>(10);
+  const [radiusFilter, setRadiusFilter] = useState<number>(500);
   const [genderFilter, setGenderFilter] = useState<string>("all");
+  const [mapSearchQuery, setMapSearchQuery] = useState('');
 
   useEffect(() => {
     if (currentUserProfile?.discoveryRadius) {
@@ -155,9 +156,7 @@ const MapPage: React.FC = () => {
   const nearbyUsers = useMemo(() => {
     if (!myLocation) return [];
 
-    // Default to 10km if not set
-    const maxDistanceKm = currentUserProfile?.discoveryRadius || 10;
-    const maxDistanceMeters = maxDistanceKm * 1000;
+    const maxDistanceMeters = radiusFilter * 1000;
 
     return users
       .filter((u) => u.uid !== currentUser?.uid && u.lastLocation)
@@ -177,7 +176,7 @@ const MapPage: React.FC = () => {
         return { ...u, distMeters, distDisplay };
       })
       .filter((u) => {
-        if (u.distMeters > radiusFilter * 1000) return false;
+        if (u.distMeters > maxDistanceMeters) return false;
 
         // Gender Filter
         if (genderFilter !== "all" && u.gender !== genderFilter) {
@@ -448,6 +447,28 @@ const MapPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Search inside drawer */}
+            <div className="px-6 pt-4 pb-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+                <input
+                  type="text"
+                  value={mapSearchQuery}
+                  onChange={(e) => setMapSearchQuery(e.target.value)}
+                  placeholder="Search by name, bio…"
+                  className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-9 py-2 text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:border-primary-500/60 transition-colors"
+                />
+                {mapSearchQuery && (
+                  <button
+                    onClick={() => setMapSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* FILTERS BAR */}
             <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950/50 border-b border-slate-100 dark:border-slate-800 space-y-4">
               {/* Show filter */}
@@ -471,7 +492,7 @@ const MapPage: React.FC = () => {
                 <input 
                   type="range" 
                   min="1" 
-                  max="50" 
+                  max="500" 
                   value={radiusFilter} 
                   onChange={(e) => setRadiusFilter(parseInt(e.target.value))}
                   className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary-500"
@@ -499,7 +520,15 @@ const MapPage: React.FC = () => {
             </div>
 
             <div className="overflow-y-auto p-4 space-y-4">
-              {nearbyUsers.map((u) => (
+              {nearbyUsers.filter(u => {
+                if (!mapSearchQuery.trim()) return true;
+                const q = mapSearchQuery.trim().toLowerCase();
+                return (
+                  u.displayName?.toLowerCase().includes(q) ||
+                  u.bio?.toLowerCase().includes(q) ||
+                  u.jobRole?.toLowerCase().includes(q)
+                );
+              }).map((u) => (
                 <div
                   key={u.uid}
                   className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-primary-500/30"
