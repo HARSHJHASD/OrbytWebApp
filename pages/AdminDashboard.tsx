@@ -812,6 +812,8 @@ const AdminDashboard: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('reportCount');
   const [sortAsc, setSortAsc] = useState(false);
   const [userFilter, setUserFilter] = useState<UserFilter>('all');
+  const [usersPage, setUsersPage] = useState(1);
+  const [usersPerPage, setUsersPerPage] = useState(25);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [suspending, setSuspending] = useState<string | null>(null);
@@ -1080,7 +1082,7 @@ const AdminDashboard: React.FC = () => {
 
   const exportCSV = () => {
     const headers = ['UID', 'Display Name', 'Email', 'Auth Type', 'Posts', 'Stories', 'Friends', 'Reports', 'Suspended', 'Joined'];
-    const rows = filteredUsers.map(u => [u.uid, u.displayName, u.email, u.authType, u.postCount, u.storyCount, u.friendCount, u.reportCount, u.isSuspended ? 'Yes' : 'No', u.createdAt ? new Date(u.createdAt as number).toLocaleDateString() : '']);
+    const rows = allFilteredUsers.map(u => [u.uid, u.displayName, u.email, u.authType, u.postCount, u.storyCount, u.friendCount, u.reportCount, u.isSuspended ? 'Yes' : 'No', u.createdAt ? new Date(u.createdAt as number).toLocaleDateString() : '']);
     const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -1088,7 +1090,7 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const filteredUsers = users
+  const allFilteredUsers = users
     .filter(u => {
       const q = search.toLowerCase();
       const ms = !q || u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.uid.includes(q);
@@ -1102,6 +1104,8 @@ const AdminDashboard: React.FC = () => {
       else diff = (a[sortField] as number) - (b[sortField] as number);
       return sortAsc ? diff : -diff;
     });
+  const usersPageCount = Math.max(1, Math.ceil(allFilteredUsers.length / usersPerPage));
+  const filteredUsers = allFilteredUsers.slice((usersPage - 1) * usersPerPage, usersPage * usersPerPage);
 
   const filteredReports = reports.filter(r => reportFilter === 'all' || r.status === reportFilter);
 
@@ -1212,7 +1216,14 @@ const AdminDashboard: React.FC = () => {
                 <Download className="w-3.5 h-3.5" /> Export CSV
               </button>
             </div>
-            <p className="text-slate-600 text-xs mb-3">{filteredUsers.length} of {users.length} users — click a row to view details</p>
+            <p className="text-slate-600 text-xs mb-3">{allFilteredUsers.length} of {users.length} users — click a row to view details</p>
+            {/* per-page selector */}
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-slate-500 text-xs">Show per page:</span>
+              {[25, 50, 100].map(n => (
+                <button key={n} onClick={() => setUsersPerPage(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${usersPerPage === n ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>{n}</button>
+              ))}
+            </div>
             {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
               <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
                 <div className="overflow-x-auto">
@@ -1265,6 +1276,22 @@ const AdminDashboard: React.FC = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+            {/* Users pagination footer */}
+            {usersPageCount > 1 && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <button onClick={() => setUsersPage(p => Math.max(1, p - 1))} disabled={usersPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                {Array.from({ length: Math.min(usersPageCount, 7) }, (_, i) => {
+                  const pg = usersPageCount <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? usersPageCount : usersPage - 2 + i;
+                  return (
+                    <button key={i} onClick={() => setUsersPage(pg)}
+                      className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${usersPage === pg ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                    >{pg}</button>
+                  );
+                })}
+                <button onClick={() => setUsersPage(p => Math.min(usersPageCount, p + 1))} disabled={usersPage >= usersPageCount} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                <span className="text-slate-500 text-xs ml-2">Page {usersPage} / {usersPageCount} · {allFilteredUsers.length} users</span>
               </div>
             )}
           </>
@@ -1327,6 +1354,175 @@ const AdminDashboard: React.FC = () => {
                     <button onClick={() => fetchPosts(postsPage - 1, postsFilter === 'flagged')} disabled={postsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
                     <span className="text-slate-400 text-sm">Page {postsPage} of {postsPages}</span>
                     <button onClick={() => fetchPosts(postsPage + 1, postsFilter === 'flagged')} disabled={postsPage >= postsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── STORIES TAB ── */}
+        {tab === 'stories' && (
+          <>
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text" value={storiesSearch}
+                  onChange={e => setStoriesSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && fetchStories(1, storiesSearch)}
+                  placeholder="Search captions… (press Enter)"
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                />
+                {storiesSearch && <button onClick={() => { setStoriesSearch(''); fetchStories(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+              </div>
+              <p className="text-slate-600 text-xs">{storiesTotal.toLocaleString()} stories total</p>
+            </div>
+            {storiesLoading ? (
+              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-500 rounded-full animate-spin" /></div>
+            ) : stories.length === 0 ? (
+              <div className="text-center text-slate-500 py-16">No stories found</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {stories.map(story => (
+                    <div key={story._id} className={`relative group rounded-2xl overflow-hidden bg-slate-900 border ${story.reportCount > 0 ? 'border-red-900/60' : 'border-slate-800'}`}>
+                      {story.imageURL || story.videoURL ? (
+                        <div className="aspect-[9/16] bg-slate-800 overflow-hidden">
+                          {story.videoURL ? (
+                            <video src={story.videoURL} className="w-full h-full object-cover" muted playsInline />
+                          ) : (
+                            <img src={story.imageURL!} alt="Story" className="w-full h-full object-cover" />
+                          )}
+                        </div>
+                      ) : (
+                        <div className="aspect-[9/16] bg-slate-800 flex items-center justify-center">
+                          <Image className="w-8 h-8 text-slate-600" />
+                        </div>
+                      )}
+                      {/* Overlay info */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Avatar src={story.authorPhoto ?? undefined} name={story.authorName} size={20} />
+                          <span className="text-white text-xs font-semibold truncate">{story.authorName}</span>
+                        </div>
+                        {story.caption && <p className="text-slate-300 text-xs line-clamp-2">{story.caption}</p>}
+                        <p className="text-slate-500 text-xs mt-0.5">{timeAgo(story.createdAt)}</p>
+                        {story.reportCount > 0 && (
+                          <span className="mt-1 text-xs font-bold bg-red-950/80 text-red-400 border border-red-900 px-1.5 py-0.5 rounded-full self-start">{story.reportCount} report{story.reportCount > 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      {/* Delete button */}
+                      <button
+                        onClick={() => handleDeleteStory(story._id)}
+                        disabled={deletingStory === story._id}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-600/90 hover:bg-red-500 text-white p-1.5 rounded-lg transition-all"
+                        title="Delete story"
+                      >
+                        {deletingStory === story._id ? <div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {storiesPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <button onClick={() => fetchStories(storiesPage - 1, storiesSearch)} disabled={storiesPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                    {Array.from({ length: Math.min(storiesPages, 7) }, (_, i) => {
+                      const p = storiesPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? storiesPages : storiesPage - 2 + i;
+                      return (
+                        <button key={i} onClick={() => fetchStories(p, storiesSearch)}
+                          className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${storiesPage === p ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                        >{p}</button>
+                      );
+                    })}
+                    <button onClick={() => fetchStories(storiesPage + 1, storiesSearch)} disabled={storiesPage >= storiesPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                    <span className="text-slate-500 text-xs ml-2">Page {storiesPage} / {storiesPages} · {storiesTotal} total</span>
+                  </div>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── EVENTS TAB ── */}
+        {tab === 'events' && (
+          <>
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <input
+                  type="text" value={eventsSearch}
+                  onChange={e => setEventsSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && fetchEvents(1, eventsSearch)}
+                  placeholder="Search event titles… (press Enter)"
+                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                />
+                {eventsSearch && <button onClick={() => { setEventsSearch(''); fetchEvents(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+              </div>
+              <p className="text-slate-600 text-xs">{eventsTotal.toLocaleString()} events total</p>
+            </div>
+            {eventsLoading ? (
+              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>
+            ) : events.length === 0 ? (
+              <div className="text-center text-slate-500 py-16">No events found</div>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {events.map(event => (
+                    <div key={event._id} className={`bg-slate-900 border rounded-2xl overflow-hidden group ${event.reportCount > 0 ? 'border-red-900/50' : event.isPast ? 'border-slate-800 opacity-60' : 'border-orange-900/30'}`}>
+                      <div className="px-5 py-4 flex gap-4">
+                        {event.imageURL ? (
+                          <img src={event.imageURL} alt="Event" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-700" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-xl bg-orange-900/20 border border-orange-900/30 flex items-center justify-center flex-shrink-0">
+                            <Activity className="w-6 h-6 text-orange-400" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-white font-bold text-sm truncate">{event.title}</span>
+                            {event.isPast && <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">Past</span>}
+                            {event.reportCount > 0 && <span className="text-xs font-bold bg-red-950 text-red-400 border border-red-900 px-2 py-0.5 rounded-full">{event.reportCount} report{event.reportCount > 1 ? 's' : ''}</span>}
+                          </div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <Avatar src={event.authorPhoto ?? undefined} name={event.authorName} size={18} />
+                            <span className="text-slate-400 text-xs">{event.authorName}</span>
+                            <span className="text-slate-600 text-xs">· {timeAgo(event.createdAt)}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
+                            {event.activity && <span>🎯 {event.activity}</span>}
+                            {event.date && <span>📅 {event.date}{event.startTime ? ` @ ${event.startTime}` : ''}</span>}
+                            {event.venueName && <span>📍 {event.venueName}</span>}
+                            {event.feeType && <span>💰 {event.feeType}</span>}
+                            <span>✅ {event.attendeeCount} attending</span>
+                            {event.pendingCount > 0 && <span>⏳ {event.pendingCount} pending</span>}
+                            {event.maxGuests && <span>👥 max {event.maxGuests}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteEvent(event._id)}
+                          disabled={deletingEvent === event._id}
+                          className="opacity-0 group-hover:opacity-100 flex-shrink-0 flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all self-start"
+                        >
+                          {deletingEvent === event._id ? <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {eventsPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-6">
+                    <button onClick={() => fetchEvents(eventsPage - 1, eventsSearch)} disabled={eventsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                    {Array.from({ length: Math.min(eventsPages, 7) }, (_, i) => {
+                      const p = eventsPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? eventsPages : eventsPage - 2 + i;
+                      return (
+                        <button key={i} onClick={() => fetchEvents(p, eventsSearch)}
+                          className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${eventsPage === p ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                        >{p}</button>
+                      );
+                    })}
+                    <button onClick={() => fetchEvents(eventsPage + 1, eventsSearch)} disabled={eventsPage >= eventsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                    <span className="text-slate-500 text-xs ml-2">Page {eventsPage} / {eventsPages} · {eventsTotal} total</span>
                   </div>
                 )}
               </>
