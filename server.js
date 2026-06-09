@@ -2557,61 +2557,84 @@ app.post('/api/admin/login', authLimiter, (req, res) => {
   res.json({ success: true, token: SUPER_ADMIN_SECRET });
 });
 
-// GET /api/admin/users — list all users with basic profile info
+// GET /api/admin/users — server-side search / filter / sort / pagination
 app.get('/api/admin/users', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const users = db.collection('users');
-    const profiles = db.collection('profiles');
-    const posts = db.collection('posts');
-    const stories = db.collection('stories');
-    const reports = db.collection('reports');
+    const page    = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const search  = (req.query.search  || '').trim().toLowerCase();
+    const filter  = req.query.filter  || 'all';          // all|flagged|suspended
+    const sortBy  = req.query.sort    || 'reportCount';  // reportCount|postCount|displayName|createdAt|friendCount
+    const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
 
-    const allUsers = await users.find({}).project({ _id: 1, email: 1, createdAt: 1, authType: 1 }).toArray();
-    const allProfiles = await profiles.find({}).project({
-      uid: 1, displayName: 1, photoURL: 1, email: 1,
-      createdAt: 1, dob: 1, jobRole: 1, bio: 1, interests: 1, friends: 1, isSuspended: 1
-    }).toArray();
-    const profileMap = {};
-    allProfiles.forEach(p => { profileMap[p.uid] = p; });
+    const usersCol  = db.collection('users');
+    const profiles  = db.collection('profiles');
+    const posts     = db.collection('posts');
+    const stories   = db.collection('stories');
+    const reports   = db.collection('reports');
 
-    // Get post/story/report counts per user in one pass
-    const [postCounts, storyCounts, reportCounts] = await Promise.all([
+    const [allUsers, allProfiles, postCounts, storyCounts, reportCounts] = await Promise.all([
+      usersCol.find({}).project({ _id: 1, email: 1, createdAt: 1, authType: 1 }).toArray(),
+      profiles.find({}).project({ uid: 1, displayName: 1, photoURL: 1, createdAt: 1, jobRole: 1, bio: 1, friends: 1, isSuspended: 1 }).toArray(),
       posts.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
       stories.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
       reports.aggregate([{ $group: { _id: '$targetUid', count: { $sum: 1 } } }]).toArray(),
     ]);
-    const postCountMap = {};
-    postCounts.forEach(r => { postCountMap[r._id] = r.count; });
-    const storyCountMap = {};
-    storyCounts.forEach(r => { storyCountMap[r._id] = r.count; });
-    const reportCountMap = {};
-    reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
 
-    const result = allUsers.map(u => {
+    const profileMap = {}; allProfiles.forEach(p => { profileMap[p.uid] = p; });
+    const postCountMap = {};   postCounts.forEach(r => { postCountMap[r._id] = r.count; });
+    const storyCountMap = {};  storyCounts.forEach(r => { storyCountMap[r._id] = r.count; });
+    const reportCountMap = {}; reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
+
+    let result = allUsers.map(u => {
       const uid = u._id.toString();
-      const profile = profileMap[uid] || {};
+      const p = profileMap[uid] || {};
       return {
-        uid,
-        email: u.email,
-        authType: u.authType || 'email',
-        displayName: profile.displayName || u.email?.split('@')[0] || 'Unknown',
-        photoURL: profile.photoURL || '',
-        bio: profile.bio || '',
-        jobRole: profile.jobRole || '',
+        uid, email: u.email, authType: u.authType || 'email',
+        displayName: p.displayName || u.email?.split('@')[0] || 'Unknown',
+        photoURL: p.photoURL || '', bio: p.bio || '', jobRole: p.jobRole || '',
         createdAt: u.createdAt,
-        postCount: postCountMap[uid] || 0,
-        storyCount: storyCountMap[uid] || 0,
-        reportCount: reportCountMap[uid] || 0,
-        friendCount: (profile.friends || []).length,
-        isSuspended: profile.isSuspended || false,
+        postCount: postCountMap[uid] || 0, storyCount: storyCountMap[uid] || 0,
+        reportCount: reportCountMap[uid] || 0, friendCount: (p.friends || []).length,
+        isSuspended: p.isSuspended || false,
       };
     });
 
-    // Sort: most reported first, then newest
-    result.sort((a, b) => (b.reportCount - a.reportCount) || (new Date(b.createdAt) - new Date(a.createdAt)));
+    // Counts before search/filter (for filter pill badges)
+    const counts = {
+      all: result.length,
+      flagged: result.filter(u => u.reportCount > 0).length,
+      suspended: result.filter(u => u.isSuspended).length,
+    };
 
-    res.json({ users: result, total: result.length });
+    // Search
+    if (search) {
+      result = result.filter(u =>
+        (u.displayName || '').toLowerCase().includes(search) ||
+        (u.email || '').toLowerCase().includes(search) ||
+        u.uid.includes(search)
+      );
+    }
+
+    // Filter
+    if (filter === 'flagged')   result = result.filter(u => u.reportCount > 0);
+    else if (filter === 'suspended') result = result.filter(u => u.isSuspended);
+
+    // Sort
+    result.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'displayName')  diff = (a.displayName || '').localeCompare(b.displayName || '');
+      else if (sortBy === 'createdAt')  diff = (new Date(a.createdAt).getTime()||0) - (new Date(b.createdAt).getTime()||0);
+      else if (sortBy === 'postCount')  diff = a.postCount - b.postCount;
+      else if (sortBy === 'friendCount') diff = a.friendCount - b.friendCount;
+      else diff = a.reportCount - b.reportCount;
+      return diff * sortDir;
+    });
+
+    const total = result.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    res.json({ users: result.slice((page - 1) * limit, page * limit), total, page, pages, counts });
   } catch (e) {
     console.error('Admin get users error:', e);
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -2698,28 +2721,30 @@ app.delete('/api/admin/users/:uid', requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/reports — list all pending reports
+// GET /api/admin/reports — server-side status-filter / search / pagination
 app.get('/api/admin/reports', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const reports = await db.collection('reports').find({}).sort({ createdAt: -1 }).limit(200).toArray();
-    const profiles = db.collection('profiles');
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const status = req.query.status || 'all';  // all|pending|resolved|dismissed
+    const search = (req.query.search || '').trim().toLowerCase();
 
-    // Enrich with reporter/target display names
-    const uids = [...new Set(reports.flatMap(r => [r.reporterUid, r.targetUid].filter(Boolean)))];
-    const profileDocs = await profiles.find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const allReports = await db.collection('reports').find({}).sort({ createdAt: -1 }).toArray();
+
+    const uids = [...new Set(allReports.flatMap(r => [r.reporterUid, r.targetUid].filter(Boolean)))];
+    const profileDocs = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
     const profileMap = {};
     profileDocs.forEach(p => { profileMap[p.uid] = p; });
 
-    // Enrich with post content for post reports
-    const postIds = reports.filter(r => r.postId && ObjectId.isValid(r.postId)).map(r => new ObjectId(r.postId));
+    const postIds = allReports.filter(r => r.postId && ObjectId.isValid(r.postId)).map(r => new ObjectId(r.postId));
     const postDocs = postIds.length > 0
       ? await db.collection('posts').find({ _id: { $in: postIds } }).project({ _id: 1, content: 1, imageURL: 1 }).toArray()
       : [];
     const postMap = {};
     postDocs.forEach(p => { postMap[p._id.toString()] = p; });
 
-    const enriched = reports.map(r => ({
+    let enriched = allReports.map(r => ({
       ...r,
       _id: r._id.toString(),
       reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
@@ -2730,7 +2755,29 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
       postImageURL: r.postId ? (postMap[r.postId]?.imageURL || null) : null,
     }));
 
-    res.json({ reports: enriched, total: enriched.length });
+    // Status counts before any filtering (for filter pill badges)
+    const statusCounts = {
+      all:       enriched.length,
+      pending:   enriched.filter(r => r.status === 'pending').length,
+      resolved:  enriched.filter(r => r.status === 'resolved').length,
+      dismissed: enriched.filter(r => r.status === 'dismissed').length,
+    };
+
+    // Apply status filter
+    if (status !== 'all') enriched = enriched.filter(r => r.status === status);
+
+    // Apply search
+    if (search) {
+      enriched = enriched.filter(r =>
+        (r.reason || '').toLowerCase().includes(search) ||
+        (r.reporterName || '').toLowerCase().includes(search) ||
+        (r.targetName || '').toLowerCase().includes(search)
+      );
+    }
+
+    const total = enriched.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    res.json({ reports: enriched.slice((page - 1) * limit, page * limit), total, page, pages, statusCounts });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch reports' });
   }
@@ -2772,25 +2819,29 @@ app.patch('/api/admin/users/:uid/suspend', requireAdmin, async (req, res) => {
 app.get('/api/admin/posts', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 50;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
     const flaggedOnly = req.query.flagged === 'true';
+    const searchQuery = (req.query.search || '').trim();
 
-    let pipeline = [];
+    // Build filter query
+    const filterQuery = {};
     if (flaggedOnly) {
-      // Only posts that have at least one pending report
       const reportedPostIds = await db.collection('reports')
         .distinct('postId', { status: 'pending', postId: { $exists: true, $ne: null } });
-      pipeline.push({ $match: { _id: { $in: reportedPostIds.filter(Boolean).map(id => { try { return new ObjectId(id); } catch { return null; } }).filter(Boolean) } } });
+      filterQuery._id = { $in: reportedPostIds.filter(Boolean).map(id => { try { return new ObjectId(id); } catch { return null; } }).filter(Boolean) };
     }
-    pipeline.push({ $sort: { createdAt: -1 } });
-    pipeline.push({ $skip: (page - 1) * limit });
-    pipeline.push({ $limit: limit });
+    if (searchQuery) {
+      filterQuery.content = { $regex: searchQuery, $options: 'i' };
+    }
 
-    const posts = await db.collection('posts').aggregate(pipeline).toArray();
-    const total = flaggedOnly
-      ? posts.length
-      : await db.collection('posts').countDocuments();
+    const total = await db.collection('posts').countDocuments(filterQuery);
+    const posts = await db.collection('posts')
+      .find(filterQuery)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .toArray();
 
     const postIds = posts.map(p => p._id.toString());
     const reportCounts = await db.collection('reports')
@@ -2889,12 +2940,18 @@ app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/communities — list all communities with member/message counts
+// GET /api/admin/communities — server-side search / sort / pagination
 app.get('/api/admin/communities', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });
   try {
-    const communities = await db.collection('communities').find({}).toArray();
-    const result = communities.map(c => ({
+    const page    = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const search  = (req.query.search  || '').trim().toLowerCase();
+    const sortBy  = req.query.sort    || 'memberCount'; // memberCount|name|createdAt
+    const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
+
+    const allComms = await db.collection('communities').find({}).toArray();
+    let result = allComms.map(c => ({
       id: c._id.toString(),
       name: c.name,
       description: c.description || '',
@@ -2904,8 +2961,25 @@ app.get('/api/admin/communities', requireAdmin, async (req, res) => {
       createdAt: c.createdAt || null,
       tags: c.tags || [],
     }));
-    result.sort((a, b) => b.memberCount - a.memberCount);
-    res.json({ communities: result, total: result.length });
+
+    if (search) {
+      result = result.filter(c =>
+        (c.name || '').toLowerCase().includes(search) ||
+        (c.description || '').toLowerCase().includes(search)
+      );
+    }
+
+    result.sort((a, b) => {
+      let diff = 0;
+      if (sortBy === 'name') diff = (a.name || '').localeCompare(b.name || '');
+      else if (sortBy === 'createdAt') diff = (new Date(a.createdAt).getTime()||0) - (new Date(b.createdAt).getTime()||0);
+      else diff = a.memberCount - b.memberCount;
+      return diff * sortDir;
+    });
+
+    const total = result.length;
+    const pages = Math.max(1, Math.ceil(total / limit));
+    res.json({ communities: result.slice((page - 1) * limit, page * limit), total, page, pages });
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch communities' });
   }
