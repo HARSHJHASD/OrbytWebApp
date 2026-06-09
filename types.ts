@@ -189,8 +189,10 @@ export interface AdminReport {
   _id: string;
   reporterUid: string;
   reporterName: string;
+  reporterPhoto?: string | null;
   targetUid: string;
   targetName: string;
+  targetPhoto?: string | null;
   reason: string;
   postId?: string;
   postContent?: string | null;

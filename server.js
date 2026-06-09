@@ -2723,7 +2723,9 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
       ...r,
       _id: r._id.toString(),
       reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
+      reporterPhoto: profileMap[r.reporterUid]?.photoURL || null,
       targetName: profileMap[r.targetUid]?.displayName || 'Unknown',
+      targetPhoto: profileMap[r.targetUid]?.photoURL || null,
       postContent: r.postId ? (postMap[r.postId]?.content || null) : null,
       postImageURL: r.postId ? (postMap[r.postId]?.imageURL || null) : null,
     }));

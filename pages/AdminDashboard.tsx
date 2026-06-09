@@ -1,8 +1,9 @@
 import {
   Activity, AlertTriangle, Ban, BookOpen, CheckCircle, ChevronDown, ChevronLeft,
   ChevronRight, ChevronUp, Download, ExternalLink, FileText, Globe,
-  Image, LogOut, Megaphone, RefreshCw, Search, Settings, Shield, Trash2,
-  TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap,
+  Image, LogOut, Megaphone, RefreshCw, Search,
+  Shield, Trash2,
+  TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap
 } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -129,8 +130,8 @@ function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={h} rx="2" fill={color} opacity="0.85" />
-            {i % 5 === 0 && <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{data[i].date.slice(5)}</text>}
-            <title>{data[i].date}: {v}</title>
+            {i % 5 === 0 && <text x={x + barW / 2} y={H - 4} textAnchor="middle" fontSize="7.5" fill="#475569">{data[i]?.date.slice(5)}</text>}
+            <title>{data[i]?.date}: {v}</title>
           </g>
         );
       })}
@@ -266,40 +267,158 @@ function BroadcastModal({ userCount, onSend, onCancel, sending }: {
   );
 }
 
-function ReportDetailModal({ report, onResolve, onDismiss, onDeleteUser, onClose }: {
-  report: AdminReport; onResolve: () => void; onDismiss: () => void; onDeleteUser: () => void; onClose: () => void;
+function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget, onDeleteReporter, onViewProfile, onClose }: {
+  report: AdminReport;
+  users: AdminUser[];
+  onResolve: () => void;
+  onDismiss: () => void;
+  onDeleteTarget: () => void;
+  onDeleteReporter: () => void;
+  onViewProfile: (uid: string) => void;
+  onClose: () => void;
 }) {
+  const reporterUser = users.find(u => u.uid === report.reporterUid);
+  const targetUser = users.find(u => u.uid === report.targetUid);
+
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-white font-bold text-base">Report Detail</h3>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-300"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="space-y-3 mb-5">
-          <div className="bg-slate-800 rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Reporter</span><span className="text-slate-200 font-medium">{report.reporterName}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Target</span><span className="text-slate-200 font-medium">{report.targetName}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Reason</span><span className="text-red-400 font-semibold">{report.reason}</span></div>
-            <div className="flex justify-between text-sm"><span className="text-slate-500">Submitted</span><span className="text-slate-400">{timeAgo(report.createdAt)}</span></div>
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 sticky top-0 bg-slate-900 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-red-950 flex items-center justify-center"><AlertTriangle className="w-4 h-4 text-red-400" /></div>
+            <div>
+              <h3 className="text-white font-bold">Report Detail</h3>
+              <p className="text-slate-500 text-xs">{timeAgo(report.createdAt)}</p>
+            </div>
           </div>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
+              report.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' :
+              report.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' :
+              'bg-slate-800 text-slate-400 border-slate-700'
+            }`}>{report.status.toUpperCase()}</span>
+            <button onClick={onClose} className="text-slate-500 hover:text-slate-300 ml-2"><X className="w-5 h-5" /></button>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {/* Reason banner */}
+          <div className="bg-red-950/50 border border-red-900 rounded-xl px-4 py-3 flex items-center gap-3">
+            <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+            <div>
+              <p className="text-xs text-red-400 font-semibold uppercase tracking-wider">Reason for Report</p>
+              <p className="text-white font-bold text-sm mt-0.5">{report.reason}</p>
+            </div>
+          </div>
+
+          {/* Two-column profile cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Reporter */}
+            <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Reporter (filed this report)</p>
+              <div className="flex items-center gap-3 mb-3">
+                <Avatar src={report.reporterPhoto ?? undefined} name={report.reporterName} size={44} />
+                <div className="min-w-0">
+                  <p className="text-white font-bold text-sm truncate">{report.reporterName}</p>
+                  <p className="text-slate-500 text-xs font-mono truncate">{report.reporterUid.slice(0, 16)}…</p>
+                </div>
+              </div>
+              {reporterUser && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                  <span>{reporterUser.postCount} posts</span>
+                  <span>·</span>
+                  <span>{reporterUser.reportCount} reports made</span>
+                  <span>·</span>
+                  <span className={reporterUser.isSuspended ? 'text-orange-400 font-semibold' : 'text-emerald-400 font-semibold'}>{reporterUser.isSuspended ? 'Suspended' : 'Active'}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onViewProfile(report.reporterUid)}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> View Profile
+                </button>
+                {report.status === 'pending' && (
+                  <button
+                    onClick={onDeleteReporter}
+                    className="flex items-center justify-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Target */}
+            <div className="bg-slate-800 border border-red-900/40 rounded-xl p-4">
+              <p className="text-xs font-semibold text-red-500/70 uppercase tracking-wider mb-3">Reported User (target)</p>
+              <div className="flex items-center gap-3 mb-3">
+                <Avatar src={report.targetPhoto ?? undefined} name={report.targetName} size={44} />
+                <div className="min-w-0">
+                  <p className="text-white font-bold text-sm truncate">{report.targetName}</p>
+                  <p className="text-slate-500 text-xs font-mono truncate">{report.targetUid.slice(0, 16)}…</p>
+                </div>
+              </div>
+              {targetUser && (
+                <div className="flex items-center gap-2 text-xs text-slate-500 mb-3">
+                  <span>{targetUser.postCount} posts</span>
+                  <span>·</span>
+                  <span className={targetUser.reportCount >= 3 ? 'text-red-400 font-bold' : targetUser.reportCount > 0 ? 'text-amber-400' : 'text-slate-500'}>{targetUser.reportCount} report{targetUser.reportCount !== 1 ? 's' : ''} against them</span>
+                  <span>·</span>
+                  <span className={targetUser.isSuspended ? 'text-orange-400 font-semibold' : 'text-emerald-400 font-semibold'}>{targetUser.isSuspended ? 'Suspended' : 'Active'}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onViewProfile(report.targetUid)}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold py-2 rounded-xl transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" /> View Profile
+                </button>
+                {report.status === 'pending' && (
+                  <button
+                    onClick={onDeleteTarget}
+                    className="flex items-center justify-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Reported Post content */}
           {(report.postContent || report.postImageURL) && (
-            <div className="bg-slate-800 rounded-xl p-4">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Reported Post</p>
+            <div className="bg-slate-800 border border-amber-900/40 rounded-xl p-4">
+              <p className="text-xs font-semibold text-amber-400/70 uppercase tracking-wider mb-3">Reported Content</p>
               {report.postImageURL && (
-                <img src={report.postImageURL} alt="Reported post" className="w-full max-h-48 object-cover rounded-lg mb-2" />
+                <img src={report.postImageURL} alt="Reported post" className="w-full max-h-64 object-cover rounded-xl mb-3 border border-slate-700" />
               )}
               {report.postContent && <p className="text-slate-300 text-sm leading-relaxed">{report.postContent}</p>}
+              {!report.postContent && !report.postImageURL && <p className="text-slate-500 text-sm italic">Post content unavailable</p>}
             </div>
           )}
+
+          {/* Actions */}
+          {report.status === 'pending' && (
+            <div className="border-t border-slate-800 pt-4">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Actions</p>
+              <div className="flex gap-2 flex-wrap">
+                <button onClick={onResolve} className="flex-1 flex items-center justify-center gap-2 bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-bold py-2.5 rounded-xl transition-colors">
+                  <CheckCircle className="w-4 h-4" /> Resolve — No Action
+                </button>
+                <button onClick={onDismiss} className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-bold py-2.5 rounded-xl transition-colors">
+                  <XCircle className="w-4 h-4" /> Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+          {report.status !== 'pending' && (
+            <p className="text-center text-slate-600 text-xs pt-2">This report was {report.status} and is now closed.</p>
+          )}
         </div>
-        {report.status === 'pending' && (
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={onResolve} className="flex-1 flex items-center justify-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-bold py-2.5 rounded-xl transition-colors"><CheckCircle className="w-4 h-4" /> Resolve</button>
-            <button onClick={onDismiss} className="flex-1 flex items-center justify-center gap-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-bold py-2.5 rounded-xl transition-colors"><XCircle className="w-4 h-4" /> Dismiss</button>
-            <button onClick={onDeleteUser} className="flex-1 flex items-center justify-center gap-1.5 bg-red-700 hover:bg-red-600 text-white text-sm font-bold py-2.5 rounded-xl transition-colors"><Trash2 className="w-4 h-4" /> Delete User</button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -839,15 +958,31 @@ const AdminDashboard: React.FC = () => {
                 {filteredReports.map(r => (
                   <div key={r._id} onClick={() => setSelectedReport(r)} className={`bg-slate-900 border rounded-2xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer hover:bg-slate-800/50 transition-colors ${r.status === 'pending' ? 'border-slate-700' : 'border-slate-800 opacity-60'}`}>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <div className="flex items-center gap-2 flex-wrap mb-2">
                         <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${r.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' : r.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{r.status.toUpperCase()}</span>
-                        <span className="text-slate-300 text-sm font-semibold">{r.reason}</span>
+                        <span className="text-white font-bold text-sm">{r.reason}</span>
                         {(r.postContent || r.postImageURL) && <span className="text-xs bg-amber-950 text-amber-400 border border-amber-900 px-1.5 py-0.5 rounded-full">has post</span>}
                       </div>
-                      <p className="text-slate-500 text-xs">
-                        By <span className="text-slate-300">{r.reporterName}</span> → <span className="text-slate-300 cursor-pointer hover:text-violet-400" onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.targetUid); if (u) setSelectedUser(u); }}>{r.targetName}</span>
-                        {r.postId && <span className="font-mono text-slate-600"> · post: {r.postId.slice(0, 8)}…</span>}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {/* Reporter chip */}
+                        <button
+                          onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.reporterUid); if (u) setSelectedUser(u); }}
+                          className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-2 py-1 transition-colors"
+                        >
+                          <Avatar src={r.reporterPhoto ?? undefined} name={r.reporterName} size={18} />
+                          <span className="text-slate-300 text-xs font-medium">{r.reporterName}</span>
+                        </button>
+                        <span className="text-slate-600 text-xs">reported</span>
+                        {/* Target chip */}
+                        <button
+                          onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.targetUid); if (u) setSelectedUser(u); }}
+                          className="flex items-center gap-1.5 bg-red-950/50 hover:bg-red-950 border border-red-900/50 rounded-lg px-2 py-1 transition-colors"
+                        >
+                          <Avatar src={r.targetPhoto ?? undefined} name={r.targetName} size={18} />
+                          <span className="text-red-300 text-xs font-medium">{r.targetName}</span>
+                        </button>
+                      </div>
+                      {r.postId && <p className="text-slate-600 text-xs mt-1 font-mono">post: {r.postId.slice(0, 12)}…</p>}
                       <p className="text-slate-600 text-xs mt-1">{timeAgo(r.createdAt)}</p>
                     </div>
                     <span className="text-slate-600 text-xs hidden sm:block">Click to review →</span>
@@ -1083,10 +1218,13 @@ const AdminDashboard: React.FC = () => {
       {selectedReport && (
         <ReportDetailModal
           report={selectedReport}
+          users={users}
           onClose={() => setSelectedReport(null)}
           onResolve={() => { resolveReport(selectedReport._id, 'resolved'); setSelectedReport(null); }}
           onDismiss={() => { resolveReport(selectedReport._id, 'dismissed'); setSelectedReport(null); }}
-          onDeleteUser={() => { const u = users.find(u => u.uid === selectedReport.targetUid); if (u) setDeleteTarget(u); setSelectedReport(null); }}
+          onDeleteTarget={() => { const u = users.find(u => u.uid === selectedReport.targetUid); if (u) { setDeleteTarget(u); setSelectedReport(null); } }}
+          onDeleteReporter={() => { const u = users.find(u => u.uid === selectedReport.reporterUid); if (u) { setDeleteTarget(u); setSelectedReport(null); } }}
+          onViewProfile={(uid) => { const u = users.find(u => u.uid === uid); if (u) { setSelectedUser(u); setSelectedReport(null); } }}
         />
       )}
       {selectedUser && (
