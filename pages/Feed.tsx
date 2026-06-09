@@ -102,7 +102,26 @@ const Feed: React.FC = () => {
   const handleBookmark = (postId: string) => {
     setBookmarkedIds(prev => {
       const next = new Set(prev);
-      if (next.has(postId)) next.delete(postId); else next.add(postId);
+      if (next.has(postId)) {
+        next.delete(postId);
+        // Remove stored post object
+        try {
+          const stored: any[] = JSON.parse(localStorage.getItem('bookmarkedPosts') || '[]');
+          localStorage.setItem('bookmarkedPosts', JSON.stringify(stored.filter((p: any) => p._id !== postId)));
+        } catch {}
+      } else {
+        next.add(postId);
+        // Store full post object so Profile saved tab can display it
+        try {
+          const post = posts.find(p => p._id === postId);
+          if (post) {
+            const stored: any[] = JSON.parse(localStorage.getItem('bookmarkedPosts') || '[]');
+            if (!stored.find((p: any) => p._id === postId)) {
+              localStorage.setItem('bookmarkedPosts', JSON.stringify([...stored, post]));
+            }
+          }
+        } catch {}
+      }
       try { localStorage.setItem(BOOKMARKS_KEY, JSON.stringify([...next])); } catch {}
       return next;
     });

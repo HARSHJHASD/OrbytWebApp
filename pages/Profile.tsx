@@ -48,22 +48,37 @@ export default function Profile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("regular"); // "regular" or "meetup"
+  const [activeTab, setActiveTab] = useState("regular"); // "regular" or "meetup" or "saved"
   const [myPosts, setMyPosts] = useState<Post[]>([]);
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(new Set());
+  const [savedPostsFull, setSavedPostsFull] = useState<Post[]>([]);
+
   const filteredPosts = useMemo(() => {
     return myPosts?.filter(post => post?.type === activeTab);
   }, [myPosts, activeTab]);
 
-  const savedPosts = useMemo(() =>
-    myPosts.filter(p => bookmarkedPostIds.has(p._id ?? '')),
-    [myPosts, bookmarkedPostIds]
+  const displayedPosts = useMemo(() =>
+    activeTab === 'saved' ? savedPostsFull : filteredPosts,
+    [activeTab, filteredPosts, savedPostsFull]
   );
 
-  const displayedPosts = useMemo(() =>
-    activeTab === 'saved' ? savedPosts : filteredPosts,
-    [activeTab, filteredPosts, savedPosts]
-  );
+  const handleBookmark = (postId: string) => {
+    setBookmarkedPostIds(prev => {
+      const next = new Set(prev);
+      if (next.has(postId)) {
+        next.delete(postId);
+        setSavedPostsFull(sp => sp.filter(p => p._id !== postId));
+        try {
+          const stored: any[] = JSON.parse(localStorage.getItem('bookmarkedPosts') || '[]');
+          localStorage.setItem('bookmarkedPosts', JSON.stringify(stored.filter((p: any) => p._id !== postId)));
+        } catch {}
+      } else {
+        next.add(postId);
+      }
+      try { localStorage.setItem('bookmarkedPostIds', JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
 
   // Location Name State
   const [locationName, setLocationName] = useState<string>("Unknown Location");
@@ -208,8 +223,10 @@ export default function Profile() {
   useEffect(() => {
     if (isOwnProfile) {
       try {
-        const saved = JSON.parse(localStorage.getItem('bookmarkedPostIds') || '[]');
-        setBookmarkedPostIds(new Set(saved));
+        const ids = JSON.parse(localStorage.getItem('bookmarkedPostIds') || '[]');
+        setBookmarkedPostIds(new Set(ids));
+        const posts: Post[] = JSON.parse(localStorage.getItem('bookmarkedPosts') || '[]');
+        setSavedPostsFull(posts);
       } catch {}
     }
   }, [isOwnProfile]);
@@ -1086,8 +1103,10 @@ export default function Profile() {
                   currentUserId={user?.uid}
                   onLike={handleLike}
                   onAddComment={handleAddComment}
-                  onDelete={isOwnProfile ? handleDeletePost : undefined}
-                  onEdit={isOwnProfile ? handleEditPost : undefined}
+                  onDelete={isOwnProfile && post?.uid === user?.uid ? handleDeletePost : undefined}
+                  onEdit={isOwnProfile && post?.uid === user?.uid ? handleEditPost : undefined}
+                  onBookmark={isOwnProfile ? handleBookmark : undefined}
+                  isBookmarked={isOwnProfile ? bookmarkedPostIds.has(post?._id ?? '') : undefined}
                 />
               ))}
             </div>

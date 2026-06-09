@@ -1,4 +1,4 @@
-import { ArrowLeft, Briefcase, Code, Copy, Heart, Instagram, Linkedin, Smartphone } from 'lucide-react';
+import { ArrowLeft, Briefcase, Heart, Instagram, Linkedin, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function DeveloperProfile() {
@@ -47,22 +47,21 @@ export default function DeveloperProfile() {
 
         </div>
 
-        {/* Tech Stack */}
+        {/* Can Build Anything */}
         <div>
-          <h3 className="text-xs font-bold text-slate-500 tracking-widest mb-3 uppercase px-2">Tech Stack</h3>
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
-            <div className="flex items-center gap-4 py-3 border-b border-slate-800">
-              <Code className="w-5 h-5 text-slate-400" />
-              <span className="font-medium text-slate-200">React</span>
-            </div>
-            <div className="flex items-center gap-4 py-3 border-b border-slate-800">
-              <Code className="w-5 h-5 text-slate-400" />
-              <span className="font-medium text-slate-200">React Native</span>
-            </div>
-            <div className="flex items-center gap-4 py-3">
-              <Code className="w-5 h-5 text-slate-400" />
-              <span className="font-medium text-slate-200">Node.js</span>
-            </div>
+          <h3 className="text-xs font-bold text-slate-500 tracking-widest mb-3 uppercase px-2">What I Can Build</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+            <p className="text-slate-200 font-semibold text-base leading-snug">
+              Web apps. Mobile apps. Backend APIs. Landing pages. Admin dashboards.
+              Real-time chat. Maps. Notification systems.
+            </p>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              Basically, if it runs on a screen, I've probably broken it and then fixed it at 2am.
+              React, React Native, Next.js, Node.js — pick one, I'll figure out the rest on Stack Overflow like everyone else.
+            </p>
+            <p className="text-primary-400 text-xs font-bold italic">
+              "Yes I can build that." — me, before reading the requirements.
+            </p>
           </div>
         </div>
 
@@ -105,18 +104,13 @@ export default function DeveloperProfile() {
               <Smartphone className="w-6 h-6 text-primary-500" />
               <div className="flex-1">
                 <span className="block font-medium text-slate-200">Support via UPI</span>
-                <span className="block text-sm text-slate-400 font-mono mt-1">6394581304@ptsbi</span>
               </div>
-              <button 
-                onClick={() => {
-                  navigator.clipboard.writeText('6394581304@ptsbi');
-                  alert('UPI ID copied to clipboard!');
-                }}
-                className="p-2 hover:bg-slate-800 rounded-lg transition-colors border border-slate-700 group"
-                title="Copy UPI ID"
+              <a
+                href="upi://pay?pa=6394581304@ptsbi&pn=Harsh%20Jha&cu=INR"
+                className="px-4 py-2 bg-primary-500 hover:bg-primary-600 text-white text-sm font-bold rounded-xl transition-colors flex items-center gap-1.5"
               >
-                <Copy className="w-4 h-4 text-slate-400 group-hover:text-primary-500" />
-              </button>
+                <Heart className="w-3.5 h-3.5" /> Support
+              </a>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-800/50">
               <p className="text-xs text-slate-500 italic flex items-center gap-2">
