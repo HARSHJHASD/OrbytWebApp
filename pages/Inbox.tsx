@@ -71,7 +71,7 @@ const Inbox: React.FC = () => {
         if (existingIndex > -1) {
             const existingConv = prev?.[existingIndex];
             const isIncoming = newMsg?.fromUid !== user?.uid;
-            const updatedConv: InboxItem = {
+            const updatedConv: any = {
                 ...existingConv,
                 lastMessage: newMsg,
                 unreadCount: isIncoming ? (existingConv?.unreadCount || 0) + 1 : existingConv?.unreadCount,

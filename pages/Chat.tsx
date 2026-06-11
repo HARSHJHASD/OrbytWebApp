@@ -1,4 +1,4 @@
-import { Ban, Camera, ChevronLeft, Copy, CornerUpLeft, Crown, Flag, Image as ImageIcon, Loader2, MapPin, Mic, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
+import { Ban, ChevronLeft, Copy, CornerUpLeft, Crown, Flag, Image as ImageIcon, Loader2, Plus, Send, Trash2, User as UserIcon, Users, X, Smile } from 'lucide-react';
 import { compressImage } from '../util/ImageCompression';
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -23,13 +23,11 @@ export default function Chat() {
     const [members, setMembers] = useState<UserProfile[]>([]);
     const [groupPost, setGroupPost] = useState<Post | null>(null);
     const [showGroupInfo, setShowGroupInfo] = useState(false);
-    const [showMenu, setShowMenu] = useState(false);
     const [reportModalOpen, setReportModalOpen] = useState(false);
     const [reportReason, setReportReason] = useState("");
 
     const [groupTitle, setGroupTitle] = useState("");
     const [reportingMsg, setReportingMsg] = useState<Message | null>(null);
-    const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
     
     // Media States
     const [mediaType, setMediaType] = useState<'image' | 'emoji' | 'audio' | null>(null);
@@ -41,8 +39,6 @@ export default function Chat() {
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     const isGroup = !!groupId;
-    const id = (isGroup ? groupId : uid) as string;
-
     const scrollToBottom = (smooth = true) => {
         messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
     };
@@ -99,17 +95,13 @@ export default function Chat() {
 
                 } else if (uid) {
                     // 1:1 Mode
-                    const [friendProfile, myProfile] = await Promise.all([
-                        api.profile.get(uid),
-                        api.profile.get(user?.uid)
-                    ]);
+                    const friendProfile = await api.profile.get(uid);
 
                     if (!friendProfile) {
                         navigate('/app');
                         return;
                     }
                     setFriend(friendProfile);
-                    setCurrentUser(myProfile);
                     const history = await api.chat.getHistory(user?.uid, uid);
                     setMessages(history);
                     await api.chat.markRead(user?.uid, uid);
@@ -175,6 +167,7 @@ export default function Chat() {
     };
 
     const handleSend = async (mType?: 'image' | 'emoji' | 'audio', mUrl?: string) => {
+        if (!user?.uid) return;
         if (!text.trim() && !mUrl) return;
         setSending(true);
         const msgText = text.trim();
@@ -197,7 +190,7 @@ export default function Chat() {
         } : undefined;
 
         try {
-            const sentMsg = await api.chat.send(user?.uid, uid, msgText, groupId, currentMediaType || undefined, currentMediaUrl || undefined, replyTo);
+            const sentMsg = await api.chat.send(user.uid, uid, msgText, groupId, currentMediaType || undefined, currentMediaUrl || undefined, replyTo);
             const msgToAdd = replyTo ? { ...sentMsg, replyTo } : sentMsg;
             setMessages(prev => {
                 if (prev?.some(m => m?._id === msgToAdd?._id)) return prev;
@@ -398,7 +391,8 @@ export default function Chat() {
                         const showAvatar = !isMe && (idx === messages.length - 1 || messages[idx + 1]?.fromUid !== msg.fromUid);
                         // Date separator
                         const msgDate = new Date(msg.createdAt);
-                        const prevDate = idx > 0 ? new Date(messages[idx - 1].createdAt) : null;
+                        const previousMessage = idx > 0 ? messages[idx - 1] : undefined;
+                        const prevDate = previousMessage ? new Date(previousMessage.createdAt) : null;
                         const showDateSep = !prevDate || msgDate.toDateString() !== prevDate.toDateString();
                         const today = new Date();
                         const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
