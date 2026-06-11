@@ -31,6 +31,7 @@
     "react-leaflet-cluster": "^4.0.0",
     "react-leaflet-markercluster": "^5.0.0-rc.0",
     "react-router-dom": "^7.13.0",
+    "unimported": "^1.31.0",
     "web-push": "^3.6.7",
     "ws": "^8.19.0",
     "zod": "^4.4.3"

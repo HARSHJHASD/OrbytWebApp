@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import Button from "../components/ui/Button";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
 import { compressImage } from "../util/ImageCompression";
