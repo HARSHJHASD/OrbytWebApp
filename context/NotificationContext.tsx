@@ -2,7 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { Notification } from '../types';
 import { useAuth } from './AuthContext';
 import { api } from '../services/api';
-import { X, MapPin } from 'lucide-react';
+import { X, MapPin, AlertCircle, CheckCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 // Haversine great-circle distance in km
@@ -37,7 +37,7 @@ interface Toast {
     body: string;
     icon?: string;
     url?: string;
-    type: 'message' | 'notification' | 'nearby';
+    type: 'message' | 'notification' | 'nearby' | 'error' | 'success';
 }
 
 interface NotificationContextType {
@@ -50,6 +50,7 @@ interface NotificationContextType {
     addNotification: (n: Notification) => void;
     clearUnreadMessages: () => void;
     clearUnreadRooms: () => void;
+    showToast: (message: string, type?: 'error' | 'success' | 'info') => void;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -62,7 +63,18 @@ const NotificationContext = createContext<NotificationContextType>({
     addNotification: () => { },
     clearUnreadMessages: () => { },
     clearUnreadRooms: () => { },
+    showToast: () => { },
 });
+
+let globalToastHandler: ((message: string, type: 'error' | 'success' | 'info') => void) | null = null;
+
+export const showGlobalToast = (message: string, type: 'error' | 'success' | 'info' = 'error') => {
+    if (globalToastHandler) {
+        globalToastHandler(message, type);
+    } else {
+        console.warn("Global toast handler not registered. Message:", message);
+    }
+};
 
 export const useNotifications = () => useContext(NotificationContext);
 
@@ -87,6 +99,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
             setToasts(prev => prev.filter(t => t.id !== id));
         }, 5000);
     }, []);
+
+    const showToast = useCallback((message: string, type: 'error' | 'success' | 'info' = 'error') => {
+        addToast({
+            title: type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info',
+            body: message,
+            type: type === 'info' ? 'notification' : type,
+        });
+    }, [addToast]);
+
+    useEffect(() => {
+        globalToastHandler = showToast;
+        return () => {
+            globalToastHandler = null;
+        };
+    }, [showToast]);
 
     const checkNearbyPeople = useCallback(async () => {
         if (!user || !navigator.geolocation) return;
@@ -277,7 +304,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, []);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms, showToast }}>
             {children}
             
             {/* Toast Container */}
@@ -291,9 +318,21 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                                 setToasts(prev => prev.filter(t => t.id !== toast.id));
                             }
                         }}
-                        className="pointer-events-auto bg-slate-900/90 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 cursor-pointer hover:bg-slate-800 transition-colors group"
+                        className={`pointer-events-auto bg-slate-900/95 backdrop-blur-xl border ${
+                            toast.type === 'error' ? 'border-red-500/40 shadow-red-950/20' :
+                            toast.type === 'success' ? 'border-emerald-500/40 shadow-emerald-950/20' :
+                            'border-white/10'
+                        } p-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300 cursor-pointer hover:bg-slate-800 transition-colors group`}
                     >
-                        {toast.type === 'nearby' ? (
+                        {toast.type === 'error' ? (
+                            <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/30 shrink-0">
+                                <AlertCircle className="w-5 h-5 text-red-500" />
+                            </div>
+                        ) : toast.type === 'success' ? (
+                            <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/30 shrink-0">
+                                <CheckCircle className="w-5 h-5 text-emerald-500" />
+                            </div>
+                        ) : toast.type === 'nearby' ? (
                             toast.icon ? (
                                 <div className="relative w-12 h-12">
                                     <img src={toast.icon} alt={toast.title} className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/40" />
@@ -309,7 +348,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         ) : toast.icon ? (
                             <img src={toast.icon} alt={toast.title} className="w-12 h-12 rounded-full object-cover border-2 border-primary-500/20" />
                         ) : (
-                            <div className="w-12 h-12 rounded-full bg-primary-500/10 flex items-center justify-center">
+                            <div className="w-12 h-12 rounded-full bg-primary-500/10 flex items-center justify-center border border-primary-500/20">
                                 <span className="text-primary-500 font-bold text-xl">{toast.title[0]}</span>
                             </div>
                         )}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useNotifications } from "../context/NotificationContext";
 import { api } from "../services/api";
 import {
   ChevronLeft,
@@ -53,6 +54,7 @@ const REPEAT_OPTIONS = [
 
 const CreatePost: React.FC = () => {
   const { user } = useAuth();
+  const { showToast } = useNotifications();
   const navigate = useNavigate();
   const { location: gpsLocation } = useUserLocation();
   const [postType, setPostType] = useState<"regular" | "meetup">("regular");
@@ -249,19 +251,27 @@ const CreatePost: React.FC = () => {
 
     if (postType === "meetup") {
       if (!meetupTitle.trim()) {
-        setError("Meetup title is required.");
+        const msg = "Meetup title is required.";
+        setError(msg);
+        showToast(msg);
         return;
       }
       if (meetupTitle.trim().length < 5 || meetupTitle.trim().length > 100) {
-        setError("Meetup title must be between 5 and 100 characters.");
+        const msg = "Meetup title must be between 5 and 100 characters.";
+        setError(msg);
+        showToast(msg);
         return;
       }
       if (!date || !startTime || !endTime) {
-        setError("Please fill in the Date and Time for the meetup.");
+        const msg = "Please fill in the Date and Time for the meetup.";
+        setError(msg);
+        showToast(msg);
         return;
       }
       if (content.trim().length < 20 || content.trim().length > 1000) {
-        setError("Meetup description must be between 20 and 1000 characters.");
+        const msg = "Meetup description must be between 20 and 1000 characters.";
+        setError(msg);
+        showToast(msg);
         return;
       }
     }
@@ -320,10 +330,10 @@ const CreatePost: React.FC = () => {
       navigate("/app");
     } catch (err: unknown) {
       console.error(err);
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Failed to post. Please try again.");
+      const msg = err instanceof Error ? err.message : "Failed to post. Please try again.";
+      setError(msg);
+      if (postType === "meetup") {
+        showToast(msg);
       }
     } finally {
       setLoading(false);
