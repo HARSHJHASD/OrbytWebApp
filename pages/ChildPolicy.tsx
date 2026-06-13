@@ -34,10 +34,13 @@ const ChildPolicy: React.FC = () => {
                     </div>
                     <h1 className="text-3xl font-bold text-white mb-2">Child Safety Policy</h1>
                     <p className="text-slate-400 text-sm border-b border-slate-800 pb-6 inline-block">Strict 18+ Requirement • COPPA &amp; GDPR-K Compliance</p>
-                    <p className="text-slate-500 text-xs mt-4">Last updated: May 1, 2026</p>
+                    <p className="text-slate-500 text-xs mt-4">Last updated: June 13, 2026</p>
                 </div>
 
                 <section className="space-y-6 text-slate-300 leading-relaxed text-sm md:text-base">
+
+                    <h2 className="text-xl font-bold text-white text-left">Policy Scope (Google Play)</h2>
+                    <p>This Child Safety Standards policy applies to the Google Play app "Orbyt - Meet People IRL" (package: com.orbyt.official.app), published under developer account name "Orbyt-IRL".</p>
 
                     <h2 className="text-xl font-bold text-white text-left">1. Minimum Age Requirement</h2>
                     <p>Orbyt is a social discovery platform designed exclusively for adults. You must be at least 18 years of age to create an account, access the Service, or interact with other users. We explicitly prohibit use of the Service by individuals under 18.</p>
@@ -63,7 +66,7 @@ const ChildPolicy: React.FC = () => {
                     </ul>
 
                     <h2 className="text-xl font-bold text-white text-left pt-4">5. Zero Tolerance for Child Sexual Abuse Material (CSAM)</h2>
-                    <p>Orbyt has an absolute zero-tolerance policy for child sexual abuse material (CSAM) or any content that sexually exploits, endangers, or abuses minors in any way. This includes:</p>
+                    <p>"Orbyt - Meet People IRL" and developer account "Orbyt-IRL" have an absolute zero-tolerance policy for Child Sexual Abuse and Exploitation (CSAE) and child sexual abuse material (CSAM), or any content that sexually exploits, endangers, or abuses minors in any way. This includes:</p>
                     <ul className="list-disc pl-5 space-y-2">
                         <li>Images, videos, text, or any content that sexually exploits children.</li>
                         <li>Grooming, solicitation, or predatory behavior directed at minors.</li>
@@ -94,6 +97,14 @@ const ChildPolicy: React.FC = () => {
 
                     <h2 className="text-xl font-bold text-white text-left pt-4">10. Policy Updates</h2>
                     <p>We may update this Child Safety Policy as industry standards and legal requirements evolve. Significant changes will be communicated via the app or email. The "Last updated" date at the top of this page reflects the most recent revision.</p>
+
+                    <h2 className="text-xl font-bold text-white text-left pt-4">11. Child Safety Point of Contact</h2>
+                    <p>For child safety concerns, including CSAE reports, contact our child safety point of contact:</p>
+                    <ul className="list-disc pl-5 space-y-2">
+                        <li>Email: <a href="mailto:orbytapp@gmail.com" className="text-red-400 hover:underline">orbytapp@gmail.com</a></li>
+                        <li>Google Play app: Orbyt - Meet People IRL</li>
+                        <li>Developer account: Orbyt-IRL</li>
+                    </ul>
 
                 </section>
 

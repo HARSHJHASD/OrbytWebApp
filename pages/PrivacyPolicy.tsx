@@ -82,7 +82,7 @@ const PrivacyPolicy: React.FC = () => {
                     <p>We implement industry-standard security measures including HTTPS encryption for all data in transit. However, no electronic transmission or storage is 100% secure. You use the Service at your own risk.</p>
 
                     <h2 className="text-xl font-bold text-white text-left pt-4">8. Children's Privacy (Strict 18+)</h2>
-                    <p>Orbyt is strictly intended for users aged 18 and above. We do not knowingly collect personal information from minors. For detailed information on our age verification and minor removal process, please read our <a href="/#/child-policy" className="text-primary-400 hover:underline">Child Safety Policy</a>.</p>
+                    <p>Orbyt is strictly intended for users aged 18 and above. We do not knowingly collect personal information from minors. For detailed information on our age verification and minor removal process, please read our <a href="/child-policy" className="text-primary-400 hover:underline">Child Safety Policy</a>.</p>
 
                     <h2 className="text-xl font-bold text-white text-left pt-4">9. Camera Usage</h2>
                     <p>Our app may request access to your device camera to allow you to capture photos or videos as part of app features (such as profile images or content sharing).</p>

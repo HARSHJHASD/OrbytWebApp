@@ -26,7 +26,7 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
 
       {/* Landing Page Link - Floating Button */}
       <a 
-        href="/#/"
+        href="/"
         className="absolute top-8 left-8 z-50 flex items-center gap-2 bg-slate-900/50 backdrop-blur-md border border-slate-800 px-4 py-2 rounded-xl text-slate-300 hover:text-white transition-all hover:bg-slate-800 group"
       >
         <LogOut className="w-4 h-4 rotate-180 group-hover:-translate-x-1 transition-transform" />

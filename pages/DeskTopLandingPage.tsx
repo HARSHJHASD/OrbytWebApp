@@ -133,7 +133,7 @@ const DesktopLanding: React.FC = () => {
               How it Works
             </a>
             <a
-              href="/#/guidelines"
+              href="/guidelines"
               className="hover:text-white transition-colors"
             >
               Safety
@@ -340,7 +340,7 @@ const DesktopLanding: React.FC = () => {
               <div className="rounded-[2.5rem] overflow-hidden w-full h-full bg-slate-900 relative">
                 {/* Live App Iframe */}
                 <iframe
-                  src="/#/app"
+                  src="/app"
                   className="w-full h-full border-none"
                   title="Orbyt Web App Preview"
                   loading="lazy"
@@ -719,7 +719,7 @@ const DesktopLanding: React.FC = () => {
               <ul className="space-y-4 text-sm text-slate-400">
                 <li>
                   <a
-                    href="/#/about"
+                    href="/about"
                     className="hover:text-primary-400 transition-colors"
                   >
                     About Us
@@ -727,7 +727,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/blog"
+                    href="/blog"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Blog
@@ -735,7 +735,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/contact"
+                    href="/contact"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Contact
@@ -759,7 +759,7 @@ const DesktopLanding: React.FC = () => {
               <ul className="space-y-4 text-sm text-slate-400">
                 <li>
                   <a
-                    href="/#/guidelines"
+                    href="/guidelines"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Community Guidelines
@@ -773,7 +773,7 @@ const DesktopLanding: React.FC = () => {
               <ul className="space-y-4 text-sm text-slate-400">
                 <li>
                   <a
-                    href="/#/privacy"
+                    href="/privacy"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Privacy Policy
@@ -781,7 +781,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/terms"
+                    href="/terms"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Terms of Service
@@ -789,7 +789,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/child-policy"
+                    href="/child-policy"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Child Safety Policy
@@ -797,7 +797,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/cookies"
+                    href="/cookies"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Cookie Policy
@@ -805,7 +805,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/delete-account"
+                    href="/delete-account"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Account Deletion
@@ -813,7 +813,7 @@ const DesktopLanding: React.FC = () => {
                 </li>
                 <li>
                   <a
-                    href="/#/guidelines"
+                    href="/guidelines"
                     className="hover:text-primary-400 transition-colors"
                   >
                     Guidelines
