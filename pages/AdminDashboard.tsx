@@ -1,7 +1,8 @@
 import {
-  Activity, AlertTriangle, Ban, BookOpen, CheckCircle, ChevronDown, ChevronLeft,
+  Activity, AlertTriangle, Ban,
+  CheckCircle, ChevronDown, ChevronLeft,
   ChevronRight, ChevronUp, Download, ExternalLink, Eye, FileText, Flag, Globe,
-  Image, LogOut, Megaphone, RefreshCw, Search,
+  Image, LogOut, Megaphone, Menu, RefreshCw, Search,
   Shield, Trash2,
   TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap
 } from 'lucide-react';
@@ -804,6 +805,7 @@ const AdminDashboard: React.FC = () => {
   const token = sessionStorage.getItem('admin_token') || '';
 
   const [tab, setTab] = useState<Tab>('users');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [reports, setReports] = useState<AdminReport[]>([]);
@@ -1151,950 +1153,1301 @@ const AdminDashboard: React.FC = () => {
   const suspendedCount = useMemo(() => users.filter(u => u.isSuspended).length, [users]);
   const flaggedCount = useMemo(() => users.filter(u => u.reportCount > 0).length, [users]);
 
-  const tabs = useMemo<{ id: Tab; label: string; badge?: number }[]>(() => [
-    { id: 'users', label: 'Users' },
-    { id: 'posts', label: 'Posts' },
-    { id: 'stories', label: 'Stories' },
-    { id: 'events', label: 'Events' },
-    { id: 'reports', label: 'Reports', badge: pendingCount },
-    { id: 'communities', label: 'Communities' },
-    { id: 'analytics', label: 'Analytics' },
-    { id: 'audit', label: 'Audit Log' },
-    { id: 'settings', label: 'Settings' },
+  const tabs = useMemo<{ id: Tab; label: string; icon: React.ComponentType<any>; badge?: number }[]>(() => [
+    { id: 'users', label: 'Users', icon: Users },
+    { id: 'posts', label: 'Posts', icon: FileText },
+    { id: 'stories', label: 'Stories', icon: Image },
+    { id: 'events', label: 'Events', icon: Activity },
+    { id: 'reports', label: 'Reports', icon: AlertTriangle, badge: pendingCount },
+    { id: 'communities', label: 'Communities', icon: Globe },
+    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
+    { id: 'audit', label: 'Audit Log', icon: FileText },
+    { id: 'settings', label: 'Settings', icon: Shield },
   ], [pendingCount]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col md:flex-row">
       {toast && (
         <div className={`fixed top-5 right-5 z-[60] flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl text-sm font-semibold ${toast.type === 'success' ? 'bg-emerald-600' : 'bg-red-600'} text-white`}>
           {toast.type === 'success' ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}{toast.msg}
         </div>
       )}
 
-      {/* Header */}
-      <div className="border-b border-slate-800 bg-slate-900 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center"><Shield className="w-4 h-4 text-white" /></div>
-          <span className="font-extrabold text-white text-lg tracking-tight">Orbyt Admin</span>
-          <span className="text-slate-500 text-xs border border-slate-700 rounded-full px-2 py-0.5 ml-1">Super Admin</span>
-          {stats?.onlineUsers > 0 && <span className="flex items-center gap-1 text-xs text-emerald-400 border border-emerald-800 bg-emerald-950 rounded-full px-2 py-0.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />{stats.onlineUsers} online</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowBroadcast(true)} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"><Megaphone className="w-3.5 h-3.5" /><span className="hidden sm:inline">Broadcast</span></button>
-          <button onClick={fetchAll} disabled={loading} className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
-          <button onClick={logout} className="flex items-center gap-2 text-slate-400 hover:text-red-400 text-sm font-semibold px-3 py-2 rounded-xl hover:bg-slate-800 transition-colors"><LogOut className="w-4 h-4" /><span className="hidden sm:inline">Sign out</span></button>
-        </div>
-      </div>
+      {/* Backdrop for mobile menu drawer */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        {error && <div className="bg-red-950 border border-red-800 text-red-400 rounded-xl px-5 py-4 mb-6 text-sm flex items-center gap-3"><XCircle className="w-5 h-5 flex-shrink-0" />{error}</div>}
-
-        {/* Stats */}
-        {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-8">
-            <StatCard icon={<Users className="w-5 h-5 text-violet-300" />} label="Users" value={stats.users} sub={`+${stats.newUsers7d} this week`} color="bg-violet-900/50" onClick={() => setTab('users')} />
-            <StatCard icon={<FileText className="w-5 h-5 text-blue-300" />} label="Posts" value={stats.posts} color="bg-blue-900/50" onClick={() => setTab('posts')} />
-            <StatCard icon={<Image className="w-5 h-5 text-cyan-300" />} label="Stories" value={stats.stories} color="bg-cyan-900/50" onClick={() => setTab('stories')} />
-            <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Reports" value={stats.pendingReports} color="bg-red-900/50" onClick={() => { setTab('reports'); setReportFilter('pending'); }} />
-            <StatCard icon={<BookOpen className="w-5 h-5 text-emerald-300" />} label="Communities" value={stats.communities} color="bg-emerald-900/50" onClick={() => setTab('communities')} />
-            <StatCard icon={<Ban className="w-5 h-5 text-orange-300" />} label="Suspended" value={suspendedCount} color="bg-orange-900/50" onClick={() => { setTab('users'); setUserFilter('suspended'); }} />
-            <StatCard icon={<Wifi className="w-5 h-5 text-teal-300" />} label="Online Now" value={stats.onlineUsers || 0} color="bg-teal-900/50" onClick={() => setTab('analytics')} />
-            <StatCard icon={<Zap className="w-5 h-5 text-yellow-300" />} label="Push Subs" value={stats.pushSubscriptions || 0} color="bg-yellow-900/50" onClick={() => setTab('analytics')} />
+      {/* Sidebar Navigation */}
+      <aside className={`fixed inset-y-0 left-0 w-64 bg-slate-900 border-r border-slate-800 flex flex-col z-50 transition-transform duration-300 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+        {/* Brand Info */}
+        <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
+              <Shield className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <span className="font-extrabold text-white text-base tracking-tight block">Orbyt Admin</span>
+              <span className="text-slate-500 text-[10px] font-semibold uppercase tracking-wider block">Super Admin</span>
+            </div>
           </div>
-        )}
-
-        {/* Tab Bar */}
-        <div className="flex gap-2 mb-6 flex-wrap">
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 ${tab === t.id ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/20' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'}`}>
-              {t.badge !== undefined && t.badge > 0 && <span className="bg-red-500 text-white text-xs rounded-full px-1.5 py-0.5">{t.badge}</span>}
-              {t.label}
-            </button>
-          ))}
+          <button onClick={() => setMobileMenuOpen(false)} className="text-slate-500 hover:text-slate-300 md:hidden">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* ── USERS TAB ── */}
-        {tab === 'users' && (
-          <>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-3 flex-wrap">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email or UID..."
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
-                />
-                {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
-              </div>
-              <div className="flex items-center gap-2">
-                <FilterPill label="All" active={userFilter === 'all'} onClick={() => setUserFilter('all')} count={users.length} />
-                <FilterPill label="Flagged" active={userFilter === 'flagged'} onClick={() => setUserFilter('flagged')} count={flaggedCount} />
-                <FilterPill label="Suspended" active={userFilter === 'suspended'} onClick={() => setUserFilter('suspended')} count={suspendedCount} />
-              </div>
-              <button onClick={exportCSV} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl transition-colors ml-auto">
-                <Download className="w-3.5 h-3.5" /> Export CSV
+        {/* Menu Items */}
+        <nav className="flex-1 px-4 py-4 space-y-1.5 overflow-y-auto no-scrollbar">
+          {tabs.map(t => {
+            const IconComponent = t.icon;
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  setTab(t.id);
+                  setMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
+                  isActive 
+                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/10' 
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <IconComponent className={`w-4.5 h-4.5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
+                  <span>{t.label}</span>
+                </div>
+                {t.badge !== undefined && t.badge > 0 && (
+                  <span className="bg-red-500 text-white text-xs font-bold rounded-full px-2 py-0.5 min-w-[20px] text-center">
+                    {t.badge}
+                  </span>
+                )}
               </button>
+            );
+          })}
+        </nav>
+
+        {/* Sidebar Footer */}
+        <div className="p-4 border-t border-slate-800 bg-slate-900/40 flex-shrink-0">
+          {stats?.onlineUsers > 0 && (
+            <div className="flex items-center gap-2 text-xs text-emerald-400 border border-emerald-950 bg-emerald-950/40 rounded-xl px-3 py-2 mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+              <span>{stats.onlineUsers} online users</span>
             </div>
-            <p className="text-slate-600 text-xs mb-3">{allFilteredUsers.length} of {users.length} users — click a row to view details</p>
-            {/* per-page selector */}
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-slate-500 text-xs">Show per page:</span>
-              {[25, 50, 100].map(n => (
-                <button key={n} onClick={() => setUsersPerPage(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${usersPerPage === n ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>{n}</button>
-              ))}
+          )}
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold font-mono">SA</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-xs font-bold truncate">Super Admin</p>
+              <p className="text-slate-500 text-[10px] truncate">Admin Console</p>
             </div>
-            {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
-                        <th className="text-left px-5 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('displayName')}>User <SortIcon field="displayName" /></th>
-                        <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('reportCount')}>Reports <SortIcon field="reportCount" /></th>
-                        <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('postCount')}>Posts <SortIcon field="postCount" /></th>
-                        <th className="text-left px-4 py-4 font-semibold hidden md:table-cell">Stories</th>
-                        <th className="text-left px-4 py-4 font-semibold hidden lg:table-cell">Friends</th>
-                        <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white hidden sm:table-cell" onClick={() => toggleSort('createdAt')}>Joined <SortIcon field="createdAt" /></th>
-                        <th className="text-left px-4 py-4 font-semibold">Status</th>
-                        <th className="px-4 py-4" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {filteredUsers.length === 0 ? <tr><td colSpan={8} className="text-center text-slate-500 py-16">No users found</td></tr> : filteredUsers.map(user => (
-                        <tr key={user.uid} onClick={() => setSelectedUser(user)} className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${user.isSuspended ? 'opacity-60' : ''}`}>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-3">
-                              <Avatar src={user.photoURL} name={user.displayName} size={38} />
-                              <div className="min-w-0">
-                                <p className="font-semibold text-white truncate max-w-[160px]">{user.displayName}</p>
-                                <p className="text-slate-500 text-xs truncate max-w-[160px]">{user.email}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
-                            {user.reportCount > 0 ? <span className={`font-bold text-sm px-2 py-0.5 rounded-lg ${user.reportCount >= 3 ? 'bg-red-950 text-red-400' : 'bg-amber-950 text-amber-400'}`}>{user.reportCount}</span> : <span className="text-slate-600 text-sm">0</span>}
-                          </td>
-                          <td className="px-4 py-4 text-slate-300 font-medium">{user.postCount}</td>
-                          <td className="px-4 py-4 text-slate-300 hidden md:table-cell">{user.storyCount}</td>
-                          <td className="px-4 py-4 text-slate-300 hidden lg:table-cell">{user.friendCount}</td>
-                          <td className="px-4 py-4 text-slate-500 hidden sm:table-cell text-xs">{timeAgo(user.createdAt as number)}</td>
-                          <td className="px-4 py-4">
-                            {user.isSuspended ? <span className="text-xs px-2 py-0.5 rounded-full font-medium border border-orange-800 text-orange-400 bg-orange-950">Suspended</span> : <span className="text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-800 text-emerald-400 bg-emerald-950">Active</span>}
-                          </td>
-                          <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
-                              <button onClick={() => toggleSuspend(user)} disabled={suspending === user.uid} className={`p-1.5 rounded-xl transition-colors ${user.isSuspended ? 'text-emerald-400 hover:bg-emerald-950' : 'text-orange-400 hover:bg-orange-950'}`}>
-                                {user.isSuspended ? <UserCheck className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                              </button>
-                              <button onClick={() => setDeleteTarget(user)} className="p-1.5 text-red-500 hover:bg-red-950 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                              <a href={`/app/profile/${user.uid}`} target="_blank" rel="noopener noreferrer" className="p-1.5 text-slate-500 hover:text-violet-400 hover:bg-slate-800 rounded-xl transition-all"><ExternalLink className="w-3.5 h-3.5" /></a>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-            {/* Users pagination footer */}
-            {usersPageCount > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <button onClick={() => setUsersPage(p => Math.max(1, p - 1))} disabled={usersPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
-                {Array.from({ length: Math.min(usersPageCount, 7) }, (_, i) => {
-                  const pg = usersPageCount <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? usersPageCount : usersPage - 2 + i;
-                  return (
-                    <button key={i} onClick={() => setUsersPage(pg)}
-                      className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${usersPage === pg ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                    >{pg}</button>
-                  );
-                })}
-                <button onClick={() => setUsersPage(p => Math.min(usersPageCount, p + 1))} disabled={usersPage >= usersPageCount} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
-                <span className="text-slate-500 text-xs ml-2">Page {usersPage} / {usersPageCount} · {allFilteredUsers.length} users</span>
-              </div>
-            )}
-          </>
-        )}
+            <button 
+              onClick={logout} 
+              className="p-2 text-slate-400 hover:text-red-400 rounded-xl hover:bg-slate-800/80 transition-colors"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
 
-        {/* ── POSTS TAB ── */}
-        {tab === 'posts' && (
-          <>
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <FilterPill label="All Posts" active={postsFilter === 'all'} onClick={() => setPostsFilter('all')} />
-              <FilterPill label="Flagged" active={postsFilter === 'flagged'} onClick={() => setPostsFilter('flagged')} />
-              <div className="ml-auto flex items-center gap-2">
-                <p className="text-slate-600 text-xs">{postsTotal.toLocaleString()} posts</p>
-                <button onClick={() => setShowBulkConfirm(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors"><Trash2 className="w-3.5 h-3.5" /> Bulk Delete Flagged</button>
-              </div>
+      {/* Main Content Pane */}
+      <main className="flex-1 min-w-0 md:pl-64 flex flex-col">
+        {/* Top Navbar */}
+        <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-30 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setMobileMenuOpen(true)} 
+              className="p-2 -ml-2 text-slate-400 hover:text-white md:hidden"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <h1 className="text-white font-extrabold text-lg capitalize tracking-tight flex items-center gap-2">
+              <span>{tab === 'audit' ? 'Audit Log' : tab}</span>
+              {tab === 'reports' && pendingCount > 0 && (
+                <span className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-bold">{pendingCount} pending</span>
+              )}
+            </h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowBroadcast(true)} 
+              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"
+            >
+              <Megaphone className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Broadcast</span>
+            </button>
+            <button 
+              onClick={fetchAll} 
+              disabled={loading} 
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+        </header>
+
+        {/* Content Container */}
+        <div className="flex-1 px-4 sm:px-6 py-6 overflow-y-auto">
+          {error && (
+            <div className="bg-red-950 border border-red-800 text-red-400 rounded-xl px-5 py-4 mb-6 text-sm flex items-center gap-3">
+              <XCircle className="w-5 h-5 flex-shrink-0" />
+              {error}
             </div>
-            {showBulkConfirm && (
-              <div className="bg-red-950 border border-red-800 rounded-2xl p-5 mb-4 flex items-center gap-4 flex-wrap">
-                <div className="flex-1">
-                  <p className="text-red-300 font-semibold text-sm">Delete all posts with ≥</p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input type="number" min={1} max={20} value={bulkThreshold} onChange={e => setBulkThreshold(Number(e.target.value))} className="w-16 bg-slate-900 border border-red-800 text-white rounded-lg px-2 py-1 text-sm text-center" />
-                    <span className="text-red-400 text-sm">reports (pending)</span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowBulkConfirm(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
-                  <button onClick={handleBulkDelete} disabled={bulkDeleting} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2">
-                    {bulkDeleting ? <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3 h-3" />} Confirm Delete
-                  </button>
-                </div>
-              </div>
-            )}
-            {postsLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : posts.length === 0 ? <div className="text-center text-slate-500 py-16">No posts found</div> : (
-              <>
-                <div className="space-y-3">
-                  {posts.map(post => (
-                    <div key={post._id} className={`bg-slate-900 border rounded-2xl overflow-hidden group ${post.reportCount > 0 ? 'border-red-900/50' : 'border-slate-800'}`}>
-                      <div className="px-5 py-4 flex gap-4">
-                        <Avatar src={post.authorPhoto} name={post.authorName} size={38} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-white font-semibold text-sm">{post.authorName}</span>
-                            {post.reportCount > 0 && <span className="text-xs font-bold bg-red-950 text-red-400 border border-red-900 px-2 py-0.5 rounded-full">{post.reportCount} report{post.reportCount > 1 ? 's' : ''}</span>}
-                            <span className="text-slate-600 text-xs ml-auto">{timeAgo(post.createdAt)}</span>
-                          </div>
-                          {post.content && <p className="text-slate-300 text-sm line-clamp-2 mb-2">{post.content}</p>}
-                          {post.imageURL && <img src={post.imageURL} alt="Post" className="rounded-xl max-h-40 object-cover mb-2 border border-slate-800" />}
-                          <div className="flex items-center gap-3 text-slate-600 text-xs"><span>{post.likeCount} likes</span><span>{post.commentCount} comments</span></div>
-                        </div>
-                        <button onClick={() => handleDeletePost(post._id)} disabled={deletingPost === post._id} className="opacity-0 group-hover:opacity-100 flex-shrink-0 flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all self-start">
-                          {deletingPost === post._id ? <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {postsPages > 1 && (
-                  <div className="flex items-center justify-center gap-3 mt-6">
-                    <button onClick={() => fetchPosts(postsPage - 1, postsFilter === 'flagged')} disabled={postsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
-                    <span className="text-slate-400 text-sm">Page {postsPage} of {postsPages}</span>
-                    <button onClick={() => fetchPosts(postsPage + 1, postsFilter === 'flagged')} disabled={postsPage >= postsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
+          )}
 
-        {/* ── STORIES TAB ── */}
-        {tab === 'stories' && (
-          <>
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text" value={storiesSearch}
-                  onChange={e => setStoriesSearch(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && fetchStories(1, storiesSearch)}
-                  placeholder="Search captions… (press Enter)"
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
-                />
-                {storiesSearch && <button onClick={() => { setStoriesSearch(''); fetchStories(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
-              </div>
-              <p className="text-slate-600 text-xs">{storiesTotal.toLocaleString()} stories total</p>
-              <button onClick={() => setShowDeleteAllStories(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ml-auto"><Trash2 className="w-3.5 h-3.5" /> Delete All Stories</button>
-            </div>
-            {showDeleteAllStories && (
-              <div className="bg-red-950/40 border border-red-900/60 rounded-2xl p-4 mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5 sm:mt-0" />
-                <div className="flex-1">
-                  <p className="text-red-300 font-semibold text-sm">Delete ALL {storiesTotal.toLocaleString()} stories?</p>
-                  <p className="text-red-400/70 text-xs mt-0.5">This will permanently remove every story on the platform. This action cannot be undone.</p>
+          {/* ── USERS TAB ── */}
+          {tab === 'users' && (
+            <>
+              {/* Section specific stats */}
+              {stats && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                  <StatCard icon={<Users className="w-5 h-5 text-violet-300" />} label="Total Users" value={stats.users} sub={`+${stats.newUsers7d} this week`} color="bg-violet-900/50" />
+                  <StatCard icon={<Ban className="w-5 h-5 text-orange-300" />} label="Suspended" value={suspendedCount} color="bg-orange-900/50" onClick={() => setUserFilter('suspended')} />
+                  <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Flagged Users" value={flaggedCount} color="bg-red-900/50" onClick={() => setUserFilter('flagged')} />
+                  <StatCard icon={<Wifi className="w-5 h-5 text-teal-300" />} label="Online Now" value={stats.onlineUsers || 0} color="bg-teal-900/50" />
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button onClick={() => setShowDeleteAllStories(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
-                  <button onClick={handleDeleteAllStories} disabled={deletingAllStories} className="bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5">
-                    {deletingAllStories ? <><div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" /> Deleting…</> : <><Trash2 className="w-3.5 h-3.5" /> Confirm Delete All</>}
-                  </button>
-                </div>
-              </div>
-            )}
-            {storiesLoading ? (
-              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-500 rounded-full animate-spin" /></div>
-            ) : stories.length === 0 ? (
-              <div className="text-center text-slate-500 py-16">No stories found</div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {stories.map(story => (
-                    <div key={story._id} className={`relative group rounded-2xl overflow-hidden bg-slate-900 border ${story.reportCount > 0 ? 'border-red-900/60' : 'border-slate-800'}`}>
-                      {story.imageURL || story.videoURL ? (
-                        <div className="aspect-[9/16] bg-slate-800 overflow-hidden">
-                          {story.videoURL ? (
-                            <video src={story.videoURL} className="w-full h-full object-cover" muted playsInline />
-                          ) : (
-                            <img src={story.imageURL!} alt="Story" className="w-full h-full object-cover" />
-                          )}
-                        </div>
-                      ) : (
-                        <div className="aspect-[9/16] bg-slate-800 flex items-center justify-center">
-                          <Image className="w-8 h-8 text-slate-600" />
-                        </div>
-                      )}
-                      {/* Overlay info */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex flex-col justify-end p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Avatar src={story.authorPhoto ?? undefined} name={story.authorName} size={20} />
-                          <span className="text-white text-xs font-semibold truncate">{story.authorName}</span>
-                        </div>
-                        {story.caption && <p className="text-slate-300 text-xs line-clamp-2">{story.caption}</p>}
-                        <p className="text-slate-500 text-xs mt-0.5">{timeAgo(story.createdAt)}</p>
-                        {story.reportCount > 0 && (
-                          <span className="mt-1 text-xs font-bold bg-red-950/80 text-red-400 border border-red-900 px-1.5 py-0.5 rounded-full self-start">{story.reportCount} report{story.reportCount > 1 ? 's' : ''}</span>
-                        )}
-                      </div>
-                      {/* Delete button */}
-                      <button
-                        onClick={() => handleDeleteStory(story._id)}
-                        disabled={deletingStory === story._id}
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 bg-red-600/90 hover:bg-red-500 text-white p-1.5 rounded-lg transition-all"
-                        title="Delete story"
-                      >
-                        {deletingStory === story._id ? <div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                {storiesPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-6">
-                    <button onClick={() => fetchStories(storiesPage - 1, storiesSearch)} disabled={storiesPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
-                    {Array.from({ length: Math.min(storiesPages, 7) }, (_, i) => {
-                      const p = storiesPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? storiesPages : storiesPage - 2 + i;
-                      return (
-                        <button key={i} onClick={() => fetchStories(p, storiesSearch)}
-                          className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${storiesPage === p ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                        >{p}</button>
-                      );
-                    })}
-                    <button onClick={() => fetchStories(storiesPage + 1, storiesSearch)} disabled={storiesPage >= storiesPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
-                    <span className="text-slate-500 text-xs ml-2">Page {storiesPage} / {storiesPages} · {storiesTotal} total</span>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
+              )}
 
-        {/* ── EVENTS TAB ── */}
-        {tab === 'events' && (
-          <>
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input
-                  type="text" value={eventsSearch}
-                  onChange={e => setEventsSearch(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && fetchEvents(1, eventsSearch)}
-                  placeholder="Search event titles… (press Enter)"
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
-                />
-                {eventsSearch && <button onClick={() => { setEventsSearch(''); fetchEvents(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
-              </div>
-              <p className="text-slate-600 text-xs">{eventsTotal.toLocaleString()} events total</p>
-            </div>
-            {eventsLoading ? (
-              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>
-            ) : events.length === 0 ? (
-              <div className="text-center text-slate-500 py-16">No events found</div>
-            ) : (
-              <>
-                <div className="space-y-3">
-                  {events.map(event => (
-                    <div key={event._id} className={`bg-slate-900 border rounded-2xl overflow-hidden group ${event.reportCount > 0 ? 'border-red-900/50' : event.isPast ? 'border-slate-800 opacity-60' : 'border-orange-900/30'}`}>
-                      <div className="px-5 py-4 flex gap-4">
-                        {event.imageURL ? (
-                          <img src={event.imageURL} alt="Event" className="w-16 h-16 rounded-xl object-cover flex-shrink-0 border border-slate-700" />
-                        ) : (
-                          <div className="w-16 h-16 rounded-xl bg-orange-900/20 border border-orange-900/30 flex items-center justify-center flex-shrink-0">
-                            <Activity className="w-6 h-6 text-orange-400" />
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-white font-bold text-sm truncate">{event.title}</span>
-                            {event.isPast && <span className="text-xs bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">Past</span>}
-                            {event.reportCount > 0 && <span className="text-xs font-bold bg-red-950 text-red-400 border border-red-900 px-2 py-0.5 rounded-full">{event.reportCount} report{event.reportCount > 1 ? 's' : ''}</span>}
-                          </div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Avatar src={event.authorPhoto ?? undefined} name={event.authorName} size={18} />
-                            <span className="text-slate-400 text-xs">{event.authorName}</span>
-                            <span className="text-slate-600 text-xs">· {timeAgo(event.createdAt)}</span>
-                          </div>
-                          <div className="flex flex-wrap gap-3 text-xs text-slate-500">
-                            {event.activity && <span>🎯 {event.activity}</span>}
-                            {event.date && <span>📅 {event.date}{event.startTime ? ` @ ${event.startTime}` : ''}</span>}
-                            {event.venueName && <span>📍 {event.venueName}</span>}
-                            {event.feeType && <span>💰 {event.feeType}</span>}
-                            <span>✅ {event.attendeeCount} attending</span>
-                            {event.pendingCount > 0 && <span>⏳ {event.pendingCount} pending</span>}
-                            {event.maxGuests && <span>👥 max {event.maxGuests}</span>}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteEvent(event._id)}
-                          disabled={deletingEvent === event._id}
-                          className="opacity-0 group-hover:opacity-100 flex-shrink-0 flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all self-start"
-                        >
-                          {deletingEvent === event._id ? <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {eventsPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-6">
-                    <button onClick={() => fetchEvents(eventsPage - 1, eventsSearch)} disabled={eventsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
-                    {Array.from({ length: Math.min(eventsPages, 7) }, (_, i) => {
-                      const p = eventsPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? eventsPages : eventsPage - 2 + i;
-                      return (
-                        <button key={i} onClick={() => fetchEvents(p, eventsSearch)}
-                          className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${eventsPage === p ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
-                        >{p}</button>
-                      );
-                    })}
-                    <button onClick={() => fetchEvents(eventsPage + 1, eventsSearch)} disabled={eventsPage >= eventsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
-                    <span className="text-slate-500 text-xs ml-2">Page {eventsPage} / {eventsPages} · {eventsTotal} total</span>
-                  </div>
-                )}
-              </>
-            )}
-          </>
-        )}
-
-        {/* ── REPORTS TAB ── */}
-        {tab === 'reports' && (
-          <>
-            <div className="flex items-center gap-2 mb-4 flex-wrap">
-              <FilterPill label="All" active={reportFilter === 'all'} onClick={() => setReportFilter('all')} count={reports.length} />
-              <FilterPill label="Pending" active={reportFilter === 'pending'} onClick={() => setReportFilter('pending')} count={reports.filter(r => r.status === 'pending').length} />
-              <FilterPill label="Resolved" active={reportFilter === 'resolved'} onClick={() => setReportFilter('resolved')} count={reports.filter(r => r.status === 'resolved').length} />
-              <FilterPill label="Dismissed" active={reportFilter === 'dismissed'} onClick={() => setReportFilter('dismissed')} count={reports.filter(r => r.status === 'dismissed').length} />
-            </div>
-            {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
-              <div className="space-y-3">
-                {filteredReports.length === 0 && <div className="text-center text-slate-500 py-16">No reports found</div>}
-                {filteredReports.map(r => {
-                  const rType = r.type || 'post';
-                  const TYPE_COLORS: Record<string, string> = {
-                    user:      'bg-violet-950 text-violet-400 border-violet-900',
-                    post:      'bg-blue-950 text-blue-400 border-blue-900',
-                    story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
-                    meetup:    'bg-orange-950 text-orange-400 border-orange-900',
-                    community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
-                  };
-                  const typeColor = TYPE_COLORS[rType] ?? 'bg-slate-800 text-slate-400 border-slate-700';
-                  return (
-                  <div key={r._id} onClick={() => setSelectedReport(r)} className={`bg-slate-900 border rounded-2xl px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer hover:bg-slate-800/50 transition-colors ${r.status === 'pending' ? 'border-slate-700' : 'border-slate-800 opacity-60'}`}>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap mb-2">
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${r.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' : r.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{r.status.toUpperCase()}</span>
-                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${typeColor}`}>{rType.toUpperCase()}</span>
-                        <span className="text-white font-bold text-sm">{r.reason}</span>
-                      </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Reporter chip */}
-                        <button
-                          onClick={e => { e.stopPropagation(); const u = users.find(u => u.uid === r.reporterUid); if (u) setSelectedUser(u); }}
-                          className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-2 py-1 transition-colors"
-                        >
-                          <Avatar src={r.reporterPhoto ?? undefined} name={r.reporterName} size={18} />
-                          <span className="text-slate-300 text-xs font-medium">{r.reporterName}</span>
-                        </button>
-                        <span className="text-slate-600 text-xs">reported</span>
-                        {/* Target chip */}
-                        {rType === 'community' ? (
-                          <span className="flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-900/50 rounded-lg px-2 py-1">
-                            <span className="text-emerald-300 text-xs font-medium">#{r.communityName ?? 'room'}</span>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={e => { e.stopPropagation(); if (r.targetUid) { const u = users.find(u => u.uid === r.targetUid); if (u) setSelectedUser(u); } }}
-                            className="flex items-center gap-1.5 bg-red-950/50 hover:bg-red-950 border border-red-900/50 rounded-lg px-2 py-1 transition-colors"
-                          >
-                            <Avatar src={r.targetPhoto ?? undefined} name={r.targetName} size={18} />
-                            <span className="text-red-300 text-xs font-medium">{r.targetName}</span>
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-slate-600 text-xs mt-1">{timeAgo(r.createdAt)}</p>
-                    </div>
-                    <span className="text-slate-600 text-xs hidden sm:block">Click to review →</span>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── COMMUNITIES TAB ── */}
-        {tab === 'communities' && (
-          <>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-3 flex-wrap">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input type="text" value={comSearch} onChange={e => setComSearch(e.target.value)} placeholder="Search communities..."
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
-                />
-                {comSearch && <button onClick={() => setComSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
-              </div>
-              <div className="flex items-center gap-2">
-                <FilterPill label="All" active={comFilter === 'all'} onClick={() => setComFilter('all')} count={communities.length} />
-                <FilterPill label="Flagged" active={comFilter === 'flagged'} onClick={() => setComFilter('flagged')} count={communities.filter(c => c.reportCount > 0 || c.isFlagged).length} />
-              </div>
-            </div>
-            <p className="text-slate-600 text-xs mb-3">{filteredCommunities.length} of {communities.length} communities — click Peek to inspect messages</p>
-            {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : filteredCommunities.length === 0 ? <div className="text-center text-slate-500 py-16">No communities found</div> : (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
-                        <th className="text-left px-5 py-4 font-semibold">Community</th>
-                        <th className="text-left px-4 py-4 font-semibold">Reports</th>
-                        <th className="text-left px-4 py-4 font-semibold">Members</th>
-                        <th className="text-left px-4 py-4 font-semibold hidden sm:table-cell">Type</th>
-                        <th className="text-left px-4 py-4 font-semibold hidden md:table-cell">Tags</th>
-                        <th className="text-left px-4 py-4 font-semibold hidden lg:table-cell">Created</th>
-                        <th className="px-4 py-4" />
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                      {filteredCommunities.map(c => (
-                        <tr key={c.id} className={`hover:bg-slate-800/40 transition-colors group ${(c.reportCount > 0 || c.isFlagged) ? 'bg-red-950/10' : ''}`}>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${c.isFlagged ? 'bg-amber-950' : 'bg-gradient-to-br from-emerald-700 to-teal-700'}`}>
-                                {c.isFlagged ? <Flag className="w-4 h-4 text-amber-400" /> : <Globe className="w-4 h-4 text-white" />}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-semibold text-white truncate max-w-[180px]">{c.name}</p>
-                                {c.description && <p className="text-slate-500 text-xs truncate max-w-[180px]">{c.description}</p>}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4">
-                            {c.reportCount > 0
-                              ? <span className={`font-bold text-sm px-2 py-0.5 rounded-lg ${c.reportCount >= 3 ? 'bg-red-950 text-red-400' : 'bg-amber-950 text-amber-400'}`}>{c.reportCount}</span>
-                              : <span className="text-slate-600 text-sm">0</span>}
-                          </td>
-                          <td className="px-4 py-4 text-white font-bold">{c.memberCount}</td>
-                          <td className="px-4 py-4 hidden sm:table-cell"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${c.isPrivate ? 'border-violet-700 text-violet-400 bg-violet-950' : 'border-slate-700 text-slate-400 bg-slate-800'}`}>{c.isPrivate ? 'Private' : 'Public'}</span></td>
-                          <td className="px-4 py-4 hidden md:table-cell"><div className="flex flex-wrap gap-1">{c.tags.slice(0, 3).map(tag => <span key={tag} className="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{tag}</span>)}{c.tags.length > 3 && <span className="text-xs text-slate-600">+{c.tags.length - 3}</span>}</div></td>
-                          <td className="px-4 py-4 text-slate-500 text-xs hidden lg:table-cell">{timeAgo(c.createdAt)}</td>
-                          <td className="px-4 py-4">
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
-                              <button onClick={() => setPeekTarget(c)} className="flex items-center gap-1.5 text-violet-400 hover:bg-violet-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors">
-                                <Eye className="w-3.5 h-3.5" /> Peek
-                              </button>
-                              <button
-                                onClick={() => handleFlagCommunity(c)}
-                                disabled={flaggingCom === c.id}
-                                title={c.isFlagged ? 'Unflag' : 'Flag community'}
-                                className={`p-1.5 rounded-xl transition-colors ${c.isFlagged ? 'text-amber-400 bg-amber-950' : 'text-slate-500 hover:text-amber-400 hover:bg-amber-950'}`}
-                              >
-                                <Flag className="w-3.5 h-3.5" />
-                              </button>
-                              <button onClick={() => setDeleteComTarget(c)} className="p-1.5 text-red-500 hover:bg-red-950 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── ANALYTICS TAB ── */}
-        {tab === 'analytics' && (
-          <div className="space-y-6">
-            {analyticsLoading ? (
-              <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div>
-            ) : !analytics ? (
-              <div className="text-center text-slate-500 py-16">No analytics data</div>
-            ) : (
-              <>
-                {/* ── Section header */}
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-white font-bold text-lg">Platform Analytics</h2>
-                    <p className="text-slate-500 text-xs mt-0.5">Last 30 days · All times UTC</p>
-                  </div>
-                  <button onClick={() => setAnalytics(null)} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-xs px-3 py-1.5 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
-                    <RefreshCw className="w-3 h-3" /> Refresh
-                  </button>
-                </div>
-
-                {/* ── KPI cards with sparklines ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-3">
-                  {[
-                    {
-                      label: 'Daily Active',
-                      value: analytics.dau,
-                      sub: 'users today',
-                      color: 'text-violet-400',
-                      bg: 'from-violet-500/10 to-transparent',
-                      border: 'border-violet-900/40',
-                      sparkColor: '#8b5cf6',
-                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
-                    },
-                    {
-                      label: 'Weekly Active',
-                      value: analytics.wau,
-                      sub: 'users this week',
-                      color: 'text-blue-400',
-                      bg: 'from-blue-500/10 to-transparent',
-                      border: 'border-blue-900/40',
-                      sparkColor: '#3b82f6',
-                      sparkValues: (analytics.chartData as ChartRow[]).slice(-7).map((d: ChartRow) => d.signups),
-                    },
-                    {
-                      label: 'Monthly Active',
-                      value: analytics.mau,
-                      sub: 'users this month',
-                      color: 'text-emerald-400',
-                      bg: 'from-emerald-500/10 to-transparent',
-                      border: 'border-emerald-900/40',
-                      sparkColor: '#10b981',
-                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
-                    },
-                    {
-                      label: 'Total Users',
-                      value: analytics.totalUsers,
-                      sub: `+${analytics.usersLast30} this month`,
-                      growth: analytics.userGrowthRate,
-                      color: 'text-white',
-                      bg: 'from-slate-700/20 to-transparent',
-                      border: 'border-slate-700/40',
-                      sparkColor: '#94a3b8',
-                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
-                    },
-                    {
-                      label: 'Total Posts',
-                      value: analytics.totalPosts,
-                      sub: `+${analytics.postsLast30} this month`,
-                      growth: analytics.postGrowthRate,
-                      color: 'text-amber-400',
-                      bg: 'from-amber-500/10 to-transparent',
-                      border: 'border-amber-900/40',
-                      sparkColor: '#f59e0b',
-                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
-                    },
-                    {
-                      label: 'Pending Reports',
-                      value: analytics.reportStatus?.pending || 0,
-                      sub: `${analytics.totalReports} total reports`,
-                      color: analytics.reportStatus?.pending > 0 ? 'text-red-400' : 'text-slate-400',
-                      bg: analytics.reportStatus?.pending > 0 ? 'from-red-500/10 to-transparent' : 'from-slate-700/20 to-transparent',
-                      border: analytics.reportStatus?.pending > 0 ? 'border-red-900/40' : 'border-slate-700/40',
-                      sparkColor: '#ef4444',
-                      sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.reports),
-                    },
-                  ].map(k => (
-                    <div key={k.label} className={`bg-gradient-to-b ${k.bg} border ${k.border} bg-slate-900 rounded-2xl p-4 flex flex-col gap-1`}>
-                      <p className={`text-2xl font-extrabold ${k.color}`}>{(k.value as number).toLocaleString()}</p>
-                      <p className="text-xs font-bold text-slate-300">{k.label}</p>
-                      <p className="text-xs text-slate-600">{k.sub}</p>
-                      {k.growth !== undefined && (
-                        <span className={`text-xs font-bold ${k.growth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {k.growth >= 0 ? '▲' : '▼'} {Math.abs(k.growth)}% vs prev 30d
-                        </span>
-                      )}
-                      <div className="mt-1">
-                        <Sparkline values={k.sparkValues} color={k.sparkColor} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ── Platform health strip ── */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: 'Communities', value: analytics.totalCommunities, icon: <Globe className="w-4 h-4" />, color: 'text-cyan-400', bg: 'bg-cyan-900/20' },
-                    { label: 'Stories (all time)', value: analytics.totalStories, icon: <Image className="w-4 h-4" />, color: 'text-pink-400', bg: 'bg-pink-900/20' },
-                    { label: 'Suspended Users', value: analytics.suspendedCount, icon: <Ban className="w-4 h-4" />, color: analytics.suspendedCount > 0 ? 'text-orange-400' : 'text-slate-500', bg: 'bg-orange-900/20' },
-                    { label: 'Resolved Reports', value: analytics.reportStatus?.resolved || 0, icon: <CheckCircle className="w-4 h-4" />, color: 'text-emerald-400', bg: 'bg-emerald-900/20' },
-                  ].map(s => (
-                    <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color}`}>{s.icon}</div>
-                      <div>
-                        <p className={`text-xl font-extrabold ${s.color}`}>{(s.value as number).toLocaleString()}</p>
-                        <p className="text-xs text-slate-500">{s.label}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* ── 30-day trend — main area chart ── */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-violet-400" />
-                      <h3 className="text-white font-bold">30-Day Activity Trend</h3>
-                    </div>
-                    {/* Legend */}
-                    <div className="flex items-center gap-4 text-xs flex-wrap">
-                      {[
-                        { color: '#8b5cf6', label: 'Signups' },
-                        { color: '#3b82f6', label: 'Posts' },
-                        { color: '#10b981', label: 'Communities' },
-                        { color: '#ef4444', label: 'Reports' },
-                      ].map(l => (
-                        <span key={l.label} className="flex items-center gap-1.5">
-                          <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: l.color }} />
-                          <span className="text-slate-400">{l.label}</span>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <AreaLineChart
-                    data={analytics.chartData}
-                    keys={[
-                      { key: 'signups',     color: '#8b5cf6', label: 'Signups' },
-                      { key: 'posts',       color: '#3b82f6', label: 'Posts' },
-                      { key: 'communities', color: '#10b981', label: 'Communities' },
-                      { key: 'reports',     color: '#ef4444', label: 'Reports' },
-                    ]}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-3 flex-wrap">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search name, email or UID..."
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
                   />
-                  {/* 30d totals row */}
-                  <div className="grid grid-cols-4 gap-3 mt-5">
+                  {search && <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <FilterPill label="All" active={userFilter === 'all'} onClick={() => setUserFilter('all')} count={users.length} />
+                  <FilterPill label="Flagged" active={userFilter === 'flagged'} onClick={() => setUserFilter('flagged')} count={flaggedCount} />
+                  <FilterPill label="Suspended" active={userFilter === 'suspended'} onClick={() => setUserFilter('suspended')} count={suspendedCount} />
+                </div>
+                <button onClick={exportCSV} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl transition-colors ml-auto">
+                  <Download className="w-3.5 h-3.5" /> Export CSV
+                </button>
+              </div>
+              <p className="text-slate-600 text-xs mb-3">{allFilteredUsers.length} of {users.length} users — click a row to view details</p>
+              {/* per-page selector */}
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-slate-500 text-xs">Show per page:</span>
+                {[25, 50, 100].map(n => (
+                  <button key={n} onClick={() => setUsersPerPage(n)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${usersPerPage === n ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>{n}</button>
+                ))}
+              </div>
+              {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                          <th className="text-left px-5 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('displayName')}>User <SortIcon field="displayName" /></th>
+                          <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('reportCount')}>Reports <SortIcon field="reportCount" /></th>
+                          <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('postCount')}>Posts <SortIcon field="postCount" /></th>
+                          <th className="text-left px-4 py-4 font-semibold hidden md:table-cell">Stories</th>
+                          <th className="text-left px-4 py-4 font-semibold hidden lg:table-cell">Friends</th>
+                          <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white hidden sm:table-cell" onClick={() => toggleSort('createdAt')}>Joined <SortIcon field="createdAt" /></th>
+                          <th className="text-left px-4 py-4 font-semibold">Status</th>
+                          <th className="px-4 py-4" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredUsers.length === 0 ? <tr><td colSpan={8} className="text-center text-slate-500 py-16">No users found</td></tr> : filteredUsers.map(user => (
+                          <tr key={user.uid} onClick={() => setSelectedUser(user)} className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${user.isSuspended ? 'opacity-60' : ''}`}>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <Avatar src={user.photoURL} name={user.displayName} size={38} />
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-white truncate max-w-[160px]">{user.displayName}</p>
+                                  <p className="text-slate-500 text-xs truncate max-w-[160px]">{user.email}</p>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                              {user.reportCount > 0 ? <span className={`font-bold text-sm px-2 py-0.5 rounded-lg ${user.reportCount >= 3 ? 'bg-red-950 text-red-400' : 'bg-amber-950 text-amber-400'}`}>{user.reportCount}</span> : <span className="text-slate-600 text-sm">0</span>}
+                            </td>
+                            <td className="px-4 py-4 text-slate-300 font-medium">{user.postCount}</td>
+                            <td className="px-4 py-4 text-slate-300 hidden md:table-cell">{user.storyCount}</td>
+                            <td className="px-4 py-4 text-slate-300 hidden lg:table-cell">{user.friendCount}</td>
+                            <td className="px-4 py-4 text-slate-500 hidden sm:table-cell text-xs">{timeAgo(user.createdAt as number)}</td>
+                            <td className="px-4 py-4">
+                              {user.isSuspended ? <span className="text-xs px-2 py-0.5 rounded-full font-medium border border-orange-800 text-orange-400 bg-orange-950">Suspended</span> : <span className="text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-800 text-emerald-400 bg-emerald-950">Active</span>}
+                            </td>
+                            <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                              <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+                                <button onClick={() => toggleSuspend(user)} disabled={suspending === user.uid} className={`p-1.5 rounded-xl transition-colors ${user.isSuspended ? 'text-emerald-400 hover:bg-emerald-950' : 'text-orange-400 hover:bg-orange-950'}`}>
+                                  {user.isSuspended ? <UserCheck className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                                </button>
+                                <button onClick={() => setDeleteTarget(user)} className="p-1.5 text-red-500 hover:bg-red-950 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <a href={`/app/profile/${user.uid}`} target="_blank" rel="noopener noreferrer" className="p-1.5 text-slate-500 hover:text-violet-400 hover:bg-slate-800 rounded-xl transition-all"><ExternalLink className="w-3.5 h-3.5" /></a>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {/* Users pagination footer */}
+              {usersPageCount > 1 && (
+                <div className="flex items-center justify-center gap-2 mt-6">
+                  <button onClick={() => setUsersPage(p => Math.max(1, p - 1))} disabled={usersPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                  {Array.from({ length: Math.min(usersPageCount, 7) }, (_, i) => {
+                    const pg = usersPageCount <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? usersPageCount : usersPage - 2 + i;
+                    return (
+                      <button key={i} onClick={() => setUsersPage(pg)}
+                        className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${usersPage === pg ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                      >{pg}</button>
+                    );
+                  })}
+                  <button onClick={() => setUsersPage(p => Math.min(usersPageCount, p + 1))} disabled={usersPage >= usersPageCount} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                  <span className="text-slate-500 text-xs ml-2">Page {usersPage} / {usersPageCount} · {allFilteredUsers.length} users</span>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── POSTS TAB ── */}
+          {tab === 'posts' && (
+            <>
+              {/* Section specific stats */}
+              {stats && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  <StatCard icon={<FileText className="w-5 h-5 text-blue-300" />} label="Total Posts" value={stats.posts} color="bg-blue-900/50" />
+                  <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Pending Reports" value={pendingCount} color="bg-red-900/50" onClick={() => { setTab('reports'); setReportFilter('pending'); }} />
+                  <StatCard icon={<Trash2 className="w-5 h-5 text-orange-300" />} label="Bulk Threshold" value={`≥ ${bulkThreshold} reports`} color="bg-orange-900/50" onClick={() => setShowBulkConfirm(true)} />
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <FilterPill label="All Posts" active={postsFilter === 'all'} onClick={() => setPostsFilter('all')} />
+                <FilterPill label="Flagged" active={postsFilter === 'flagged'} onClick={() => setPostsFilter('flagged')} />
+                <div className="ml-auto flex items-center gap-2">
+                  <p className="text-slate-600 text-xs">{postsTotal.toLocaleString()} posts</p>
+                  <button onClick={() => setShowBulkConfirm(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors"><Trash2 className="w-3.5 h-3.5" /> Bulk Delete Flagged</button>
+                </div>
+              </div>
+              {showBulkConfirm && (
+                <div className="bg-red-950 border border-red-800 rounded-2xl p-5 mb-4 flex items-center gap-4 flex-wrap">
+                  <div className="flex-1">
+                    <p className="text-red-300 font-semibold text-sm">Delete all posts with ≥</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input type="number" min={1} max={20} value={bulkThreshold} onChange={e => setBulkThreshold(Number(e.target.value))} className="w-16 bg-slate-900 border border-red-800 text-white rounded-lg px-2 py-1 text-sm text-center" />
+                      <span className="text-red-400 text-sm">reports (pending)</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowBulkConfirm(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
+                    <button onClick={handleBulkDelete} disabled={bulkDeleting} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2">
+                      {bulkDeleting ? <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3 h-3" />} Confirm Delete
+                    </button>
+                  </div>
+                </div>
+              )}
+              {postsLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : posts.length === 0 ? <div className="text-center text-slate-500 py-16">No posts found</div> : (
+                <>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                            <th className="px-5 py-4 font-semibold">Author</th>
+                            <th className="px-4 py-4 font-semibold">Content</th>
+                            <th className="px-4 py-4 font-semibold">Engagement</th>
+                            <th className="px-4 py-4 font-semibold">Reports</th>
+                            <th className="px-4 py-4 font-semibold">Published</th>
+                            <th className="px-5 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {posts.map(post => (
+                            <tr key={post._id} className={`hover:bg-slate-800/40 transition-colors group ${post.reportCount > 0 ? 'bg-red-950/10' : ''}`}>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  <Avatar src={post.authorPhoto} name={post.authorName} size={32} />
+                                  <span className="text-white font-semibold text-xs">{post.authorName}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 max-w-xs md:max-w-md">
+                                <div className="flex flex-col gap-1.5">
+                                  {post.content && <p className="text-slate-300 text-xs line-clamp-2 leading-relaxed">{post.content}</p>}
+                                  {post.imageURL && (
+                                    <a href={post.imageURL} target="_blank" rel="noopener noreferrer" className="inline-block self-start">
+                                      <img src={post.imageURL} alt="Post Attachment" className="rounded-lg h-10 w-16 object-cover border border-slate-800 hover:scale-105 transition-transform" />
+                                    </a>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-xs text-slate-400">
+                                <span className="font-semibold text-slate-300">{post.likeCount}</span> likes · <span className="font-semibold text-slate-300">{post.commentCount}</span> comments
+                              </td>
+                              <td className="px-4 py-4">
+                                {post.reportCount > 0 ? (
+                                  <span className={`font-bold text-xs px-2.5 py-0.5 rounded-full border ${post.reportCount >= 3 ? 'bg-red-950 text-red-400 border-red-900' : 'bg-amber-950 text-amber-400 border-amber-900'}`}>{post.reportCount} report{post.reportCount > 1 ? 's' : ''}</span>
+                                ) : (
+                                  <span className="text-slate-600 text-xs">0</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(post.createdAt)}</td>
+                              <td className="px-5 py-4 text-right">
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
+                                  <button 
+                                    onClick={() => handleDeletePost(post._id)} 
+                                    disabled={deletingPost === post._id} 
+                                    className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                                    title="Delete Post"
+                                  >
+                                    {deletingPost === post._id ? (
+                                      <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  {postsPages > 1 && (
+                    <div className="flex items-center justify-center gap-3 mt-6">
+                      <button onClick={() => fetchPosts(postsPage - 1, postsFilter === 'flagged')} disabled={postsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                      <span className="text-slate-400 text-sm">Page {postsPage} of {postsPages}</span>
+                      <button onClick={() => fetchPosts(postsPage + 1, postsFilter === 'flagged')} disabled={postsPage >= postsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── STORIES TAB ── */}
+          {tab === 'stories' && (
+            <>
+              {/* Section specific stats */}
+              {stats && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  <StatCard icon={<Image className="w-5 h-5 text-cyan-300" />} label="Active Stories" value={stats.stories} color="bg-cyan-900/50" />
+                  <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Story Reports (Pending)" value={reports.filter(r => r.type === 'story' && r.status === 'pending').length} color="bg-red-900/50" onClick={() => { setTab('reports'); setReportFilter('pending'); }} />
+                  <StatCard icon={<Trash2 className="w-5 h-5 text-orange-300" />} label="Moderate All" value="Delete All Stories" color="bg-orange-900/50" onClick={() => setShowDeleteAllStories(true)} />
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text" value={storiesSearch}
+                    onChange={e => setStoriesSearch(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && fetchStories(1, storiesSearch)}
+                    placeholder="Search captions… (press Enter)"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                  />
+                  {storiesSearch && <button onClick={() => { setStoriesSearch(''); fetchStories(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+                </div>
+                <p className="text-slate-600 text-xs">{storiesTotal.toLocaleString()} stories total</p>
+                <button onClick={() => setShowDeleteAllStories(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ml-auto"><Trash2 className="w-3.5 h-3.5" /> Delete All Stories</button>
+              </div>
+              {showDeleteAllStories && (
+                <div className="bg-red-950/40 border border-red-900/60 rounded-2xl p-4 mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                  <div className="flex-1">
+                    <p className="text-red-300 font-semibold text-sm">Delete ALL {storiesTotal.toLocaleString()} stories?</p>
+                    <p className="text-red-400/70 text-xs mt-0.5">This will permanently remove every story on the platform. This action cannot be undone.</p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button onClick={() => setShowDeleteAllStories(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
+                    <button onClick={handleDeleteAllStories} disabled={deletingAllStories} className="bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5">
+                      {deletingAllStories ? <><div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" /> Deleting…</> : <><Trash2 className="w-3.5 h-3.5" /> Confirm Delete All</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+              {storiesLoading ? (
+                <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-500 rounded-full animate-spin" /></div>
+              ) : stories.length === 0 ? (
+                <div className="text-center text-slate-500 py-16">No stories found</div>
+              ) : (
+                <>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                            <th className="px-5 py-4 font-semibold">Preview</th>
+                            <th className="px-4 py-4 font-semibold">Author</th>
+                            <th className="px-4 py-4 font-semibold">Caption</th>
+                            <th className="px-4 py-4 font-semibold">Reports</th>
+                            <th className="px-4 py-4 font-semibold">Published</th>
+                            <th className="px-5 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {stories.map(story => (
+                            <tr key={story._id} className={`hover:bg-slate-800/40 transition-colors group ${story.reportCount > 0 ? 'bg-red-950/10' : ''}`}>
+                              <td className="px-5 py-4">
+                                <div className="w-12 h-20 rounded-lg overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0">
+                                  {story.videoURL ? (
+                                    <video src={story.videoURL} className="w-full h-full object-cover" muted playsInline />
+                                  ) : story.imageURL ? (
+                                    <img src={story.imageURL} alt="Story Image" className="w-full h-full object-cover hover:scale-110 transition-transform" />
+                                  ) : (
+                                    <Image className="w-4 h-4 text-slate-600" />
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Avatar src={story.authorPhoto ?? undefined} name={story.authorName} size={28} />
+                                  <span className="text-white font-semibold text-xs">{story.authorName}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 max-w-xs">
+                                {story.caption ? (
+                                  <p className="text-slate-300 text-xs line-clamp-2 leading-relaxed">{story.caption}</p>
+                                ) : (
+                                  <span className="text-slate-600 text-xs italic">No caption</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4">
+                                {story.reportCount > 0 ? (
+                                  <span className="font-bold text-xs px-2.5 py-0.5 rounded-full border bg-red-950 text-red-400 border-red-900">{story.reportCount} report{story.reportCount > 1 ? 's' : ''}</span>
+                                ) : (
+                                  <span className="text-slate-600 text-xs">0</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(story.createdAt)}</td>
+                              <td className="px-5 py-4 text-right">
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
+                                  <button 
+                                    onClick={() => handleDeleteStory(story._id)} 
+                                    disabled={deletingStory === story._id} 
+                                    className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                                    title="Delete Story"
+                                  >
+                                    {deletingStory === story._id ? (
+                                      <div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  {storiesPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-6">
+                      <button onClick={() => fetchStories(storiesPage - 1, storiesSearch)} disabled={storiesPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                      {Array.from({ length: Math.min(storiesPages, 7) }, (_, i) => {
+                        const p = storiesPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? storiesPages : storiesPage - 2 + i;
+                        return (
+                          <button key={i} onClick={() => fetchStories(p, storiesSearch)}
+                            className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${storiesPage === p ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                          >{p}</button>
+                        );
+                      })}
+                      <button onClick={() => fetchStories(storiesPage + 1, storiesSearch)} disabled={storiesPage >= storiesPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                      <span className="text-slate-500 text-xs ml-2">Page {storiesPage} / {storiesPages} · {storiesTotal} total</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── EVENTS TAB ── */}
+          {tab === 'events' && (
+            <>
+              {/* Section specific stats */}
+              {stats && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  <StatCard icon={<Activity className="w-5 h-5 text-orange-300" />} label="Total Events" value={eventsTotal} color="bg-orange-900/50" />
+                  <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Event Reports" value={reports.filter(r => r.type === 'meetup' && r.status === 'pending').length} color="bg-red-900/50" onClick={() => { setTab('reports'); setReportFilter('pending'); }} />
+                  <StatCard icon={<CheckCircle className="w-5 h-5 text-emerald-300" />} label="Active Events" value={events.filter(e => !e.isPast).length} color="bg-emerald-900/50" />
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input
+                    type="text" value={eventsSearch}
+                    onChange={e => setEventsSearch(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && fetchEvents(1, eventsSearch)}
+                    placeholder="Search event titles… (press Enter)"
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                  />
+                  {eventsSearch && <button onClick={() => { setEventsSearch(''); fetchEvents(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+                </div>
+                <p className="text-slate-600 text-xs">{eventsTotal.toLocaleString()} events total</p>
+              </div>
+              {eventsLoading ? (
+                <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>
+              ) : events.length === 0 ? (
+                <div className="text-center text-slate-500 py-16">No events found</div>
+              ) : (
+                <>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm text-left">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                            <th className="px-5 py-4 font-semibold">Event Title</th>
+                            <th className="px-4 py-4 font-semibold">Host</th>
+                            <th className="px-4 py-4 font-semibold">Details</th>
+                            <th className="px-4 py-4 font-semibold">Attendance</th>
+                            <th className="px-4 py-4 font-semibold">Reports</th>
+                            <th className="px-5 py-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                          {events.map(event => (
+                            <tr key={event._id} className={`hover:bg-slate-800/40 transition-colors group ${event.reportCount > 0 ? 'bg-red-950/10' : event.isPast ? 'opacity-60 border-slate-800' : ''}`}>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-3">
+                                  {event.imageURL ? (
+                                    <img src={event.imageURL} alt="Event Cover" className="w-10 h-10 rounded-lg object-cover border border-slate-700 flex-shrink-0" />
+                                  ) : (
+                                    <div className="w-10 h-10 rounded-lg bg-orange-900/20 border border-orange-900/30 flex items-center justify-center flex-shrink-0">
+                                      <Activity className="w-4 h-4 text-orange-400" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="font-bold text-white text-xs truncate max-w-[150px]">{event.title}</p>
+                                    {event.isPast && <span className="text-[9px] bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">Past</span>}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex items-center gap-2">
+                                  <Avatar src={event.authorPhoto ?? undefined} name={event.authorName} size={24} />
+                                  <span className="text-slate-300 text-xs font-semibold">{event.authorName}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-4">
+                                <div className="flex flex-col gap-0.5 text-xs text-slate-400">
+                                  {event.activity && <span className="truncate">🎯 {event.activity}</span>}
+                                  {event.date && <span>📅 {event.date}{event.startTime ? ` @ ${event.startTime}` : ''}</span>}
+                                  {event.venueName && <span className="truncate text-slate-500">📍 {event.venueName}</span>}
+                                </div>
+                              </td>
+                              <td className="px-4 py-4 text-xs text-slate-300">
+                                <span className="font-bold text-white">{event.attendeeCount}</span> attending
+                                {event.maxGuests && <span className="text-slate-500"> / max {event.maxGuests}</span>}
+                                {event.pendingCount > 0 && <p className="text-orange-400 text-[10px] mt-0.5">⏳ {event.pendingCount} pending</p>}
+                              </td>
+                              <td className="px-4 py-4">
+                                {event.reportCount > 0 ? (
+                                  <span className="font-bold text-xs px-2.5 py-0.5 rounded-full border bg-red-950 text-red-400 border-red-900">{event.reportCount} report{event.reportCount > 1 ? 's' : ''}</span>
+                                ) : (
+                                  <span className="text-slate-600 text-xs">0</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-4 text-right">
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
+                                  <button 
+                                    onClick={() => handleDeleteEvent(event._id)} 
+                                    disabled={deletingEvent === event._id} 
+                                    className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
+                                    title="Delete Event"
+                                  >
+                                    {deletingEvent === event._id ? (
+                                      <div className="w-3.5 h-3.5 border border-red-400 border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    )}
+                                    <span>Delete</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  {eventsPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-6">
+                      <button onClick={() => fetchEvents(eventsPage - 1, eventsSearch)} disabled={eventsPage <= 1} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronLeft className="w-4 h-4" /></button>
+                      {Array.from({ length: Math.min(eventsPages, 7) }, (_, i) => {
+                        const p = eventsPages <= 7 ? i + 1 : i === 0 ? 1 : i === 6 ? eventsPages : eventsPage - 2 + i;
+                        return (
+                          <button key={i} onClick={() => fetchEvents(p, eventsSearch)}
+                            className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${eventsPage === p ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+                          >{p}</button>
+                        );
+                      })}
+                      <button onClick={() => fetchEvents(eventsPage + 1, eventsSearch)} disabled={eventsPage >= eventsPages} className="p-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 rounded-xl"><ChevronRight className="w-4 h-4" /></button>
+                      <span className="text-slate-500 text-xs ml-2">Page {eventsPage} / {eventsPages} · {eventsTotal} total</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </>
+          )}
+
+          {/* ── REPORTS TAB ── */}
+          {tab === 'reports' && (
+            <>
+              {/* Section specific stats */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+                <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Pending Action" value={reports.filter(r => r.status === 'pending').length} color="bg-red-900/50" onClick={() => setReportFilter('pending')} />
+                <StatCard icon={<CheckCircle className="w-5 h-5 text-emerald-300" />} label="Resolved" value={reports.filter(r => r.status === 'resolved').length} color="bg-emerald-900/50" onClick={() => setReportFilter('resolved')} />
+                <StatCard icon={<XCircle className="w-5 h-5 text-slate-400" />} label="Dismissed" value={reports.filter(r => r.status === 'dismissed').length} color="bg-slate-800/50" onClick={() => setReportFilter('dismissed')} />
+                <StatCard icon={<Flag className="w-5 h-5 text-violet-300" />} label="Total Submitted" value={reports.length} color="bg-violet-900/50" onClick={() => setReportFilter('all')} />
+              </div>
+
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <FilterPill label="All" active={reportFilter === 'all'} onClick={() => setReportFilter('all')} count={reports.length} />
+                <FilterPill label="Pending" active={reportFilter === 'pending'} onClick={() => setReportFilter('pending')} count={reports.filter(r => r.status === 'pending').length} />
+                <FilterPill label="Resolved" active={reportFilter === 'resolved'} onClick={() => setReportFilter('resolved')} count={reports.filter(r => r.status === 'resolved').length} />
+                <FilterPill label="Dismissed" active={reportFilter === 'dismissed'} onClick={() => setReportFilter('dismissed')} count={reports.filter(r => r.status === 'dismissed').length} />
+              </div>
+              {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                          <th className="px-5 py-4 font-semibold">Reason</th>
+                          <th className="px-4 py-4 font-semibold">Type</th>
+                          <th className="px-4 py-4 font-semibold">Reporter</th>
+                          <th className="px-4 py-4 font-semibold">Target</th>
+                          <th className="px-4 py-4 font-semibold">Created</th>
+                          <th className="px-4 py-4 font-semibold">Status</th>
+                          <th className="px-5 py-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredReports.length === 0 ? (
+                          <tr><td colSpan={7} className="text-center text-slate-500 py-16">No reports found</td></tr>
+                        ) : filteredReports.map(r => {
+                          const rType = r.type || 'post';
+                          const TYPE_COLORS: Record<string, string> = {
+                            user:      'bg-violet-950 text-violet-400 border-violet-900',
+                            post:      'bg-blue-950 text-blue-400 border-blue-900',
+                            story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
+                            meetup:    'bg-orange-950 text-orange-400 border-orange-900',
+                            community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
+                          };
+                          const typeColor = TYPE_COLORS[rType] ?? 'bg-slate-800 text-slate-400 border-slate-700';
+                          return (
+                            <tr key={r._id} onClick={() => setSelectedReport(r)} className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${r.status === 'pending' ? 'border-slate-700 font-medium' : 'opacity-60 border-slate-800'}`}>
+                              <td className="px-5 py-4 max-w-xs truncate text-white">
+                                {r.reason}
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${typeColor}`}>{rType.toUpperCase()}</span>
+                              </td>
+                              <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={e => { e.stopPropagation(); const u = users.find(usr => usr.uid === r.reporterUid); if (u) setSelectedUser(u); }}
+                                  className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg px-2 py-1 transition-colors"
+                                >
+                                  <Avatar src={r.reporterPhoto ?? undefined} name={r.reporterName} size={18} />
+                                  <span className="text-slate-300 text-[10px] font-semibold">{r.reporterName}</span>
+                                </button>
+                              </td>
+                              <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
+                                {rType === 'community' ? (
+                                  <span className="flex items-center gap-1.5 bg-emerald-950/50 border border-emerald-900/50 rounded-lg px-2 py-1">
+                                    <span className="text-emerald-300 text-[10px] font-semibold">#{r.communityName ?? 'room'}</span>
+                                  </span>
+                                ) : (
+                                  <button
+                                    onClick={e => { e.stopPropagation(); if (r.targetUid) { const u = users.find(usr => usr.uid === r.targetUid); if (u) setSelectedUser(u); } }}
+                                    className="flex items-center gap-1.5 bg-red-950/50 hover:bg-red-950 border border-red-900/50 rounded-lg px-2 py-1 transition-colors"
+                                  >
+                                    <Avatar src={r.targetPhoto ?? undefined} name={r.targetName} size={18} />
+                                    <span className="text-red-300 text-[10px] font-semibold">{r.targetName}</span>
+                                  </button>
+                                )}
+                              </td>
+                              <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(r.createdAt)}</td>
+                              <td className="px-4 py-4">
+                                <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${r.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' : r.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>{r.status.toUpperCase()}</span>
+                              </td>
+                              <td className="px-5 py-4 text-right">
+                                <span className="text-slate-600 text-xs group-hover:text-slate-300 transition-colors">Review Details →</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── COMMUNITIES TAB ── */}
+          {tab === 'communities' && (
+            <>
+              {/* Section specific stats */}
+              {stats && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                  <StatCard icon={<Globe className="w-5 h-5 text-emerald-300" />} label="Total Communities" value={stats.communities} color="bg-emerald-900/50" />
+                  <StatCard icon={<Flag className="w-5 h-5 text-amber-300" />} label="Flagged Communities" value={communities.filter(c => c.reportCount > 0 || c.isFlagged).length} color="bg-amber-900/50" onClick={() => setComFilter('flagged')} />
+                  <StatCard icon={<Ban className="w-5 h-5 text-violet-300" />} label="Private Communities" value={communities.filter(c => c.isPrivate).length} color="bg-violet-900/50" />
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-3 flex-wrap">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input type="text" value={comSearch} onChange={e => setComSearch(e.target.value)} placeholder="Search communities..."
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                  />
+                  {comSearch && <button onClick={() => setComSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
+                </div>
+                <div className="flex items-center gap-2">
+                  <FilterPill label="All" active={comFilter === 'all'} onClick={() => setComFilter('all')} count={communities.length} />
+                  <FilterPill label="Flagged" active={comFilter === 'flagged'} onClick={() => setComFilter('flagged')} count={communities.filter(c => c.reportCount > 0 || c.isFlagged).length} />
+                </div>
+              </div>
+              <p className="text-slate-600 text-xs mb-3">{filteredCommunities.length} of {communities.length} communities — click Peek to inspect messages</p>
+              {loading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : filteredCommunities.length === 0 ? <div className="text-center text-slate-500 py-16">No communities found</div> : (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                          <th className="text-left px-5 py-4 font-semibold">Community</th>
+                          <th className="text-left px-4 py-4 font-semibold">Reports</th>
+                          <th className="text-left px-4 py-4 font-semibold">Members</th>
+                          <th className="text-left px-4 py-4 font-semibold hidden sm:table-cell">Type</th>
+                          <th className="text-left px-4 py-4 font-semibold hidden md:table-cell">Tags</th>
+                          <th className="text-left px-4 py-4 font-semibold hidden lg:table-cell">Created</th>
+                          <th className="px-4 py-4" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60">
+                        {filteredCommunities.map(c => (
+                          <tr key={c.id} className={`hover:bg-slate-800/40 transition-colors group ${(c.reportCount > 0 || c.isFlagged) ? 'bg-red-950/10' : ''}`}>
+                            <td className="px-5 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${c.isFlagged ? 'bg-amber-950' : 'bg-gradient-to-br from-emerald-700 to-teal-700'}`}>
+                                  {c.isFlagged ? <Flag className="w-4 h-4 text-amber-400" /> : <Globe className="w-4 h-4 text-white" />}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-white truncate max-w-[180px]">{c.name}</p>
+                                  {c.description && <p className="text-slate-500 text-xs truncate max-w-[180px]">{c.description}</p>}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              {c.reportCount > 0
+                                ? <span className={`font-bold text-sm px-2 py-0.5 rounded-lg ${c.reportCount >= 3 ? 'bg-red-950 text-red-400' : 'bg-amber-950 text-amber-400'}`}>{c.reportCount}</span>
+                                : <span className="text-slate-600 text-sm">0</span>}
+                            </td>
+                            <td className="px-4 py-4 text-white font-bold">{c.memberCount}</td>
+                            <td className="px-4 py-4 hidden sm:table-cell"><span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${c.isPrivate ? 'border-violet-700 text-violet-400 bg-violet-950' : 'border-slate-700 text-slate-400 bg-slate-800'}`}>{c.isPrivate ? 'Private' : 'Public'}</span></td>
+                            <td className="px-4 py-4 hidden md:table-cell"><div className="flex flex-wrap gap-1">{c.tags.slice(0, 3).map(tag => <span key={tag} className="text-xs bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">{tag}</span>)}{c.tags.length > 3 && <span className="text-xs text-slate-600">+{c.tags.length - 3}</span>}</div></td>
+                            <td className="px-4 py-4 text-slate-500 text-xs hidden lg:table-cell">{timeAgo(c.createdAt)}</td>
+                            <td className="px-4 py-4 text-right">
+                              <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end gap-1 transition-all">
+                                <button onClick={() => setPeekTarget(c)} className="flex items-center gap-1.5 text-violet-400 hover:bg-violet-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-colors">
+                                  <Eye className="w-3.5 h-3.5" /> Peek
+                                </button>
+                                <button
+                                  onClick={() => handleFlagCommunity(c)}
+                                  disabled={flaggingCom === c.id}
+                                  title={c.isFlagged ? 'Unflag' : 'Flag community'}
+                                  className={`p-1.5 rounded-xl transition-colors ${c.isFlagged ? 'text-amber-400 bg-amber-950' : 'text-slate-500 hover:text-amber-400 hover:bg-amber-950'}`}
+                                >
+                                  <Flag className="w-3.5 h-3.5" />
+                                </button>
+                                <button onClick={() => setDeleteComTarget(c)} className="p-1.5 text-red-500 hover:bg-red-950 rounded-xl transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── ANALYTICS TAB ── */}
+          {tab === 'analytics' && (
+            <div className="space-y-6">
+              {analyticsLoading ? (
+                <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div>
+              ) : !analytics ? (
+                <div className="text-center text-slate-500 py-16">No analytics data</div>
+              ) : (
+                <>
+                  {/* Section header */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-white font-bold text-lg">Platform Analytics</h2>
+                      <p className="text-slate-500 text-xs mt-0.5">Last 30 days · All times UTC</p>
+                    </div>
+                    <button onClick={() => setAnalytics(null)} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 text-xs px-3 py-1.5 rounded-xl hover:bg-slate-800 transition-colors border border-slate-800">
+                      <RefreshCw className="w-3 h-3" /> Refresh
+                    </button>
+                  </div>
+
+                  {/* KPI cards with sparklines */}
+                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
                     {[
-                      { label: 'Signups (30d)',     key: 'signups',     color: 'text-violet-400' },
-                      { label: 'Posts (30d)',        key: 'posts',       color: 'text-blue-400' },
-                      { label: 'Communities (30d)', key: 'communities', color: 'text-emerald-400' },
-                      { label: 'Reports (30d)',      key: 'reports',     color: 'text-red-400' },
-                    ].map(s => (
-                      <div key={s.label} className="bg-slate-800/60 rounded-xl p-3 text-center">
-                        <p className={`text-xl font-extrabold ${s.color}`}>
-                          {(analytics.chartData as ChartRow[]).reduce((acc: number, d: ChartRow) => acc + (d[s.key as keyof ChartRow] as number), 0)}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                      {
+                        label: 'Daily Active',
+                        value: analytics.dau,
+                        sub: 'users today',
+                        color: 'text-violet-400',
+                        bg: 'from-violet-500/10 to-transparent',
+                        border: 'border-violet-900/40',
+                        sparkColor: '#8b5cf6',
+                        sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
+                      },
+                      {
+                        label: 'Weekly Active',
+                        value: analytics.wau,
+                        sub: 'users this week',
+                        color: 'text-blue-400',
+                        bg: 'from-blue-500/10 to-transparent',
+                        border: 'border-blue-900/40',
+                        sparkColor: '#3b82f6',
+                        sparkValues: (analytics.chartData as ChartRow[]).slice(-7).map((d: ChartRow) => d.signups),
+                      },
+                      {
+                        label: 'Monthly Active',
+                        value: analytics.mau,
+                        sub: 'users this month',
+                        color: 'text-emerald-400',
+                        bg: 'from-emerald-500/10 to-transparent',
+                        border: 'border-emerald-900/40',
+                        sparkColor: '#10b981',
+                        sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
+                      },
+                      {
+                        label: 'Total Users',
+                        value: analytics.totalUsers,
+                        sub: `+${analytics.usersLast30} this month`,
+                        growth: analytics.userGrowthRate,
+                        color: 'text-white',
+                        bg: 'from-slate-700/20 to-transparent',
+                        border: 'border-slate-700/40',
+                        sparkColor: '#94a3b8',
+                        sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.signups),
+                      },
+                      {
+                        label: 'Total Posts',
+                        value: analytics.totalPosts,
+                        sub: `+${analytics.postsLast30} this month`,
+                        growth: analytics.postGrowthRate,
+                        color: 'text-amber-400',
+                        bg: 'from-amber-500/10 to-transparent',
+                        border: 'border-amber-900/40',
+                        sparkColor: '#f59e0b',
+                        sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.posts),
+                      },
+                      {
+                        label: 'Pending Reports',
+                        value: analytics.reportStatus?.pending || 0,
+                        sub: `${analytics.totalReports} total reports`,
+                        color: analytics.reportStatus?.pending > 0 ? 'text-red-400' : 'text-slate-400',
+                        bg: analytics.reportStatus?.pending > 0 ? 'from-red-500/10 to-transparent' : 'from-slate-700/20 to-transparent',
+                        border: analytics.reportStatus?.pending > 0 ? 'border-red-900/40' : 'border-slate-700/40',
+                        sparkColor: '#ef4444',
+                        sparkValues: (analytics.chartData as ChartRow[]).map((d: ChartRow) => d.reports),
+                      },
+                    ].map(k => (
+                      <div key={k.label} className={`bg-gradient-to-b ${k.bg} border ${k.border} bg-slate-900 rounded-2xl p-4 flex flex-col gap-1`}>
+                        <p className={`text-2xl font-extrabold ${k.color}`}>{(k.value as number).toLocaleString()}</p>
+                        <p className="text-xs font-bold text-slate-300">{k.label}</p>
+                        <p className="text-xs text-slate-600">{k.sub}</p>
+                        {k.growth !== undefined && (
+                          <span className={`text-xs font-bold ${k.growth >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {k.growth >= 0 ? '▲' : '▼'} {Math.abs(k.growth)}% vs prev 30d
+                          </span>
+                        )}
+                        <div className="mt-1">
+                          <Sparkline values={k.sparkValues} color={k.sparkColor} />
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
 
-                {/* ── Per-metric bar charts ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                      <Users className="w-4 h-4 text-violet-400" /> Daily New Users
-                    </h4>
-                    <p className="text-slate-500 text-xs mb-3">User signups per day — last 30 days</p>
-                    <BarChart data={analytics.chartData} valueKey="signups" color="#8b5cf6" />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-blue-400" /> Daily Posts Created
-                    </h4>
-                    <p className="text-slate-500 text-xs mb-3">Posts published per day — last 30 days</p>
-                    <BarChart data={analytics.chartData} valueKey="posts" color="#3b82f6" />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-emerald-400" /> Daily Rooms Created
-                    </h4>
-                    <p className="text-slate-500 text-xs mb-3">Community rooms created per day — last 30 days</p>
-                    <BarChart data={analytics.chartData} valueKey="communities" color="#10b981" />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-red-400" /> Daily Reports Filed
-                    </h4>
-                    <p className="text-slate-500 text-xs mb-3">User reports submitted per day — last 30 days</p>
-                    <BarChart data={analytics.chartData} valueKey="reports" color="#ef4444" />
-                  </div>
-                </div>
-
-                {/* ── Donut breakdown row ── */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1">Sign-up Method</h4>
-                    <p className="text-slate-500 text-xs mb-4">How users created their account</p>
-                    <DonutChart segments={[
-                      { label: 'Google OAuth', value: analytics.authTypes?.google || 0, color: '#3b82f6' },
-                      { label: 'Email / Password', value: analytics.authTypes?.email || 0, color: '#8b5cf6' },
-                    ]} />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1">Report Status</h4>
-                    <p className="text-slate-500 text-xs mb-4">Current state of all submitted reports</p>
-                    <DonutChart segments={[
-                      { label: 'Pending Action', value: analytics.reportStatus?.pending || 0,   color: '#ef4444' },
-                      { label: 'Resolved',       value: analytics.reportStatus?.resolved || 0,  color: '#10b981' },
-                      { label: 'Dismissed',      value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
-                    ]} />
-                  </div>
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h4 className="text-white font-bold text-sm mb-1">Report Types</h4>
-                    <p className="text-slate-500 text-xs mb-4">What content is being reported</p>
-                    <DonutChart segments={[
-                      { label: 'User Profile', value: analytics.reportTypes?.user      || 0, color: '#8b5cf6' },
-                      { label: 'Post',         value: analytics.reportTypes?.post      || 0, color: '#3b82f6' },
-                      { label: 'Story',        value: analytics.reportTypes?.story     || 0, color: '#06b6d4' },
-                      { label: 'Meetup',       value: analytics.reportTypes?.meetup    || 0, color: '#f97316' },
-                      { label: 'Community',    value: analytics.reportTypes?.community || 0, color: '#10b981' },
-                    ]} />
-                  </div>
-                </div>
-
-                {/* ── Content breakdown donut ── */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                  <h4 className="text-white font-bold text-sm mb-1">Content Breakdown</h4>
-                  <p className="text-slate-500 text-xs mb-4">All-time content types on the platform</p>
+                  {/* Platform health strip */}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {(analytics.contentBreakdown as { label: string; value: number }[]).map((item, i) => {
-                      const colors = ['#8b5cf6', '#f97316', '#06b6d4', '#10b981'];
-                      const total = (analytics.contentBreakdown as { value: number }[]).reduce((s, x) => s + x.value, 0) || 1;
-                      const pct = Math.round((item.value / total) * 100);
-                      return (
-                        <div key={i} className="bg-slate-800/60 rounded-xl p-4">
-                          <p className="text-2xl font-extrabold" style={{ color: colors[i] }}>{item.value.toLocaleString()}</p>
-                          <p className="text-xs text-slate-400 font-semibold mt-0.5">{item.label}</p>
-                          <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i] }} />
-                          </div>
-                          <p className="text-xs text-slate-600 mt-1">{pct}% of content</p>
+                    {[
+                      { label: 'Communities', value: analytics.totalCommunities, icon: <Globe className="w-4 h-4" />, color: 'text-cyan-400', bg: 'bg-cyan-900/20' },
+                      { label: 'Stories (all time)', value: analytics.totalStories, icon: <Image className="w-4 h-4" />, color: 'text-pink-400', bg: 'bg-pink-900/20' },
+                      { label: 'Suspended Users', value: analytics.suspendedCount, icon: <Ban className="w-4 h-4" />, color: analytics.suspendedCount > 0 ? 'text-orange-400' : 'text-slate-500', bg: 'bg-orange-900/20' },
+                      { label: 'Resolved Reports', value: analytics.reportStatus?.resolved || 0, icon: <CheckCircle className="w-4 h-4" />, color: 'text-emerald-400', bg: 'bg-emerald-900/20' },
+                    ].map(s => (
+                      <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${s.bg} ${s.color}`}>{s.icon}</div>
+                        <div>
+                          <p className={`text-xl font-extrabold ${s.color}`}>{(s.value as number).toLocaleString()}</p>
+                          <p className="text-xs text-slate-500">{s.label}</p>
                         </div>
-                      );
-                    })}
+                      </div>
+                    ))}
                   </div>
-                </div>
 
-                {/* ── Rankings row ── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {analytics.topReported?.length > 0 && (
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-red-400" /> Most Reported Users
-                      </h4>
-                      <p className="text-slate-500 text-xs mb-4">Users with most pending reports against them</p>
-                      <HBarChart
-                        color="#ef4444"
-                        items={(analytics.topReported as { displayName: string; count: number; isSuspended: boolean; photoURL: string | null }[]).map(u => ({
-                          label: u.displayName,
-                          value: u.count as number,
-                          sublabel: u.isSuspended ? '🔴 suspended' : '',
-                          photo: u.photoURL,
-                        }))}
-                      />
+                  {/* 30-day trend — main area chart */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="w-5 h-5 text-violet-400" />
+                        <h3 className="text-white font-bold">30-Day Activity Trend</h3>
+                      </div>
+                      {/* Legend */}
+                      <div className="flex items-center gap-4 text-xs flex-wrap">
+                        {[
+                          { color: '#8b5cf6', label: 'Signups' },
+                          { color: '#3b82f6', label: 'Posts' },
+                          { color: '#10b981', label: 'Communities' },
+                          { color: '#ef4444', label: 'Reports' },
+                        ].map(l => (
+                          <span key={l.label} className="flex items-center gap-1.5">
+                            <span className="w-3 h-3 rounded-full inline-block flex-shrink-0" style={{ background: l.color }} />
+                            <span className="text-slate-400">{l.label}</span>
+                          </span>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                  {analytics.topPosters?.length > 0 && (
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-amber-400" /> Most Active Posters
-                      </h4>
-                      <p className="text-slate-500 text-xs mb-4">Users with most posts in the last 30 days</p>
-                      <HBarChart
-                        color="#f59e0b"
-                        items={(analytics.topPosters as { displayName: string; count: number; photoURL: string | null }[]).map(u => ({
-                          label: u.displayName,
-                          value: u.count as number,
-                          photo: u.photoURL,
-                        }))}
-                      />
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* ── AUDIT LOG TAB ── */}
-        {tab === 'audit' && (
-          <>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                <input type="text" value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Filter by path, UID, status code..."
-                  className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
-                />
-              </div>
-              <p className="text-slate-600 text-xs ml-auto">{filteredAuditLogs.length} entries</p>
-            </div>
-            {auditLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs font-mono">
-                    <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
-                        <th className="text-left px-4 py-3">Time</th>
-                        <th className="text-left px-4 py-3">Method</th>
-                        <th className="text-left px-4 py-3">Path</th>
-                        <th className="text-left px-4 py-3">Status</th>
-                        <th className="text-left px-4 py-3">Duration</th>
-                        <th className="text-left px-4 py-3 hidden md:table-cell">UID</th>
-                        <th className="text-left px-4 py-3 hidden lg:table-cell">IP</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                      {filteredAuditLogs.length === 0 ? <tr><td colSpan={7} className="text-center text-slate-500 py-12">No logs</td></tr> : filteredAuditLogs.map((log, i) => (
-                        <tr key={i} className="hover:bg-slate-800/40 transition-colors">
-                          <td className="px-4 py-2.5 text-slate-500">{new Date(log.timestamp).toLocaleTimeString()}</td>
-                          <td className="px-4 py-2.5"><span className={`px-1.5 py-0.5 rounded font-bold text-xs ${log.method === 'GET' ? 'text-blue-400' : log.method === 'POST' ? 'text-emerald-400' : log.method === 'DELETE' ? 'text-red-400' : 'text-amber-400'}`}>{log.method}</span></td>
-                          <td className="px-4 py-2.5 text-slate-300 max-w-[200px] truncate">{log.path}</td>
-                          <td className="px-4 py-2.5"><span className={`font-bold ${log.statusCode < 300 ? 'text-emerald-400' : log.statusCode < 400 ? 'text-blue-400' : log.statusCode < 500 ? 'text-amber-400' : 'text-red-400'}`}>{log.statusCode}</span></td>
-                          <td className="px-4 py-2.5 text-slate-500">{log.duration}</td>
-                          <td className="px-4 py-2.5 text-slate-600 hidden md:table-cell max-w-[120px] truncate">{log.uid !== 'anonymous' ? log.uid : <span className="text-slate-700">—</span>}</td>
-                          <td className="px-4 py-2.5 text-slate-600 hidden lg:table-cell">{log.ip}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── SETTINGS TAB ── */}
-        {tab === 'settings' && (
-          <div className="max-w-xl space-y-6">
-            {settingsLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
-              <>
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-5">
-                    <div className="w-10 h-10 rounded-xl bg-orange-950 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-orange-400" /></div>
-                    <div><h3 className="text-white font-bold text-base">Auto-Suspend Threshold</h3><p className="text-slate-400 text-xs">Automatically suspend users when they receive this many pending reports</p></div>
-                  </div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <input
-                      type="number" min={0} max={50} value={autoSuspendThreshold}
-                      onChange={e => setAutoSuspendThreshold(Number(e.target.value))}
-                      className="w-24 bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all text-center font-bold text-lg"
+                    <AreaLineChart
+                      data={analytics.chartData}
+                      keys={[
+                        { key: 'signups',     color: '#8b5cf6', label: 'Signups' },
+                        { key: 'posts',       color: '#3b82f6', label: 'Posts' },
+                        { key: 'communities', color: '#10b981', label: 'Communities' },
+                        { key: 'reports',     color: '#ef4444', label: 'Reports' },
+                      ]}
                     />
-                    <div className="text-slate-400 text-sm">{autoSuspendThreshold === 0 ? <span className="text-slate-500 italic">Disabled — users are never auto-suspended</span> : <span>Users auto-suspended after <span className="text-orange-400 font-bold">{autoSuspendThreshold}</span> pending report{autoSuspendThreshold > 1 ? 's' : ''}</span>}</div>
+                    {/* 30d totals row */}
+                    <div className="grid grid-cols-4 gap-3 mt-5">
+                      {[
+                        { label: 'Signups (30d)',     key: 'signups',     color: 'text-violet-400' },
+                        { label: 'Posts (30d)',        key: 'posts',       color: 'text-blue-400' },
+                        { label: 'Communities (30d)', key: 'communities', color: 'text-emerald-400' },
+                        { label: 'Reports (30d)',      key: 'reports',     color: 'text-red-400' },
+                      ].map(s => (
+                        <div key={s.label} className="bg-slate-800/60 rounded-xl p-3 text-center">
+                          <p className={`text-xl font-extrabold ${s.color}`}>
+                            {(analytics.chartData as ChartRow[]).reduce((acc: number, d: ChartRow) => acc + (d[s.key as keyof ChartRow] as number), 0)}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-slate-600 text-xs mb-5">Set to 0 to disable. Applies to all new reports from this point forward. Already-reported users are not retroactively suspended.</p>
-                  <button onClick={handleSaveSettings} disabled={savingSettings} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition-colors text-sm">
-                    {savingSettings ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle className="w-4 h-4" />} Save Settings
-                  </button>
-                </div>
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center"><Activity className="w-5 h-5 text-slate-400" /></div>
-                    <div><h3 className="text-white font-bold text-base">App Info</h3><p className="text-slate-400 text-xs">Current runtime status</p></div>
+
+                  {/* Per-metric bar charts */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <Users className="w-4 h-4 text-violet-400" /> Daily New Users
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-3">User signups per day — last 30 days</p>
+                      <BarChart data={analytics.chartData} valueKey="signups" color="#8b5cf6" />
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-blue-400" /> Daily Posts Created
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-3">Posts published per day — last 30 days</p>
+                      <BarChart data={analytics.chartData} valueKey="posts" color="#3b82f6" />
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-emerald-400" /> Daily Rooms Created
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-3">Community rooms created per day — last 30 days</p>
+                      <BarChart data={analytics.chartData} valueKey="communities" color="#10b981" />
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-red-400" /> Daily Reports Filed
+                      </h4>
+                      <p className="text-slate-500 text-xs mb-3">User reports submitted per day — last 30 days</p>
+                      <BarChart data={analytics.chartData} valueKey="reports" color="#ef4444" />
+                    </div>
                   </div>
-                  <dl className="space-y-2 text-sm">
-                    <div className="flex justify-between"><dt className="text-slate-500">Total users</dt><dd className="text-white font-semibold">{stats?.users?.toLocaleString() || '—'}</dd></div>
-                    <div className="flex justify-between"><dt className="text-slate-500">Online now</dt><dd className="text-emerald-400 font-semibold">{stats?.onlineUsers || 0}</dd></div>
-                    <div className="flex justify-between"><dt className="text-slate-500">Push subscriptions</dt><dd className="text-yellow-400 font-semibold">{stats?.pushSubscriptions || 0}</dd></div>
-                    <div className="flex justify-between"><dt className="text-slate-500">Pending reports</dt><dd className={`font-semibold ${(stats?.pendingReports || 0) > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{stats?.pendingReports || 0}</dd></div>
-                    <div className="flex justify-between"><dt className="text-slate-500">Communities</dt><dd className="text-slate-300">{stats?.communities || 0}</dd></div>
-                  </dl>
+
+                  {/* Donut breakdown row */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1">Sign-up Method</h4>
+                      <p className="text-slate-500 text-xs mb-4">How users created their account</p>
+                      <DonutChart segments={[
+                        { label: 'Google OAuth', value: analytics.authTypes?.google || 0, color: '#3b82f6' },
+                        { label: 'Email / Password', value: analytics.authTypes?.email || 0, color: '#8b5cf6' },
+                      ]} />
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1">Report Status</h4>
+                      <p className="text-slate-500 text-xs mb-4">Current state of all submitted reports</p>
+                      <DonutChart segments={[
+                        { label: 'Pending Action', value: analytics.reportStatus?.pending || 0,   color: '#ef4444' },
+                        { label: 'Resolved',       value: analytics.reportStatus?.resolved || 0,  color: '#10b981' },
+                        { label: 'Dismissed',      value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
+                      ]} />
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                      <h4 className="text-white font-bold text-sm mb-1">Report Types</h4>
+                      <p className="text-slate-500 text-xs mb-4">What content is being reported</p>
+                      <DonutChart segments={[
+                        { label: 'User Profile', value: analytics.reportTypes?.user      || 0, color: '#8b5cf6' },
+                        { label: 'Post',         value: analytics.reportTypes?.post      || 0, color: '#3b82f6' },
+                        { label: 'Story',        value: analytics.reportTypes?.story     || 0, color: '#06b6d4' },
+                        { label: 'Meetup',       value: analytics.reportTypes?.meetup    || 0, color: '#f97316' },
+                        { label: 'Community',    value: analytics.reportTypes?.community || 0, color: '#10b981' },
+                      ]} />
+                    </div>
+                  </div>
+
+                  {/* Content breakdown donut */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h4 className="text-white font-bold text-sm mb-1">Content Breakdown</h4>
+                    <p className="text-slate-500 text-xs mb-4">All-time content types on the platform</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      {(analytics.contentBreakdown as { label: string; value: number }[]).map((item, i) => {
+                        const colors = ['#8b5cf6', '#f97316', '#06b6d4', '#10b981'];
+                        const total = (analytics.contentBreakdown as { value: number }[]).reduce((s, x) => s + x.value, 0) || 1;
+                        const pct = Math.round((item.value / total) * 100);
+                        return (
+                          <div key={i} className="bg-slate-800/60 rounded-xl p-4">
+                            <p className="text-2xl font-extrabold" style={{ color: colors[i] }}>{item.value.toLocaleString()}</p>
+                            <p className="text-xs text-slate-400 font-semibold mt-0.5">{item.label}</p>
+                            <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${pct}%`, background: colors[i] }} />
+                            </div>
+                            <p className="text-xs text-slate-600 mt-1">{pct}% of content</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Rankings row as tables */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {analytics.topReported?.length > 0 && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-red-400" /> Most Reported Users
+                        </h4>
+                        <p className="text-slate-500 text-xs mb-4">Users with most pending reports against them</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead>
+                              <tr className="border-b border-slate-850 text-slate-500 uppercase font-mono">
+                                <th className="py-2">User</th>
+                                <th className="py-2">Reports</th>
+                                <th className="py-2">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(analytics.topReported as { displayName: string; count: number; isSuspended: boolean; photoURL: string | null }[]).map((u, index) => (
+                                <tr key={index} className="border-b border-slate-800/40 text-slate-300">
+                                  <td className="py-2.5 flex items-center gap-2">
+                                    <Avatar src={u.photoURL} name={u.displayName} size={24} />
+                                    <span className="font-semibold text-white">{u.displayName}</span>
+                                  </td>
+                                  <td className="py-2.5 font-bold text-red-400">{u.count}</td>
+                                  <td className="py-2.5">
+                                    {u.isSuspended ? (
+                                      <span className="text-[10px] text-orange-400 bg-orange-950/40 border border-orange-900/30 px-2 py-0.5 rounded-full font-bold">Suspended</span>
+                                    ) : (
+                                      <span className="text-[10px] text-emerald-400 bg-emerald-950/40 border border-emerald-900/30 px-2 py-0.5 rounded-full font-bold">Active</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                    {analytics.topPosters?.length > 0 && (
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h4 className="text-white font-bold text-sm mb-1 flex items-center gap-2">
+                          <Zap className="w-4 h-4 text-amber-400" /> Most Active Posters
+                        </h4>
+                        <p className="text-slate-500 text-xs mb-4">Users with most posts in the last 30 days</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs text-left">
+                            <thead>
+                              <tr className="border-b border-slate-855 text-slate-500 uppercase font-mono">
+                                <th className="py-2">User</th>
+                                <th className="py-2">Posts (30d)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(analytics.topPosters as { displayName: string; count: number; photoURL: string | null }[]).map((u, index) => (
+                                <tr key={index} className="border-b border-slate-800/40 text-slate-300">
+                                  <td className="py-2.5 flex items-center gap-2">
+                                    <Avatar src={u.photoURL} name={u.displayName} size={24} />
+                                    <span className="font-semibold text-white">{u.displayName}</span>
+                                  </td>
+                                  <td className="py-2.5 font-bold text-amber-400">{u.count}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* ── AUDIT LOG TAB ── */}
+          {tab === 'audit' && (
+            <>
+              {/* Section specific stats */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-violet-900/50 text-violet-300">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-extrabold text-white">{filteredAuditLogs.length}</p>
+                    <p className="text-xs text-slate-500">Filtered Log Entries</p>
+                  </div>
                 </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-blue-900/50 text-blue-300">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-300 truncate max-w-[200px]">{auditSearch || 'Showing All logs'}</p>
+                    <p className="text-xs text-slate-500">Current Search Filter</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 mb-4">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                  <input type="text" value={auditSearch} onChange={e => setAuditSearch(e.target.value)} placeholder="Filter by path, UID, status code..."
+                    className="w-full bg-slate-800 border border-slate-700 text-white rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all placeholder-slate-500"
+                  />
+                </div>
+                <p className="text-slate-600 text-xs ml-auto">{filteredAuditLogs.length} entries</p>
+              </div>
+              {auditLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs font-mono">
+                      <thead>
+                        <tr className="border-b border-slate-800 text-slate-400 uppercase tracking-wider">
+                          <th className="text-left px-4 py-3">Time</th>
+                          <th className="text-left px-4 py-3">Method</th>
+                          <th className="text-left px-4 py-3">Path</th>
+                          <th className="text-left px-4 py-3">Status</th>
+                          <th className="text-left px-4 py-3">Duration</th>
+                          <th className="text-left px-4 py-3 hidden md:table-cell">UID</th>
+                          <th className="text-left px-4 py-3 hidden lg:table-cell">IP</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/50">
+                        {filteredAuditLogs.length === 0 ? <tr><td colSpan={7} className="text-center text-slate-500 py-12">No logs</td></tr> : filteredAuditLogs.map((log, i) => (
+                          <tr key={i} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="px-4 py-2.5 text-slate-500">{new Date(log.timestamp).toLocaleTimeString()}</td>
+                            <td className="px-4 py-2.5"><span className={`px-1.5 py-0.5 rounded font-bold text-xs ${log.method === 'GET' ? 'text-blue-400' : log.method === 'POST' ? 'text-emerald-400' : log.method === 'DELETE' ? 'text-red-400' : 'text-amber-400'}`}>{log.method}</span></td>
+                            <td className="px-4 py-2.5 text-slate-300 max-w-[200px] truncate">{log.path}</td>
+                            <td className="px-4 py-2.5"><span className={`font-bold ${log.statusCode < 300 ? 'text-emerald-400' : log.statusCode < 400 ? 'text-blue-400' : log.statusCode < 500 ? 'text-amber-400' : 'text-red-400'}`}>{log.statusCode}</span></td>
+                            <td className="px-4 py-2.5 text-slate-500">{log.duration}</td>
+                            <td className="px-4 py-2.5 text-slate-600 hidden md:table-cell max-w-[120px] truncate">{log.uid !== 'anonymous' ? log.uid : <span className="text-slate-700">—</span>}</td>
+                            <td className="px-4 py-2.5 text-slate-600 hidden lg:table-cell">{log.ip}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── SETTINGS TAB ── */}
+          {tab === 'settings' && (
+            <div className="max-w-xl space-y-6">
+              {/* Section specific stats header */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-orange-900/50 text-orange-300">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xl font-extrabold text-white">{autoSuspendThreshold}</p>
+                    <p className="text-xs text-slate-500">Auto Suspend Limit</p>
+                  </div>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-emerald-900/50 text-emerald-300">
+                    <Wifi className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-extrabold text-emerald-400">Connected</p>
+                    <p className="text-xs text-slate-500">API Gateway Status</p>
+                  </div>
+                </div>
+              </div>
+
+              {settingsLoading ? <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-violet-500 rounded-full animate-spin" /></div> : (
+                <>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-5">
+                      <div className="w-10 h-10 rounded-xl bg-orange-950 flex items-center justify-center"><AlertTriangle className="w-5 h-5 text-orange-400" /></div>
+                      <div><h3 className="text-white font-bold text-base">Auto-Suspend Threshold</h3><p className="text-slate-400 text-xs">Automatically suspend users when they receive this many pending reports</p></div>
+                    </div>
+                    <div className="flex items-center gap-3 mb-4">
+                      <input
+                        type="number" min={0} max={50} value={autoSuspendThreshold}
+                        onChange={e => setAutoSuspendThreshold(Number(e.target.value))}
+                        className="w-24 bg-slate-800 border border-slate-700 text-white rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-violet-500 transition-all text-center font-bold text-lg"
+                      />
+                      <div className="text-slate-400 text-sm">{autoSuspendThreshold === 0 ? <span className="text-slate-500 italic">Disabled — users are never auto-suspended</span> : <span>Users auto-suspended after <span className="text-orange-400 font-bold">{autoSuspendThreshold}</span> pending report{autoSuspendThreshold > 1 ? 's' : ''}</span>}</div>
+                    </div>
+                    <p className="text-slate-600 text-xs mb-5">Set to 0 to disable. Applies to all new reports from this point forward. Already-reported users are not retroactively suspended.</p>
+                    <button onClick={handleSaveSettings} disabled={savingSettings} className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl transition-colors text-sm">
+                      {savingSettings ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <CheckCircle className="w-4 h-4" />} Save Settings
+                    </button>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center"><Activity className="w-5 h-5 text-slate-400" /></div>
+                      <div><h3 className="text-white font-bold text-base">App Info</h3><p className="text-slate-400 text-xs">Current runtime status</p></div>
+                    </div>
+                    <dl className="space-y-2 text-sm">
+                      <div className="flex justify-between"><dt className="text-slate-500">Total users</dt><dd className="text-white font-semibold">{stats?.users?.toLocaleString() || '—'}</dd></div>
+                      <div className="flex justify-between"><dt className="text-slate-500">Online now</dt><dd className="text-emerald-400 font-semibold">{stats?.onlineUsers || 0}</dd></div>
+                      <div className="flex justify-between"><dt className="text-slate-500">Push subscriptions</dt><dd className="text-yellow-400 font-semibold">{stats?.pushSubscriptions || 0}</dd></div>
+                      <div className="flex justify-between"><dt className="text-slate-500">Pending reports</dt><dd className={`font-semibold ${(stats?.pendingReports || 0) > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{stats?.pendingReports || 0}</dd></div>
+                      <div className="flex justify-between"><dt className="text-slate-500">Communities</dt><dd className="text-slate-300">{stats?.communities || 0}</dd></div>
+                    </dl>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
 
       {deleteTarget && <DeleteUserModal user={deleteTarget} onCancel={() => !deleting && setDeleteTarget(null)} onConfirm={confirmDelete} />}
       {deleteComTarget && <DeleteCommunityModal community={deleteComTarget} onCancel={() => !deletingCom && setDeleteComTarget(null)} onConfirm={confirmDeleteCommunity} />}
