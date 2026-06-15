@@ -3464,6 +3464,18 @@ app.delete('/api/admin/posts/bulk-flagged', requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/stories/all — delete every story
+app.delete('/api/admin/stories/all', requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: 'Database not connected' });
+  try {
+    const result = await db.collection('stories').deleteMany({});
+    await db.collection('reports').deleteMany({ storyId: { $exists: true } });
+    res.json({ success: true, deleted: result.deletedCount });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete all stories' });
+  }
+});
+
 // GET /api/admin/stories — paginated list of all stories
 app.get('/api/admin/stories', requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: 'Database not connected' });

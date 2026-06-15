@@ -841,6 +841,16 @@ export const api = {
       return data;
     },
 
+    deleteAllStories: async (token: string) => {
+      const response = await fetch(`${API_BASE}/admin/stories/all`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete all stories");
+      return data as { success: boolean; deleted: number };
+    },
+
     getEvents: async (token: string, page = 1, search = '') => {
       const url = `${API_BASE}/admin/events?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
       const response = await fetch(url, { headers: { "x-admin-secret": token } });

@@ -5,7 +5,7 @@ import {
   Shield, Trash2,
   TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap
 } from 'lucide-react';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { AdminCommunity, AdminEvent, AdminPost, AdminReport, AdminStory, AdminUser } from '../types';
@@ -21,10 +21,10 @@ function timeAgo(ts: number | Date | null | undefined): string {
   return new Date(ms).toLocaleDateString();
 }
 
-function Avatar({ src, name, size = 36 }: { src?: string; name: string; size?: number }) {
+const Avatar = React.memo(function Avatar({ src, name, size = 36 }: { src?: string; name: string; size?: number }) {
   const initials = name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?';
   return src ? (
-    <img src={src} alt={name} className="rounded-full object-cover flex-shrink-0" style={{ width: size, height: size }} />
+    <img src={src} alt={name} loading="lazy" className="rounded-full object-cover flex-shrink-0" style={{ width: size, height: size }} />
   ) : (
     <div
       className="rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white font-bold flex-shrink-0 select-none"
@@ -33,11 +33,14 @@ function Avatar({ src, name, size = 36 }: { src?: string; name: string; size?: n
       {initials}
     </div>
   );
-}
+});
 
-function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: number | string; sub?: string; color: string }) {
+const StatCard = React.memo(function StatCard({ icon, label, value, sub, color, onClick }: { icon: React.ReactNode; label: string; value: number | string; sub?: string; color: string; onClick?: () => void }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4">
+    <div
+      onClick={onClick}
+      className={`bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-4 ${onClick ? 'cursor-pointer hover:border-slate-600 hover:bg-slate-800/60 active:scale-[0.98] transition-all' : ''}`}
+    >
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>{icon}</div>
       <div>
         <p className="text-2xl font-extrabold text-white">{value}</p>
@@ -46,22 +49,22 @@ function StatCard({ icon, label, value, sub, color }: { icon: React.ReactNode; l
       </div>
     </div>
   );
-}
+});
 
-function FilterPill({ label, active, onClick, count }: { label: string; active: boolean; onClick: () => void; count?: number }) {
+const FilterPill = React.memo(function FilterPill({ label, active, onClick, count }: { label: string; active: boolean; onClick: () => void; count?: number }) {
   return (
     <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${active ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700'}`}>
       {label}
       {count !== undefined && count > 0 && <span className={`rounded-full px-1.5 py-0.5 text-xs ${active ? 'bg-violet-500' : 'bg-slate-700 text-slate-300'}`}>{count}</span>}
     </button>
   );
-}
+});
 
 // ── SVG Chart Components ─────────────────────────────────────────────────────
 type ChartRow = { date: string; signups: number; posts: number; reports: number; communities: number; stories: number };
 
 /** Sparkline used inside KPI cards */
-function Sparkline({ values, color }: { values: number[]; color: string }) {
+const Sparkline = React.memo(function Sparkline({ values, color }: { values: number[]; color: string }) {
   const W = 80; const H = 28;
   if (!values.length) return null;
   const max = Math.max(...values, 1);
@@ -81,10 +84,10 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
       <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" />
     </svg>
   );
-}
+});
 
 /** Smooth area chart — primary trend view */
-function AreaLineChart({ data, keys }: {
+const AreaLineChart = React.memo(function AreaLineChart({ data, keys }: {
   data: ChartRow[];
   keys: { key: keyof ChartRow; color: string; label: string }[];
 }) {
@@ -152,10 +155,10 @@ function AreaLineChart({ data, keys }: {
       ))}
     </svg>
   );
-}
+});
 
 /** Rounded bar chart */
-function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof ChartRow; color: string }) {
+const BarChart = React.memo(function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof ChartRow; color: string }) {
   const W = 600; const H = 110; const PAD = { t: 8, r: 8, b: 26, l: 32 };
   const iW = W - PAD.l - PAD.r; const iH = H - PAD.t - PAD.b;
   const values = data.map(d => d[valueKey] as number);
@@ -189,10 +192,10 @@ function BarChart({ data, valueKey, color }: { data: ChartRow[]; valueKey: keyof
       })}
     </svg>
   );
-}
+});
 
 /** Donut chart with legend */
-function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
+const DonutChart = React.memo(function DonutChart({ segments }: { segments: { label: string; value: number; color: string }[] }) {
   const total = segments.reduce((s, x) => s + x.value, 0) || 1;
   const R = 42; const cx = 64; const cy = 64;
   let angle = -Math.PI / 2;
@@ -234,10 +237,10 @@ function DonutChart({ segments }: { segments: { label: string; value: number; co
       </div>
     </div>
   );
-}
+});
 
 /** Horizontal ranked bar list (for top users) */
-function HBarChart({ items, color }: { items: { label: string; value: number; sublabel?: string; photo?: string | null }[]; color: string }) {
+const HBarChart = React.memo(function HBarChart({ items, color }: { items: { label: string; value: number; sublabel?: string; photo?: string | null }[]; color: string }) {
   const max = Math.max(...items.map(i => i.value), 1);
   return (
     <div className="space-y-2.5">
@@ -265,10 +268,10 @@ function HBarChart({ items, color }: { items: { label: string; value: number; su
       ))}
     </div>
   );
-}
+});
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-function DeleteUserModal({ user, onConfirm, onCancel }: { user: AdminUser; onConfirm: () => void; onCancel: () => void }) {
+const DeleteUserModal = React.memo(function DeleteUserModal({ user, onConfirm, onCancel }: { user: AdminUser; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -288,9 +291,9 @@ function DeleteUserModal({ user, onConfirm, onCancel }: { user: AdminUser; onCon
       </div>
     </div>
   );
-}
+});
 
-function DeleteCommunityModal({ community, onConfirm, onCancel }: { community: AdminCommunity; onConfirm: () => void; onCancel: () => void }) {
+const DeleteCommunityModal = React.memo(function DeleteCommunityModal({ community, onConfirm, onCancel }: { community: AdminCommunity; onConfirm: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center px-4">
       <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -310,9 +313,9 @@ function DeleteCommunityModal({ community, onConfirm, onCancel }: { community: A
       </div>
     </div>
   );
-}
+});
 
-function BroadcastModal({ userCount, onSend, onCancel, sending }: {
+const BroadcastModal = React.memo(function BroadcastModal({ userCount, onSend, onCancel, sending }: {
   userCount: number; onSend: (title: string, message: string, segment: string) => void; onCancel: () => void; sending: boolean;
 }) {
   const [title, setTitle] = useState('');
@@ -357,9 +360,9 @@ function BroadcastModal({ userCount, onSend, onCancel, sending }: {
       </div>
     </div>
   );
-}
+});
 
-function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget, onDeleteReporter, onViewProfile, onClose }: {
+const ReportDetailModal = React.memo(function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget, onDeleteReporter, onViewProfile, onClose }: {
   report: AdminReport;
   users: AdminUser[];
   onResolve: () => void;
@@ -586,7 +589,7 @@ function ReportDetailModal({ report, users, onResolve, onDismiss, onDeleteTarget
       </div>
     </div>
   );
-}
+});
 
 type PeekMessage = { _id: string; uid: string; senderName: string; senderPhoto: string | null; text: string; mediaType: string | null; mediaUrl: string | null; createdAt: number };
 type PeekMember = { uid: string; displayName: string; photoURL: string; jobRole: string; isSuspended: boolean };
@@ -722,7 +725,7 @@ function CommunityPeekModal({ communityId, token, onClose, onViewMember }: {
   );
 }
 
-function UserDrawer({ user, onClose, onSuspend, onDelete, suspending }: {
+const UserDrawer = React.memo(function UserDrawer({ user, onClose, onSuspend, onDelete, suspending }: {
   user: AdminUser; onClose: () => void; onSuspend: (u: AdminUser) => void; onDelete: (u: AdminUser) => void; suspending: boolean;
 }) {
   return (
@@ -789,7 +792,7 @@ function UserDrawer({ user, onClose, onSuspend, onDelete, suspending }: {
       </div>
     </div>
   );
-}
+});
 
 type Tab = 'users' | 'posts' | 'stories' | 'events' | 'reports' | 'communities' | 'analytics' | 'audit' | 'settings';
 type SortField = 'createdAt' | 'reportCount' | 'postCount' | 'displayName';
@@ -849,6 +852,8 @@ const AdminDashboard: React.FC = () => {
   const [storiesPages, setStoriesPages] = useState(1);
   const [storiesSearch, setStoriesSearch] = useState('');
   const [deletingStory, setDeletingStory] = useState<string | null>(null);
+  const [showDeleteAllStories, setShowDeleteAllStories] = useState(false);
+  const [deletingAllStories, setDeletingAllStories] = useState(false);
 
   // Events
   const [events, setEvents] = useState<AdminEvent[]>([]);
@@ -880,10 +885,10 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => { if (!token) navigate('/admin', { replace: true }); }, [token, navigate]);
 
-  const showToast = (msg: string, type: 'success' | 'error') => {
+  const showToast = useCallback((msg: string, type: 'success' | 'error') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
-  };
+  }, []);
 
   const fetchAll = useCallback(async () => {
     if (!token) return;
@@ -911,13 +916,11 @@ const AdminDashboard: React.FC = () => {
     if (!token) return;
     setPostsLoading(true);
     try {
-      const url = `${page}`;
       const data = await api.admin.getPosts(token, page, flagged);
-      void url;
       setPosts(data.posts); setPostsTotal(data.total); setPostsPages(data.pages); setPostsPage(page);
     } catch (e: any) { showToast(e?.message || 'Failed to load posts', 'error'); }
     finally { setPostsLoading(false); }
-  }, [token]);
+  }, [token, showToast]);
 
   const fetchStories = useCallback(async (page = 1, search = '') => {
     if (!token) return;
@@ -927,7 +930,7 @@ const AdminDashboard: React.FC = () => {
       setStories(data.stories); setStoriesTotal(data.total); setStoriesPages(data.pages); setStoriesPage(page);
     } catch (e: any) { showToast(e?.message || 'Failed to load stories', 'error'); }
     finally { setStoriesLoading(false); }
-  }, [token]);
+  }, [token, showToast]);
 
   const fetchEvents = useCallback(async (page = 1, search = '') => {
     if (!token) return;
@@ -937,7 +940,7 @@ const AdminDashboard: React.FC = () => {
       setEvents(data.events); setEventsTotal(data.total); setEventsPages(data.pages); setEventsPage(page);
     } catch (e: any) { showToast(e?.message || 'Failed to load events', 'error'); }
     finally { setEventsLoading(false); }
-  }, [token]);
+  }, [token, showToast]);
 
   useEffect(() => { if (tab === 'posts') fetchPosts(1, postsFilter === 'flagged'); }, [tab, postsFilter, fetchPosts]);
   useEffect(() => { if (tab === 'stories') fetchStories(1, ''); }, [tab, fetchStories]);
@@ -947,13 +950,13 @@ const AdminDashboard: React.FC = () => {
     if (tab !== 'analytics' || analytics) return;
     setAnalyticsLoading(true);
     api.admin.getAnalytics(token).then(d => setAnalytics(d)).catch(e => showToast(e?.message || 'Failed', 'error')).finally(() => setAnalyticsLoading(false));
-  }, [tab, token, analytics]);
+  }, [tab, token, analytics, showToast]);
 
   useEffect(() => {
     if (tab !== 'audit') return;
     setAuditLoading(true);
     api.admin.getAuditLogs(token, 300).then(d => setAuditLogs(d.logs)).catch(e => showToast(e?.message || 'Failed', 'error')).finally(() => setAuditLoading(false));
-  }, [tab, token]);
+  }, [tab, token, showToast]);
 
   useEffect(() => {
     if (tab !== 'settings') return;
@@ -1039,6 +1042,19 @@ const AdminDashboard: React.FC = () => {
     finally { setDeletingStory(null); }
   };
 
+  const handleDeleteAllStories = async () => {
+    setDeletingAllStories(true);
+    try {
+      const res = await api.admin.deleteAllStories(token);
+      showToast(`Deleted ${res.deleted} stories.`, 'success');
+      setStories([]);
+      setStoriesTotal(0);
+      setStoriesPages(1);
+      setShowDeleteAllStories(false);
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setDeletingAllStories(false); }
+  };
+
   const handleDeleteEvent = async (eventId: string) => {
     setDeletingEvent(eventId);
     try {
@@ -1090,7 +1106,7 @@ const AdminDashboard: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const allFilteredUsers = users
+  const allFilteredUsers = useMemo(() => users
     .filter(u => {
       const q = search.toLowerCase();
       const ms = !q || u.displayName?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.uid.includes(q);
@@ -1103,13 +1119,14 @@ const AdminDashboard: React.FC = () => {
       else if (sortField === 'createdAt') diff = new Date(a.createdAt as number).getTime() - new Date(b.createdAt as number).getTime();
       else diff = (a[sortField] as number) - (b[sortField] as number);
       return sortAsc ? diff : -diff;
-    });
-  const usersPageCount = Math.max(1, Math.ceil(allFilteredUsers.length / usersPerPage));
-  const filteredUsers = allFilteredUsers.slice((usersPage - 1) * usersPerPage, usersPage * usersPerPage);
+    }), [users, search, userFilter, sortField, sortAsc]);
 
-  const filteredReports = reports.filter(r => reportFilter === 'all' || r.status === reportFilter);
+  const usersPageCount = useMemo(() => Math.max(1, Math.ceil(allFilteredUsers.length / usersPerPage)), [allFilteredUsers.length, usersPerPage]);
+  const filteredUsers = useMemo(() => allFilteredUsers.slice((usersPage - 1) * usersPerPage, usersPage * usersPerPage), [allFilteredUsers, usersPage, usersPerPage]);
 
-  const filteredCommunities = communities
+  const filteredReports = useMemo(() => reports.filter(r => reportFilter === 'all' || r.status === reportFilter), [reports, reportFilter]);
+
+  const filteredCommunities = useMemo(() => communities
     .filter(c => {
       if (comFilter === 'flagged' && !(c.reportCount > 0 || c.isFlagged)) return false;
       if (comSearch) { const q = comSearch.toLowerCase(); return c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q); }
@@ -1119,22 +1136,22 @@ const AdminDashboard: React.FC = () => {
       const ra = a.reportCount || 0, rb = b.reportCount || 0;
       if (ra !== rb) return rb - ra;
       return b.memberCount - a.memberCount;
-    });
+    }), [communities, comFilter, comSearch]);
 
-  const filteredAuditLogs = auditSearch
+  const filteredAuditLogs = useMemo(() => auditSearch
     ? auditLogs.filter(l => l.path?.includes(auditSearch) || l.uid?.includes(auditSearch) || String(l.statusCode).includes(auditSearch))
-    : auditLogs;
+    : auditLogs, [auditLogs, auditSearch]);
 
-  const toggleSort = (field: SortField) => { if (sortField === field) setSortAsc(v => !v); else { setSortField(field); setSortAsc(false); } };
+  const toggleSort = useCallback((field: SortField) => { if (sortField === field) setSortAsc(v => !v); else { setSortField(field); setSortAsc(false); } }, [sortField]);
   const SortIcon = ({ field }: { field: SortField }) => sortField === field ? (sortAsc ? <ChevronUp className="w-3 h-3 inline ml-1" /> : <ChevronDown className="w-3 h-3 inline ml-1" />) : null;
 
-  const logout = () => { sessionStorage.removeItem('admin_token'); navigate('/admin', { replace: true }); };
+  const logout = useCallback(() => { sessionStorage.removeItem('admin_token'); navigate('/admin', { replace: true }); }, [navigate]);
 
-  const pendingCount = reports.filter(r => r.status === 'pending').length;
-  const suspendedCount = users.filter(u => u.isSuspended).length;
-  const flaggedCount = users.filter(u => u.reportCount > 0).length;
+  const pendingCount = useMemo(() => reports.filter(r => r.status === 'pending').length, [reports]);
+  const suspendedCount = useMemo(() => users.filter(u => u.isSuspended).length, [users]);
+  const flaggedCount = useMemo(() => users.filter(u => u.reportCount > 0).length, [users]);
 
-  const tabs: { id: Tab; label: string; badge?: number }[] = [
+  const tabs = useMemo<{ id: Tab; label: string; badge?: number }[]>(() => [
     { id: 'users', label: 'Users' },
     { id: 'posts', label: 'Posts' },
     { id: 'stories', label: 'Stories' },
@@ -1144,7 +1161,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'analytics', label: 'Analytics' },
     { id: 'audit', label: 'Audit Log' },
     { id: 'settings', label: 'Settings' },
-  ];
+  ], [pendingCount]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
@@ -1175,14 +1192,14 @@ const AdminDashboard: React.FC = () => {
         {/* Stats */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-8">
-            <StatCard icon={<Users className="w-5 h-5 text-violet-300" />} label="Users" value={stats.users} sub={`+${stats.newUsers7d} this week`} color="bg-violet-900/50" />
-            <StatCard icon={<FileText className="w-5 h-5 text-blue-300" />} label="Posts" value={stats.posts} color="bg-blue-900/50" />
-            <StatCard icon={<Image className="w-5 h-5 text-cyan-300" />} label="Stories" value={stats.stories} color="bg-cyan-900/50" />
-            <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Reports" value={stats.pendingReports} color="bg-red-900/50" />
-            <StatCard icon={<BookOpen className="w-5 h-5 text-emerald-300" />} label="Communities" value={stats.communities} color="bg-emerald-900/50" />
-            <StatCard icon={<Ban className="w-5 h-5 text-orange-300" />} label="Suspended" value={suspendedCount} color="bg-orange-900/50" />
-            <StatCard icon={<Wifi className="w-5 h-5 text-teal-300" />} label="Online Now" value={stats.onlineUsers || 0} color="bg-teal-900/50" />
-            <StatCard icon={<Zap className="w-5 h-5 text-yellow-300" />} label="Push Subs" value={stats.pushSubscriptions || 0} color="bg-yellow-900/50" />
+            <StatCard icon={<Users className="w-5 h-5 text-violet-300" />} label="Users" value={stats.users} sub={`+${stats.newUsers7d} this week`} color="bg-violet-900/50" onClick={() => setTab('users')} />
+            <StatCard icon={<FileText className="w-5 h-5 text-blue-300" />} label="Posts" value={stats.posts} color="bg-blue-900/50" onClick={() => setTab('posts')} />
+            <StatCard icon={<Image className="w-5 h-5 text-cyan-300" />} label="Stories" value={stats.stories} color="bg-cyan-900/50" onClick={() => setTab('stories')} />
+            <StatCard icon={<AlertTriangle className="w-5 h-5 text-red-300" />} label="Reports" value={stats.pendingReports} color="bg-red-900/50" onClick={() => { setTab('reports'); setReportFilter('pending'); }} />
+            <StatCard icon={<BookOpen className="w-5 h-5 text-emerald-300" />} label="Communities" value={stats.communities} color="bg-emerald-900/50" onClick={() => setTab('communities')} />
+            <StatCard icon={<Ban className="w-5 h-5 text-orange-300" />} label="Suspended" value={suspendedCount} color="bg-orange-900/50" onClick={() => { setTab('users'); setUserFilter('suspended'); }} />
+            <StatCard icon={<Wifi className="w-5 h-5 text-teal-300" />} label="Online Now" value={stats.onlineUsers || 0} color="bg-teal-900/50" onClick={() => setTab('analytics')} />
+            <StatCard icon={<Zap className="w-5 h-5 text-yellow-300" />} label="Push Subs" value={stats.pushSubscriptions || 0} color="bg-yellow-900/50" onClick={() => setTab('analytics')} />
           </div>
         )}
 
@@ -1377,7 +1394,23 @@ const AdminDashboard: React.FC = () => {
                 {storiesSearch && <button onClick={() => { setStoriesSearch(''); fetchStories(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
               </div>
               <p className="text-slate-600 text-xs">{storiesTotal.toLocaleString()} stories total</p>
+              <button onClick={() => setShowDeleteAllStories(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ml-auto"><Trash2 className="w-3.5 h-3.5" /> Delete All Stories</button>
             </div>
+            {showDeleteAllStories && (
+              <div className="bg-red-950/40 border border-red-900/60 rounded-2xl p-4 mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5 sm:mt-0" />
+                <div className="flex-1">
+                  <p className="text-red-300 font-semibold text-sm">Delete ALL {storiesTotal.toLocaleString()} stories?</p>
+                  <p className="text-red-400/70 text-xs mt-0.5">This will permanently remove every story on the platform. This action cannot be undone.</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button onClick={() => setShowDeleteAllStories(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
+                  <button onClick={handleDeleteAllStories} disabled={deletingAllStories} className="bg-red-600 hover:bg-red-500 disabled:opacity-60 text-white text-xs font-semibold px-3 py-2 rounded-xl flex items-center gap-1.5">
+                    {deletingAllStories ? <><div className="w-3.5 h-3.5 border border-white/30 border-t-white rounded-full animate-spin" /> Deleting…</> : <><Trash2 className="w-3.5 h-3.5" /> Confirm Delete All</>}
+                  </button>
+                </div>
+              </div>
+            )}
             {storiesLoading ? (
               <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-cyan-500 rounded-full animate-spin" /></div>
             ) : stories.length === 0 ? (
