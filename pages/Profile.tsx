@@ -31,6 +31,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useUserLocation } from "../components/LocationGuard";
 import PostItem from "../components/PostItem";
+import ImageGalleryViewer from "../components/ImageGalleryViewer";
 import ConfirmModal from "../components/ui/ConfirmModal";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
@@ -113,6 +114,8 @@ export default function Profile() {
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [reportReason, setReportReason] = useState("");
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const isOwnProfile = !uid || (user && user?.uid === uid);
   const targetUid = uid || user?.uid;
@@ -980,7 +983,14 @@ export default function Profile() {
               </div>
               <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x snap-mandatory relative">
                 {profile?.thatsMePhotos?.map((photo, i) => (
-                  <div key={i} className="relative min-w-[260px] aspect-[4/5] rounded-3xl overflow-hidden border border-slate-800 shadow-xl group snap-center">
+                  <button
+                    key={i}
+                    onClick={() => {
+                      setSelectedImageIndex(i);
+                      setShowImageGallery(true);
+                    }}
+                    className="relative min-w-[260px] aspect-[4/5] rounded-3xl overflow-hidden border border-slate-800 shadow-xl group snap-center hover:shadow-2xl hover:border-slate-700 transition-all cursor-pointer"
+                  >
                     <img 
                       src={photo} 
                       alt={`That's me ${i + 1}`} 
@@ -989,7 +999,7 @@ export default function Profile() {
                     <div className="absolute bottom-4 right-4 px-3 py-1 bg-black/60 backdrop-blur-md rounded-full text-[10px] font-bold text-white border border-white/10">
                       {i + 1} / {profile?.thatsMePhotos?.length}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1485,6 +1495,12 @@ export default function Profile() {
           confirmState?.type === "deletePost" ||
           confirmState?.type === "blockUser"
         }
+      />
+      <ImageGalleryViewer
+        visible={showImageGallery}
+        onClose={() => setShowImageGallery(false)}
+        images={profile?.thatsMePhotos || []}
+        initialIndex={selectedImageIndex}
       />
     </div>
   );

@@ -23,6 +23,7 @@ import { api } from "../services/api";
 import { Notification, Post, UserProfile } from "../types";
 import StoryBar from "../components/StoryBar";
 import StoryViewer from "../components/StoryViewer";
+import SearchResultsModal from "../components/SearchResultsModal";
 import { compressImage } from "../util/ImageCompression";
 import { triggerHaptic } from "../util/haptics";
 import { MainLogo } from "../util/Images";
@@ -76,6 +77,9 @@ const Feed: React.FC = () => {
   const [activeTab, setActiveTab] = useState<"regular" | "meetup">("regular");
   const [feedSort, setFeedSort] = useState<'latest' | 'nearby' | 'friends' | 'trending'>('latest');
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ people: UserProfile[]; posts: Post[] }>({ people: [], posts: [] });
+  const [loadingSearchResults, setLoadingSearchResults] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const BOOKMARKS_KEY = 'bookmarkedPostIds';
   const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(() => {
     try { const s = localStorage.getItem(BOOKMARKS_KEY); return s ? new Set(JSON.parse(s)) : new Set(); } catch { return new Set(); }
@@ -343,6 +347,62 @@ const Feed: React.FC = () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [user, myLocation]); // Re-fetch/filter if location changes
+
+  // Search for people and posts
+  useEffect(() => {
+    const performSearch = async () => {
+      if (!searchQuery.trim() || !user) {
+        setSearchResults({ people: [], posts: [] });
+        setShowSearchModal(false);
+        return;
+      }
+
+      setLoadingSearchResults(true);
+      setShowSearchModal(true);
+
+      try {
+        const q = searchQuery.trim().toLowerCase();
+
+        // Search posts (content, authorName, location, etc.)
+        const searchedPosts = posts.filter((p: any) =>
+          !blockedUids.has(p.uid) && (
+            p.content?.toLowerCase().includes(q) ||
+            p.authorName?.toLowerCase().includes(q) ||
+            p.location?.name?.toLowerCase().includes(q) ||
+            p.meetupDetails?.title?.toLowerCase().includes(q) ||
+            p.meetupDetails?.activity?.toLowerCase().includes(q) ||
+            p.meetupDetails?.venueName?.toLowerCase().includes(q)
+          )
+        );
+
+        // Search profiles - query from all users
+        const allUsers = await api.profile.getAll();
+        const searchedPeople = allUsers.filter((u: any) =>
+          u.uid !== user?.uid &&
+          !blockedUids.has(u.uid) &&
+          (u.displayName?.toLowerCase().includes(q) ||
+            u.bio?.toLowerCase().includes(q) ||
+            u.jobRole?.toLowerCase().includes(q) ||
+            u.interests?.some((i: string) => 
+              i.toLowerCase().includes(q)
+            ))
+        ).slice(0, 10); // Limit to 10 people
+
+        setSearchResults({
+          people: searchedPeople,
+          posts: searchedPosts.slice(0, 20), // Limit to 20 posts
+        });
+      } catch (err) {
+        console.error('Search error:', err);
+        setSearchResults({ people: [], posts: [] });
+      } finally {
+        setLoadingSearchResults(false);
+      }
+    };
+
+    const timer = setTimeout(performSearch, 300); // Debounce search
+    return () => clearTimeout(timer);
+  }, [searchQuery, posts, blockedUids, user]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -866,6 +926,19 @@ const Feed: React.FC = () => {
           onMute={handleMuteUser}
         />
       )}
+      
+      {/* Search Results Modal */}
+      <SearchResultsModal
+        isOpen={showSearchModal}
+        onClose={() => setShowSearchModal(false)}
+        query={searchQuery}
+        people={searchResults.people}
+        posts={searchResults.posts}
+        currentUserId={user?.uid}
+        loadingPeople={loadingSearchResults}
+        loadingPosts={loadingSearchResults}
+      />
+      
       {/* Scroll to Top Button */}
       {showScrollTop && (
         <button

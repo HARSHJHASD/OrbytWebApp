@@ -289,7 +289,7 @@ const Settings: React.FC = () => {
             <input
               type="range"
               min="1"
-              max="50"
+              max="1000"
               value={discoveryRadius}
               onChange={handleRadiusChange}
               onMouseUp={saveRadius}
