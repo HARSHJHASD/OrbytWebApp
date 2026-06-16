@@ -309,7 +309,7 @@ const StoryViewer: React.FC<StoryViewerProps> = ({ group, onClose, currentUserId
                   <button
                     key={emoji}
                     onClick={() => sendReply(emoji)}
-                    className="text-2xl hover:scale-125 transition-transform p-1"
+                    className="text-2xl hover:scale-126 transition-transform p-1"
                   >
                     {emoji}
                   </button>
