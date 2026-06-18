@@ -32,12 +32,17 @@ const ChildPolicy: React.FC = () => {
                     <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-red-500/20">
                         <Baby className="w-8 h-8 text-red-500" />
                     </div>
-                    <h1 className="text-3xl font-bold text-white mb-2">Child Safety Policy</h1>
+                    <h1 className="text-3xl font-bold text-white mb-2">Child Safety Standards</h1>
                     <p className="text-slate-400 text-sm border-b border-slate-800 pb-6 inline-block">Strict 18+ Requirement • COPPA &amp; GDPR-K Compliance</p>
-                    <p className="text-slate-500 text-xs mt-4">Last updated: June 13, 2026</p>
+                    <p className="text-slate-500 text-xs mt-4">Last updated: June 18, 2026</p>
                 </div>
 
                 <section className="space-y-6 text-slate-300 leading-relaxed text-sm md:text-base">
+
+                    <h2 className="text-xl font-bold text-white text-left">Published Child Safety Standards (Google Play)</h2>
+                    <p>This published standards page applies to the Google Play app <strong>Orbyt - Meet People IRL</strong> (package name: <strong>com.orbyt.official.app</strong>) and developer account <strong>Orbyt-IRL</strong>.</p>
+                    <p><strong>Orbyt - Meet People IRL and Orbyt-IRL explicitly prohibit Child Sexual Abuse and Exploitation (CSAE), including Child Sexual Abuse Material (CSAM), in any form.</strong></p>
+                    <p>Users can report safety issues in-app through the Report feature or by contacting our child safety point of contact at <a href="mailto:orbytapp@gmail.com" className="text-red-400 hover:underline">orbytapp@gmail.com</a>.</p>
 
                     <h2 className="text-xl font-bold text-white text-left">Policy Scope (Google Play)</h2>
                     <p>This Child Safety Standards policy applies to the Google Play app "Orbyt - Meet People IRL" (package: com.orbyt.official.app), published under developer account name "Orbyt-IRL".</p>
