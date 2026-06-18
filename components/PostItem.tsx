@@ -518,7 +518,7 @@ const PostItem: React.FC<any> = ({
                   <button
                     key={emoji}
                     onClick={() => handleReaction(emoji)}
-                    className="text-2xl hover:scale-126 transition-transform"
+                    className="text-2xl hover:scale-127 transition-transform"
                   >{emoji}</button>
                 ))}
               </div>
