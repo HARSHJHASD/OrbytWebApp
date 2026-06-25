@@ -506,7 +506,11 @@ const PostItem: React.FC<any> = ({
               onContextMenu={(e) => { e.preventDefault(); setShowReactions(v => !v); }}
               className={`flex items-center gap-1.5 transition-colors group py-2 select-none ${isLiked ? "text-primary-500" : "text-slate-500 hover:text-primary-500"}`}
             >
-              <span className="text-xl leading-none">{reaction || '❤️'}</span>
+              {reaction ? (
+                <span className="text-xl leading-none">{reaction}</span>
+              ) : (
+                <Heart className="w-5 h-5" />
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); openWhoLiked(); }}
                 className="text-sm font-medium hover:underline"

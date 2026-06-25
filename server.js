@@ -1618,7 +1618,10 @@ app.post('/api/posts/:id/comment', async (req, res) => {
     const userProfile = await profiles.findOne({ uid });
     const newComment = {
       id: new ObjectId(), uid, authorName: userProfile?.displayName || "User",
-      authorPhoto: userProfile?.photoURL || "", text, createdAt: Date.now()
+      authorPhoto: userProfile?.photoURL || "", text, createdAt: Date.now(),
+      likedBy: [], likes: 0
+      likes: 0,
+      likedBy: []
     };
     const posts = db.collection('posts');
     await posts.updateOne({ _id: new ObjectId(postId) }, { $push: { comments: newComment } });
@@ -1627,6 +1630,117 @@ app.post('/api/posts/:id/comment', async (req, res) => {
     res.json(newComment);
   } catch (error) {
     res.status(500).json({ error: "Failed to add comment" });
+  }
+});
+
+// Toggle like on a comment
+app.post('/api/posts/:id/likeComment', async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const postId = req.params.id;
+    const { commentId, uid } = req.body;
+    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
+    if (!commentId || !uid) return res.status(400).json({ error: "Missing parameters" });
+
+    const posts = db.collection('posts');
+    const post = await posts.findOne({ _id: new ObjectId(postId) });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const comments = post.comments || [];
+    const idx = comments.findIndex(c => {
+      try {
+        if (c.id && c.id.toString() === commentId) return true;
+      } catch (e) {}
+      try {
+        if (c._id && c._id.toString() === commentId) return true;
+      } catch (e) {}
+      // fallback to string id
+      return (c.id === commentId || c._id === commentId);
+    });
+
+    if (idx === -1) return res.status(404).json({ error: "Comment not found" });
+
+    const comment = comments[idx];
+    comment.likedBy = comment.likedBy || [];
+    comment.likes = comment.likes || 0;
+    const alreadyLiked = comment.likedBy.includes(uid);
+
+    if (alreadyLiked) {
+      comment.likedBy = comment.likedBy.filter(u => u !== uid);
+      comment.likes = Math.max(0, comment.likes - 1);
+    } else {
+      comment.likedBy.push(uid);
+      comment.likes = (comment.likes || 0) + 1;
+      // Notify the comment author
+      if (comment.uid && comment.uid !== uid) {
+        await createNotification('like', uid, comment.uid, postId);
+      }
+    }
+
+    // Persist updated comments array
+    await posts.updateOne({ _id: new ObjectId(postId) }, { $set: { comments } });
+
+    res.json({ likes: comment.likes, likedBy: comment.likedBy });
+  } catch (error) {
+    console.error('Like comment error:', error);
+    res.status(500).json({ error: 'Failed to like comment' });
+  }
+});
+
+// Like/unlike a comment on a post
+app.post('/api/posts/:id/likeComment', async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const postId = req.params.id;
+    const { commentId, uid } = req.body;
+    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
+    if (!commentId || !uid) return res.status(400).json({ error: "Missing parameters" });
+
+    const posts = db.collection('posts');
+    const post = await posts.findOne({ _id: new ObjectId(postId) });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const comments = post.comments || [];
+
+    // Normalize incoming commentId to string (support ObjectId-like payloads)
+    let commentIdStr = '';
+    if (typeof commentId === 'string') commentIdStr = commentId;
+    else if (commentId && commentId.$oid) commentIdStr = commentId.$oid;
+    else if (commentId && typeof commentId.toString === 'function') commentIdStr = commentId.toString();
+    else commentIdStr = String(commentId);
+
+    let found = false;
+    for (let i = 0; i < comments.length; i++) {
+      const c = comments[i];
+      const cId = c._id || c.id;
+      const cIdStr = cId && typeof cId.toString === 'function' ? cId.toString() : String(cId);
+      if (cIdStr === commentIdStr) {
+        found = true;
+        c.likedBy = c.likedBy || [];
+        const isLiked = c.likedBy.includes(uid);
+        if (isLiked) {
+          c.likedBy = c.likedBy.filter(x => x !== uid);
+          c.likes = Math.max(0, (c.likes || 0) - 1);
+        } else {
+          c.likedBy.push(uid);
+          c.likes = (c.likes || 0) + 1;
+        }
+        // persist full comments array back to DB
+        await posts.updateOne({ _id: new ObjectId(postId) }, { $set: { comments } });
+
+        // send notification to comment owner
+        if (!isLiked && c.uid && c.uid !== uid) {
+          await createNotification('like', uid, c.uid, postId, { commentId: commentIdStr });
+        }
+
+        return res.json({ success: true, comment: c });
+      }
+    }
+
+    if (!found) return res.status(404).json({ error: 'Comment not found' });
+  } catch (error) {
+    console.error('Like comment error:', error);
+    res.status(500).json({ error: "Failed to like comment" });
   }
 });
 
