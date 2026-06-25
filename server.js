@@ -1,16 +1,16 @@
-import bcrypt from 'bcrypt';
+import bcrypt from "bcrypt";
 import cors from "cors";
 import dotenv from "dotenv";
-import { Expo } from 'expo-server-sdk';
+import { Expo } from "expo-server-sdk";
 import express from "express";
-import rateLimit from 'express-rate-limit';
+import rateLimit from "express-rate-limit";
 import http from "http";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import path from "path";
 import { fileURLToPath } from "url";
 import webpush from "web-push";
 import WebSocket, { WebSocketServer } from "ws";
-import { z } from 'zod';
+import { z } from "zod";
 
 const expo = new Expo();
 
@@ -24,11 +24,7 @@ const app = express();
 const publicVapidKey = process.env.VITE_VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
 const vapidEmail = process.env.VAPID_EMAIL || "orbytapp@gmail.com";
-webpush.setVapidDetails(
-  vapidEmail,
-  publicVapidKey,
-  privateVapidKey
-);
+webpush.setVapidDetails(vapidEmail, publicVapidKey, privateVapidKey);
 //this is for hosting frontend in render
 app.use(express.static(path.join(__dirname, "dist")));
 // SPA catch-all: serve index.html for any non-API route so React Router (HashRouter) handles it
@@ -40,7 +36,8 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
 app.get("/post/:id", (req, res) => {
   const postId = req.params.id;
   const deepLink = `orbyt://post/${postId}`;
-  const playStoreUrl = "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
+  const playStoreUrl =
+    "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
   const appStoreUrl = "https://apps.apple.com/app/orbyt/id6740371671";
 
   res.setHeader("Content-Type", "text/html");
@@ -235,7 +232,7 @@ const allowedOrigins = [
   "http://localhost:5000",
   "https://backend.strangerchat.space",
   "https://orbyt.strangerchat.space",
-  "https://sociall-sigma.vercel.app"
+  "https://sociall-sigma.vercel.app",
 ];
 
 app.use(
@@ -248,71 +245,75 @@ app.use(
       }
     },
     credentials: true,
-  })
+  }),
 );
 
 // Rate Limiting - Prevent brute force attacks
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 5, // 5 requests per window
-  message: 'Too many authentication attempts, please try again later'
+  message: "Too many authentication attempts, please try again later",
 });
 
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 100, // 100 requests per minute
-  message: 'Too many requests, please try again later'
+  message: "Too many requests, please try again later",
 });
 
 const mapProfilesLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 20, // map refresh abuse guard
-  message: 'Too many map refresh requests, please try again shortly'
+  message: "Too many map refresh requests, please try again shortly",
 });
 
-app.use('/api/', apiLimiter);
+app.use("/api/", apiLimiter);
 
 // --- AUDIT LOGGING MIDDLEWARE ---
 const auditLogs = [];
 function createAuditLog(req, res, next) {
   const startTime = Date.now();
   const originalJson = res.json;
-  
-  res.json = function(data) {
+
+  res.json = function (data) {
     const duration = Date.now() - startTime;
     const logEntry = {
       timestamp: new Date().toISOString(),
       method: req.method,
       url: req.originalUrl,
       path: req.path,
-      uid: req.body?.uid || req.query?.uid || req.params?.uid || 'anonymous',
+      uid: req.body?.uid || req.query?.uid || req.params?.uid || "anonymous",
       statusCode: res.statusCode,
       duration: `${duration}ms`,
       ip: req.ip,
-      userAgent: req.get('user-agent')
+      userAgent: req.get("user-agent"),
     };
-    
+
     // Log to console for real-time monitoring
     if (res.statusCode >= 400) {
-      console.warn(`[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`);
+      console.warn(
+        `[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`,
+      );
     } else {
-      console.log(`[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`);
+      console.log(
+        `[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`,
+      );
     }
-    
+
     // Keep last 1000 logs in memory for debugging
     auditLogs.push(logEntry);
     if (auditLogs.length > 1000) auditLogs.shift();
-    
+
     return originalJson.call(this, data);
   };
-  
+
   next();
 }
 
 app.use(createAuditLog);
 
 // --- AUDIT LOG RETRIEVAL ENDPOINT ---
-app.get('/api/admin/audit-logs', requireAdmin, (req, res) => {
+app.get("/api/admin/audit-logs", requireAdmin, (req, res) => {
   const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
   const logs = [...auditLogs].reverse().slice(0, limit);
   res.json({ logs, total: auditLogs.length });
@@ -320,16 +321,14 @@ app.get('/api/admin/audit-logs', requireAdmin, (req, res) => {
 
 // Input Validation Schemas
 const signupSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters')
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(1, 'Password is required')
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(1, "Password is required"),
 });
-
-
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
@@ -352,9 +351,9 @@ const clients = new Map(); // uid -> Set<WebSocket>
 const BCRYPT_ROUNDS = 10;
 
 // --- WebSocket Logic ---
-wss.on('connection', (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split('?')[1]);
-  const uid = urlParams.get('uid');
+wss.on("connection", (ws, req) => {
+  const urlParams = new URLSearchParams(req.url.split("?")[1]);
+  const uid = urlParams.get("uid");
 
   if (uid) {
     if (!clients.has(uid)) {
@@ -365,7 +364,7 @@ wss.on('connection', (ws, req) => {
     // Add cleanup timeout to prevent memory leaks
     let disconnectTimeout = null;
 
-    ws.on('close', () => {
+    ws.on("close", () => {
       if (clients.has(uid)) {
         clients.get(uid).delete(ws);
         if (clients.get(uid).size === 0) {
@@ -380,7 +379,7 @@ wss.on('connection', (ws, req) => {
       }
     });
 
-    ws.on('error', (error) => {
+    ws.on("error", (error) => {
       console.error(`WebSocket error for user ${uid}:`, error);
       if (disconnectTimeout) clearTimeout(disconnectTimeout);
       // Clean up on error
@@ -392,11 +391,11 @@ wss.on('connection', (ws, req) => {
       }
     });
 
-    ws.on('message', (message) => {
+    ws.on("message", (message) => {
       try {
         const data = JSON.parse(message);
-        if (data.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong' }));
+        if (data.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
         }
       } catch (e) {
         // Ignore
@@ -407,7 +406,7 @@ wss.on('connection', (ws, req) => {
 
 function sendToUser(uid, data) {
   if (clients.has(uid)) {
-    clients.get(uid).forEach(client => {
+    clients.get(uid).forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(data));
       }
@@ -415,11 +414,17 @@ function sendToUser(uid, data) {
   }
 }
 
-async function createNotification(type, fromUid, toUid, postId = null, extra = {}) {
+async function createNotification(
+  type,
+  fromUid,
+  toUid,
+  postId = null,
+  extra = {},
+) {
   if (!db || fromUid === toUid) return;
   try {
-    const notifications = db.collection('notifications');
-    const profiles = db.collection('profiles');
+    const notifications = db.collection("notifications");
+    const profiles = db.collection("profiles");
     const sender = await profiles.findOne({ uid: fromUid });
     const receiver = await profiles.findOne({ uid: toUid });
 
@@ -442,13 +447,13 @@ async function createNotification(type, fromUid, toUid, postId = null, extra = {
       groupId: extra.groupId || null,
       message: extra.message || null,
       read: false,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
     const notifResult = await notifications.insertOne(notifDoc);
     // Push real-time in-app notification over WebSocket
     sendToUser(toUid, {
-      type: 'notification',
-      notification: { ...notifDoc, _id: notifResult.insertedId }
+      type: "notification",
+      notification: { ...notifDoc, _id: notifResult.insertedId },
     });
 
     let title = "New Notification";
@@ -456,71 +461,72 @@ async function createNotification(type, fromUid, toUid, postId = null, extra = {
     const name = sender.displayName;
 
     switch (type) {
-      case 'like':
+      case "like":
         title = "❤️ New Like!";
         body = `${name} liked your post.`;
         break;
-      case 'comment':
+      case "comment":
         title = "💬 New Comment!";
         body = `${name} commented on your post.`;
         break;
-      case 'friend_request':
+      case "friend_request":
         title = "💛 Someone likes you!";
         body = `${name} wants to connect with you.`;
         break;
-      case 'friend_accept':
+      case "friend_accept":
         title = "🎉 It's a match!";
         body = `${name} connected with you! You're now connected.`;
         break;
-      case 'meetup_request':
+      case "meetup_request":
         title = "🙋 Meetup Request";
         body = `${name} wants to join your meetup. Accept them?`;
         break;
-      case 'meetup_accept':
+      case "meetup_accept":
         title = "✅ You're in!";
         body = `${name} accepted your request. See you at the meetup!`;
         break;
-      case 'friend_post':
+      case "friend_post":
         title = `📸 ${name} just dropped something!`;
         body = `New post from your connection. Don't miss the vibe 🔥`;
         break;
-      case 'friend_event':
+      case "friend_event":
         title = `🎉 ${name} is planning something fun!`;
         body = extra.eventTitle
           ? `"${extra.eventTitle}" just dropped. Grab your spot before it fills up!`
           : `A new event just dropped. Grab your spot before it fills up!`;
         break;
-      case 'new_event':
+      case "new_event":
         title = `🔥 Hot new event near you!`;
         body = extra.eventTitle
           ? `${name} is hosting "${extra.eventTitle}". Don't sleep on this one!`
           : `${name} just created a new event. Check it out!`;
         break;
-      case 'room_message':
-        title = `💬 ${extra.groupTitle || 'Room Activity'}`;
-        body = `${name}: ${extra.message || 'sent a message'}`;
+      case "room_message":
+        title = `💬 ${extra.groupTitle || "Room Activity"}`;
+        body = `${name}: ${extra.message || "sent a message"}`;
         break;
     }
 
     const notifUrl = extra.groupId
       ? `/communities/${extra.groupId}`
-      : postId ? `/post/${postId}` : `/profile/${fromUid}`;
+      : postId
+        ? `/post/${postId}`
+        : `/profile/${fromUid}`;
 
     const payload = JSON.stringify({
       title,
       body,
       icon: sender.photoURL || "/pwa-192x192.png",
-      data: { url: notifUrl }
+      data: { url: notifUrl },
     });
 
     const expoPayload = {
       title,
       body,
-      data: { url: notifUrl }
+      data: { url: notifUrl },
     };
 
     await sendPushNotification(toUid, payload, expoPayload);
-
   } catch (e) {
     console.error("Error creating notification", e);
   }
@@ -540,15 +546,15 @@ function requireAuth(req, res, next) {
 async function cleanupOrphanedData() {
   if (!db) return;
   try {
-    const users = db.collection('users');
-    const profiles = db.collection('profiles');
-    const posts = db.collection('posts');
-    const messages = db.collection('messages');
-    const notifications = db.collection('notifications');
+    const users = db.collection("users");
+    const profiles = db.collection("profiles");
+    const posts = db.collection("posts");
+    const messages = db.collection("messages");
+    const notifications = db.collection("notifications");
 
     // 1. Get valid UIDs (convert ObjectIds to strings)
     const allUsers = await users.find({}).project({ _id: 1 }).toArray();
-    const validUids = new Set(allUsers.map(u => u._id.toString()));
+    const validUids = new Set(allUsers.map((u) => u._id.toString()));
     const validUidArray = Array.from(validUids);
 
     // 2. Delete Orphaned Profiles
@@ -561,26 +567,24 @@ async function cleanupOrphanedData() {
     const msgRes = await messages.deleteMany({
       $or: [
         { fromUid: { $nin: validUidArray } },
-        { toUid: { $exists: true, $nin: validUidArray } }
-      ]
+        { toUid: { $exists: true, $nin: validUidArray } },
+      ],
     });
-
 
     // 5. Delete Orphaned Notifications
     const notifRes = await notifications.deleteMany({
       $or: [
         { fromUid: { $nin: validUidArray } },
-        { toUid: { $nin: validUidArray } }
-      ]
+        { toUid: { $nin: validUidArray } },
+      ],
     });
-
 
     // 6. Clean Arrays (Comments, Likes, Attendees, Friend Lists)
 
     // Remove comments from deleted users
     await posts.updateMany(
       {},
-      { $pull: { comments: { uid: { $nin: validUidArray } } } }
+      { $pull: { comments: { uid: { $nin: validUidArray } } } },
     );
 
     // Iterate Posts to clean string arrays (likedBy, attendees, etc.)
@@ -591,7 +595,7 @@ async function cleanupOrphanedData() {
       const updates = {};
 
       if (post.likedBy) {
-        const newLiked = post.likedBy.filter(id => validUids.has(id));
+        const newLiked = post.likedBy.filter((id) => validUids.has(id));
         if (newLiked.length !== post.likedBy.length) {
           updates.likedBy = newLiked;
           updates.likes = newLiked.length;
@@ -599,14 +603,14 @@ async function cleanupOrphanedData() {
         }
       }
       if (post.attendees) {
-        const newAtt = post.attendees.filter(id => validUids.has(id));
+        const newAtt = post.attendees.filter((id) => validUids.has(id));
         if (newAtt.length !== post.attendees.length) {
           updates.attendees = newAtt;
           changed = true;
         }
       }
       if (post.pendingRequests) {
-        const newPen = post.pendingRequests.filter(id => validUids.has(id));
+        const newPen = post.pendingRequests.filter((id) => validUids.has(id));
         if (newPen.length !== post.pendingRequests.length) {
           updates.pendingRequests = newPen;
           changed = true;
@@ -625,11 +629,16 @@ async function cleanupOrphanedData() {
     for (const p of allProfiles) {
       let changed = false;
       const updates = {};
-      const fields = ['friends', 'incomingRequests', 'outgoingRequests', 'blockedUsers'];
+      const fields = [
+        "friends",
+        "incomingRequests",
+        "outgoingRequests",
+        "blockedUsers",
+      ];
 
       for (const f of fields) {
         if (p[f] && Array.isArray(p[f])) {
-          const filtered = p[f].filter(id => validUids.has(id));
+          const filtered = p[f].filter((id) => validUids.has(id));
           if (filtered.length !== p[f].length) {
             updates[f] = filtered;
             changed = true;
@@ -641,8 +650,6 @@ async function cleanupOrphanedData() {
         profileUpdates++;
       }
     }
-
-
   } catch (e) {
     console.error("Error during cleanup:", e);
   }
@@ -652,14 +659,14 @@ async function createIndexes() {
   if (!db) return;
   try {
     const collections = {
-      users: ['email'],
-      profiles: ['uid', 'email'],
-      posts: ['uid', 'createdAt', 'type'],
-      messages: ['fromUid', 'toUid', 'groupId', 'createdAt'],
-      notifications: ['toUid', 'createdAt'],
-      stories: ['uid', 'expiresAt'],
-      profile_views: ['viewerUid', 'targetUid'],
-      communities: ['ownerUid', 'lastActivity'],
+      users: ["email"],
+      profiles: ["uid", "email"],
+      posts: ["uid", "createdAt", "type"],
+      messages: ["fromUid", "toUid", "groupId", "createdAt"],
+      notifications: ["toUid", "createdAt"],
+      stories: ["uid", "expiresAt"],
+      profile_views: ["viewerUid", "targetUid"],
+      communities: ["ownerUid", "lastActivity"],
     };
 
     for (const [collName, fields] of Object.entries(collections)) {
@@ -670,9 +677,9 @@ async function createIndexes() {
         await collection.createIndex(index).catch(() => {}); // Ignore if exists
       }
     }
-    console.log('Database indexes created successfully');
+    console.log("Database indexes created successfully");
   } catch (e) {
-    console.error('Error creating indexes:', e);
+    console.error("Error creating indexes:", e);
   }
 }
 
@@ -686,7 +693,6 @@ async function run() {
 
     // Run cleanup on startup to sync state
     await cleanupOrphanedData();
-
   } catch (e) {
     console.error("MongoDB connection error:", e);
   }
@@ -707,13 +713,17 @@ function calculateAge(dateString) {
 
 // --- HELPER: Get Blocked Lists ---
 async function getMutualBlockedUids(viewerUid) {
-  if (!viewerUid || viewerUid === 'undefined' || viewerUid === 'null') return [];
+  if (!viewerUid || viewerUid === "undefined" || viewerUid === "null")
+    return [];
   try {
-    const profiles = db.collection('profiles');
+    const profiles = db.collection("profiles");
     const viewer = await profiles.findOne({ uid: viewerUid });
     const blockedByViewer = viewer?.blockedUsers || [];
-    const blockers = await profiles.find({ blockedUsers: viewerUid }).project({ uid: 1 }).toArray();
-    const blockingViewer = blockers.map(b => b.uid);
+    const blockers = await profiles
+      .find({ blockedUsers: viewerUid })
+      .project({ uid: 1 })
+      .toArray();
+    const blockingViewer = blockers.map((b) => b.uid);
     return [...new Set([...blockedByViewer, ...blockingViewer])];
   } catch (e) {
     console.error("Error fetching blocked UIDs", e);
@@ -734,7 +744,7 @@ const LOCATION_PRIVACY = {
 };
 
 function roundCoord(value, decimals) {
-  if (typeof value !== 'number' || Number.isNaN(value)) return value;
+  if (typeof value !== "number" || Number.isNaN(value)) return value;
   const factor = Math.pow(10, decimals);
   return Math.round(value * factor) / factor;
 }
@@ -742,7 +752,7 @@ function roundCoord(value, decimals) {
 function hashString(input) {
   let hash = 0;
   for (let i = 0; i < input.length; i++) {
-    hash = ((hash << 5) - hash) + input.charCodeAt(i);
+    hash = (hash << 5) - hash + input.charCodeAt(i);
     hash |= 0;
   }
   return Math.abs(hash);
@@ -752,9 +762,9 @@ function addCoordinateJitter(lat, lng, maxMeters, seed) {
   const seedA = hashString(`${seed}:a`);
   const seedB = hashString(`${seed}:b`);
   const angle = (seedA % 360) * (Math.PI / 180);
-  const radius = (seedB % Math.max(1, maxMeters));
+  const radius = seedB % Math.max(1, maxMeters);
   const dLat = (radius / 111320) * Math.cos(angle);
-  const safeCos = Math.max(0.1, Math.cos(lat * Math.PI / 180));
+  const safeCos = Math.max(0.1, Math.cos((lat * Math.PI) / 180));
   const dLng = (radius / (111320 * safeCos)) * Math.sin(angle);
   return {
     lat: lat + dLat,
@@ -763,13 +773,14 @@ function addCoordinateJitter(lat, lng, maxMeters, seed) {
 }
 
 function getLocationTimestamp(profile) {
-  if (typeof profile?.locationUpdatedAt === 'number') return profile.locationUpdatedAt;
-  if (typeof profile?.updatedAt === 'number') return profile.updatedAt;
+  if (typeof profile?.locationUpdatedAt === "number")
+    return profile.locationUpdatedAt;
+  if (typeof profile?.updatedAt === "number") return profile.updatedAt;
   if (profile?.updatedAt) {
     const parsed = new Date(profile.updatedAt).getTime();
     if (!Number.isNaN(parsed)) return parsed;
   }
-  return typeof profile?.createdAt === 'number' ? profile.createdAt : 0;
+  return typeof profile?.createdAt === "number" ? profile.createdAt : 0;
 }
 
 function getDistanceMeters(lat1, lng1, lat2, lng2) {
@@ -779,20 +790,23 @@ function getDistanceMeters(lat1, lng1, lat2, lng2) {
   const dLng = (lng2 - lng1) * rad;
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    Math.cos(lat1 * rad) *
+      Math.cos(lat2 * rad) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 function toDistanceBand(distanceMeters) {
-  if (typeof distanceMeters !== 'number' || Number.isNaN(distanceMeters)) return null;
-  if (distanceMeters < 500) return '< 0.5 km';
-  if (distanceMeters < 1000) return '0.5 - 1 km';
-  if (distanceMeters < 2000) return '1 - 2 km';
-  if (distanceMeters < 5000) return '2 - 5 km';
-  if (distanceMeters < 10000) return '5 - 10 km';
-  if (distanceMeters < 20000) return '10 - 20 km';
-  return '20+ km';
+  if (typeof distanceMeters !== "number" || Number.isNaN(distanceMeters))
+    return null;
+  if (distanceMeters < 500) return "< 0.5 km";
+  if (distanceMeters < 1000) return "0.5 - 1 km";
+  if (distanceMeters < 2000) return "1 - 2 km";
+  if (distanceMeters < 5000) return "2 - 5 km";
+  if (distanceMeters < 10000) return "5 - 10 km";
+  if (distanceMeters < 20000) return "10 - 20 km";
+  return "20+ km";
 }
 
 function getPublicCellKey(lat, lng) {
@@ -801,7 +815,7 @@ function getPublicCellKey(lat, lng) {
 
 // --- API ROUTES ---
 
-app.post('/api/profile/view', async (req, res) => {
+app.post("/api/profile/view", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { viewerUid, targetUid } = req.body;
@@ -809,12 +823,12 @@ app.post('/api/profile/view', async (req, res) => {
       return res.status(400).json({ error: "Invalid uids" });
     }
 
-    const profileViews = db.collection('profile_views');
+    const profileViews = db.collection("profile_views");
 
     await profileViews.updateOne(
       { viewerUid, targetUid },
       { $set: { timestamp: Date.now() } },
-      { upsert: true }
+      { upsert: true },
     );
 
     res.json({ success: true });
@@ -824,29 +838,33 @@ app.post('/api/profile/view', async (req, res) => {
   }
 });
 
-app.get('/api/profile/views/:uid', async (req, res) => {
+app.get("/api/profile/views/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    const profileViews = db.collection('profile_views');
-    const profiles = db.collection('profiles');
+    const profileViews = db.collection("profile_views");
+    const profiles = db.collection("profiles");
 
-    const views = await profileViews.find({ targetUid: uid })
+    const views = await profileViews
+      .find({ targetUid: uid })
       .sort({ timestamp: -1 })
       .limit(20)
       .toArray();
 
     if (views.length === 0) return res.json([]);
 
-    const viewerUids = views.map(v => v.viewerUid);
-    const viewerProfiles = await profiles.find({ uid: { $in: viewerUids } })
+    const viewerUids = views.map((v) => v.viewerUid);
+    const viewerProfiles = await profiles
+      .find({ uid: { $in: viewerUids } })
       .project({ uid: 1, displayName: 1, photoURL: 1 })
       .toArray();
 
-    const result = views.map(v => {
-      const profile = viewerProfiles.find(p => p.uid === v.viewerUid);
-      return profile ? { ...profile, viewedAt: v.timestamp } : null;
-    }).filter(p => p !== null);
+    const result = views
+      .map((v) => {
+        const profile = viewerProfiles.find((p) => p.uid === v.viewerUid);
+        return profile ? { ...profile, viewedAt: v.timestamp } : null;
+      })
+      .filter((p) => p !== null);
 
     res.json(result);
   } catch (error) {
@@ -856,12 +874,12 @@ app.get('/api/profile/views/:uid', async (req, res) => {
 });
 
 // Default route to check server status
-app.get('/', (req, res) => {
+app.get("/", (req, res) => {
   res.send(`Orbyt API Running. DB Connected: ${!!db}`);
 });
 
 // Manual Cleanup Trigger
-app.post('/api/cleanup', async (req, res) => {
+app.post("/api/cleanup", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   await cleanupOrphanedData();
   res.json({ success: true, message: "Database cleanup completed" });
@@ -870,14 +888,15 @@ app.post('/api/cleanup', async (req, res) => {
 // App Version Configuration
 const APP_CONFIG = {
   minAppVersion: "1.2.9",
-  updateUrl: "https://play.google.com/store/apps/details?id=com.orbyt.official.app"
+  updateUrl:
+    "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
 
-app.get('/api/config/version', (req, res) => {
+app.get("/api/config/version", (req, res) => {
   res.json(APP_CONFIG);
 });
 
-app.post('/api/push/subscribe', async (req, res) => {
+app.post("/api/push/subscribe", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, subscription, platform } = req.body;
@@ -885,47 +904,55 @@ app.post('/api/push/subscribe', async (req, res) => {
       return res.status(400).json({ error: "Missing uid or subscription" });
     }
 
-    const isExpoToken = typeof subscription === 'string' && Expo.isExpoPushToken(subscription);
-    const resolvedPlatform = platform || (isExpoToken ? 'expo' : 'web');
+    const isExpoToken =
+      typeof subscription === "string" && Expo.isExpoPushToken(subscription);
+    const resolvedPlatform = platform || (isExpoToken ? "expo" : "web");
 
-    if (resolvedPlatform !== 'expo' && resolvedPlatform !== 'web') {
-      return res.status(400).json({ error: "Invalid platform. Use 'expo' or 'web'." });
+    if (resolvedPlatform !== "expo" && resolvedPlatform !== "web") {
+      return res
+        .status(400)
+        .json({ error: "Invalid platform. Use 'expo' or 'web'." });
     }
 
-    const profiles = db.collection('profiles');
-    const update = resolvedPlatform === 'expo'
-      ? { $set: { expoPushToken: subscription } }
-      : { $set: { webPushSubscription: subscription } };
+    const profiles = db.collection("profiles");
+    const update =
+      resolvedPlatform === "expo"
+        ? { $set: { expoPushToken: subscription } }
+        : { $set: { webPushSubscription: subscription } };
 
-    await profiles.updateOne(
-      { uid },
-      update
-    );
+    await profiles.updateOne({ uid }, update);
 
     // Keep backwards compatibility while migrating old clients.
-    if (resolvedPlatform === 'expo') {
-      await profiles.updateOne({ uid }, { $set: { pushSubscription: subscription } });
+    if (resolvedPlatform === "expo") {
+      await profiles.updateOne(
+        { uid },
+        { $set: { pushSubscription: subscription } },
+      );
     }
 
-    res.json({ success: true, message: `${resolvedPlatform} push subscription saved` });
+    res.json({
+      success: true,
+      message: `${resolvedPlatform} push subscription saved`,
+    });
   } catch (error) {
     console.error("Save subscription error:", error);
     res.status(500).json({ error: "Failed to save push subscription" });
   }
 });
 
-app.post('/api/auth/signup', authLimiter, async (req, res) => {
+app.post("/api/auth/signup", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     // Validate input
     const validated = signupSchema.parse(req.body);
     const { email, password } = validated;
-    
-    const users = db.collection('users');
-    const profiles = db.collection('profiles');
+
+    const users = db.collection("users");
+    const profiles = db.collection("profiles");
 
     const existing = await users.findOne({ email });
-    if (existing) return res.status(400).json({ error: "Email already in use" });
+    if (existing)
+      return res.status(400).json({ error: "Email already in use" });
 
     // Hash password with bcrypt
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -936,14 +963,14 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
     await profiles.insertOne({
       uid,
       email,
-      displayName: email.split('@')[0],
+      displayName: email.split("@")[0],
       photoURL: "",
       interests: [],
       blockedUsers: [],
       passedUsers: [],
       isDiscoverable: false,
       discoveryRadius: 10,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     });
 
     res.json({ user: { uid, email } });
@@ -951,62 +978,64 @@ app.post('/api/auth/signup', authLimiter, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    console.error('Signup error:', error);
+    console.error("Signup error:", error);
     res.status(500).json({ error: "Signup failed" });
   }
 });
 
-app.post('/api/auth/login', authLimiter, async (req, res) => {
+app.post("/api/auth/login", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     // Validate input
     const validated = loginSchema.parse(req.body);
     const { email, password } = validated;
-    
-    const users = db.collection('users');
+
+    const users = db.collection("users");
     const user = await users.findOne({ email });
-    if (!user) return res.status(401).json({ error: "Invalid email or password" });
-    
+    if (!user)
+      return res.status(401).json({ error: "Invalid email or password" });
+
     // Compare password with hashed password using bcrypt
     const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch) return res.status(401).json({ error: "Invalid email or password" });
-    
+    if (!passwordMatch)
+      return res.status(401).json({ error: "Invalid email or password" });
+
     res.json({ user: { uid: user._id.toString(), email } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
     }
-    console.error('Login error:', error);
+    console.error("Login error:", error);
     res.status(500).json({ error: "Login failed" });
   }
 });
 
-app.post('/api/auth/google', async (req, res) => {
+app.post("/api/auth/google", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { email, displayName, photoURL } = req.body;
-    const users = db.collection('users');
-    const profiles = db.collection('profiles');
+    const users = db.collection("users");
+    const profiles = db.collection("profiles");
 
     let user = await users.findOne({ email });
     let uid;
 
     if (!user) {
-      const newUser = { email, authType: 'google', createdAt: new Date() };
+      const newUser = { email, authType: "google", createdAt: new Date() };
       const result = await users.insertOne(newUser);
       uid = result.insertedId.toString();
 
       await profiles.insertOne({
         uid,
         email,
-        displayName: displayName || email.split('@')[0],
+        displayName: displayName || email.split("@")[0],
         photoURL: photoURL || "",
         interests: [],
         blockedUsers: [],
         passedUsers: [],
         isDiscoverable: false,
         discoveryRadius: 10,
-        createdAt: Date.now()
+        createdAt: Date.now(),
       });
     } else {
       uid = user._id.toString();
@@ -1031,13 +1060,14 @@ app.post('/api/auth/google', async (req, res) => {
   }
 });
 
-app.get('/api/profile/:uid', async (req, res) => {
+app.get("/api/profile/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     let { viewerUid } = req.query;
-    if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
+    if (viewerUid === "undefined" || viewerUid === "null")
+      viewerUid = undefined;
 
-    const profiles = db.collection('profiles');
+    const profiles = db.collection("profiles");
     const profile = await profiles.findOne({ uid: req.params.uid });
     if (!profile) return res.json(null);
 
@@ -1047,7 +1077,10 @@ app.get('/api/profile/:uid', async (req, res) => {
       let isFriend = false;
 
       if (!isSelf && viewerUid) {
-        const viewerProfile = await profiles.findOne({ uid: viewerUid }, { projection: { friends: 1 } });
+        const viewerProfile = await profiles.findOne(
+          { uid: viewerUid },
+          { projection: { friends: 1 } },
+        );
         isFriend = (viewerProfile?.friends || []).includes(profile.uid);
       }
 
@@ -1056,12 +1089,18 @@ app.get('/api/profile/:uid', async (req, res) => {
       } else if (isFriend) {
         profile.lastLocation = {
           ...profile.lastLocation,
-          lat: roundCoord(profile.lastLocation.lat, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
-          lng: roundCoord(profile.lastLocation.lng, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
+          lat: roundCoord(
+            profile.lastLocation.lat,
+            LOCATION_PRIVACY.FRIEND_COORD_DECIMALS,
+          ),
+          lng: roundCoord(
+            profile.lastLocation.lng,
+            LOCATION_PRIVACY.FRIEND_COORD_DECIMALS,
+          ),
         };
       } else {
         profile.lastLocation = {
-          name: profile?.lastLocation?.name || 'Nearby area',
+          name: profile?.lastLocation?.name || "Nearby area",
         };
       }
     }
@@ -1072,22 +1111,34 @@ app.get('/api/profile/:uid', async (req, res) => {
   }
 });
 
-app.delete('/api/profile/:uid', async (req, res) => {
+app.delete("/api/profile/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
 
-    await db.collection('profiles').deleteOne({ uid });
+    await db.collection("profiles").deleteOne({ uid });
     if (ObjectId.isValid(uid)) {
-      await db.collection('users').deleteOne({ _id: new ObjectId(uid) });
+      await db.collection("users").deleteOne({ _id: new ObjectId(uid) });
     }
-    await db.collection('posts').deleteMany({ authorId: uid });
-    await db.collection('messages').deleteMany({ $or: [{ senderId: uid }, { receiverId: uid }] });
-    await db.collection('notifications').deleteMany({ $or: [{ recipientUid: uid }, { senderUid: uid }] });
+    await db.collection("posts").deleteMany({ authorId: uid });
+    await db
+      .collection("messages")
+      .deleteMany({ $or: [{ senderId: uid }, { receiverId: uid }] });
+    await db
+      .collection("notifications")
+      .deleteMany({ $or: [{ recipientUid: uid }, { senderUid: uid }] });
 
-    await db.collection('profiles').updateMany({}, {
-      $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid, blockedUsers: uid }
-    });
+    await db.collection("profiles").updateMany(
+      {},
+      {
+        $pull: {
+          friends: uid,
+          incomingRequests: uid,
+          outgoingRequests: uid,
+          blockedUsers: uid,
+        },
+      },
+    );
 
     res.json({ success: true, message: "Account deleted successfully" });
   } catch (error) {
@@ -1096,22 +1147,25 @@ app.delete('/api/profile/:uid', async (req, res) => {
   }
 });
 
-app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
+app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     let { viewerUid } = req.query;
     // Fix: Handle 'undefined' or 'null' passed as strings
-    if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
+    if (viewerUid === "undefined" || viewerUid === "null")
+      viewerUid = undefined;
 
-    const profiles = db.collection('profiles');
-    const viewerProfile = viewerUid ? await profiles.findOne({ uid: viewerUid }) : null;
+    const profiles = db.collection("profiles");
+    const viewerProfile = viewerUid
+      ? await profiles.findOne({ uid: viewerUid })
+      : null;
     const viewerFriends = new Set(viewerProfile?.friends || []);
     const viewerLocation = viewerProfile?.lastLocation;
     const now = Date.now();
 
     let filter = {
       lastLocation: { $exists: true, $ne: null },
-      isDiscoverable: { $ne: false } // Only show discoverable users
+      isDiscoverable: { $ne: false }, // Only show discoverable users
     };
     if (viewerUid) {
       const excludedUids = await getMutualBlockedUids(viewerUid);
@@ -1120,20 +1174,24 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
       }
     }
 
-    const rawUsers = await profiles.find(filter).project({
-      uid: 1,
-      displayName: 1,
-      photoURL: 1,
-      lastLocation: 1,
-      locationUpdatedAt: 1,
-      updatedAt: 1,
-      createdAt: 1,
-      interests: 1,
-      bio: 1,
-      instagramHandle: 1,
-      gender: 1,
-      isDiscoverable: 1,
-    }).limit(500).toArray();
+    const rawUsers = await profiles
+      .find(filter)
+      .project({
+        uid: 1,
+        displayName: 1,
+        photoURL: 1,
+        lastLocation: 1,
+        locationUpdatedAt: 1,
+        updatedAt: 1,
+        createdAt: 1,
+        interests: 1,
+        bio: 1,
+        instagramHandle: 1,
+        gender: 1,
+        isDiscoverable: 1,
+      })
+      .limit(500)
+      .toArray();
 
     const safeUsers = [];
     for (const user of rawUsers) {
@@ -1141,10 +1199,10 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
 
       const lat = user?.lastLocation?.lat;
       const lng = user?.lastLocation?.lng;
-      if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+      if (typeof lat !== "number" || typeof lng !== "number") continue;
 
       const isFriend = viewerFriends.has(user.uid);
-      const relation = isFriend ? 'friend' : 'public';
+      const relation = isFriend ? "friend" : "public";
 
       // Apply jitter so exact location is never revealed
       const jitterMeters = isFriend
@@ -1156,9 +1214,16 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
 
       const roundedLat = roundCoord(lat, coordDecimals);
       const roundedLng = roundCoord(lng, coordDecimals);
-      const jitterBucket = Math.floor(now / LOCATION_PRIVACY.JITTER_ROTATION_MS);
-      const jitterSeed = `${viewerUid || 'anon'}:${user.uid}:${jitterBucket}:${relation}`;
-      const jittered = addCoordinateJitter(roundedLat, roundedLng, jitterMeters, jitterSeed);
+      const jitterBucket = Math.floor(
+        now / LOCATION_PRIVACY.JITTER_ROTATION_MS,
+      );
+      const jitterSeed = `${viewerUid || "anon"}:${user.uid}:${jitterBucket}:${relation}`;
+      const jittered = addCoordinateJitter(
+        roundedLat,
+        roundedLng,
+        jitterMeters,
+        jitterSeed,
+      );
 
       const distanceMeters = viewerLocation
         ? getDistanceMeters(viewerLocation.lat, viewerLocation.lng, lat, lng)
@@ -1179,7 +1244,7 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
         lastLocation: {
           lat: jittered.lat,
           lng: jittered.lng,
-          name: isFriend ? user?.lastLocation?.name : 'Nearby area',
+          name: isFriend ? user?.lastLocation?.name : "Nearby area",
         },
       });
     }
@@ -1190,39 +1255,50 @@ app.get('/api/profiles', mapProfilesLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/profiles/batch', async (req, res) => {
+app.post("/api/profiles/batch", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uids } = req.body;
     if (!Array.isArray(uids) || uids.length === 0) return res.json([]);
-    const profiles = db.collection('profiles');
-    const users = await profiles.find({ uid: { $in: uids } }).project({
-      uid: 1, displayName: 1, photoURL: 1, bio: 1
-    }).toArray();
+    const profiles = db.collection("profiles");
+    const users = await profiles
+      .find({ uid: { $in: uids } })
+      .project({
+        uid: 1,
+        displayName: 1,
+        photoURL: 1,
+        bio: 1,
+      })
+      .toArray();
     res.json(users);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch batch profiles" });
   }
 });
 
-app.post('/api/profile/:uid', async (req, res) => {
+app.post("/api/profile/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
     const data = req.body;
-    const profiles = db.collection('profiles');
+    const profiles = db.collection("profiles");
 
     // Server-side 18+ validation
     if (data.dob) {
       const age = calculateAge(data.dob);
       if (age < 18) {
-        return res.status(400).json({ error: "You must be at least 18 years old." });
+        return res
+          .status(400)
+          .json({ error: "You must be at least 18 years old." });
       }
     }
 
     // 1. Update Profile
     const updateFields = { ...data, uid, updatedAt: new Date() };
-    if (typeof data?.lastLocation?.lat === 'number' && typeof data?.lastLocation?.lng === 'number') {
+    if (
+      typeof data?.lastLocation?.lat === "number" &&
+      typeof data?.lastLocation?.lng === "number"
+    ) {
       updateFields.locationUpdatedAt = Date.now();
     }
     const updateDoc = { $set: updateFields };
@@ -1232,9 +1308,9 @@ app.post('/api/profile/:uid', async (req, res) => {
     // 2. Propagate updates to related collections (Posts, Comments, Messages, Notifications)
     // This ensures that old posts/comments reflect the new username/photo
     if (data.displayName || data.photoURL !== undefined) {
-      const posts = db.collection('posts');
-      const messages = db.collection('messages');
-      const notifications = db.collection('notifications');
+      const posts = db.collection("posts");
+      const messages = db.collection("messages");
+      const notifications = db.collection("notifications");
 
       const updates = {};
       const commentUpdates = {};
@@ -1261,7 +1337,7 @@ app.post('/api/profile/:uid', async (req, res) => {
         await posts.updateMany(
           { "comments.uid": uid },
           { $set: commentUpdates },
-          { arrayFilters: [{ "elem.uid": uid }] }
+          { arrayFilters: [{ "elem.uid": uid }] },
         );
       }
 
@@ -1272,7 +1348,10 @@ app.post('/api/profile/:uid', async (req, res) => {
 
       // Update Notifications (where user is sender)
       if (Object.keys(notifUpdates).length > 0) {
-        await notifications.updateMany({ fromUid: uid }, { $set: notifUpdates });
+        await notifications.updateMany(
+          { fromUid: uid },
+          { $set: notifUpdates },
+        );
       }
     }
 
@@ -1283,91 +1362,141 @@ app.post('/api/profile/:uid', async (req, res) => {
   }
 });
 
-app.post('/api/user/block', async (req, res) => {
+app.post("/api/user/block", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, targetUid } = req.body;
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: uid }, { $addToSet: { blockedUsers: targetUid } });
-    await profiles.updateOne({ uid: uid }, {
-      $pull: { friends: targetUid, incomingRequests: targetUid, outgoingRequests: targetUid },
-      $unset: { [`friendRequestMessages.${targetUid}`]: "" }
-    });
-    await profiles.updateOne({ uid: targetUid }, {
-      $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid },
-      $unset: { [`friendRequestMessages.${uid}`]: "" }
-    });
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: uid },
+      { $addToSet: { blockedUsers: targetUid } },
+    );
+    await profiles.updateOne(
+      { uid: uid },
+      {
+        $pull: {
+          friends: targetUid,
+          incomingRequests: targetUid,
+          outgoingRequests: targetUid,
+        },
+        $unset: { [`friendRequestMessages.${targetUid}`]: "" },
+      },
+    );
+    await profiles.updateOne(
+      { uid: targetUid },
+      {
+        $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid },
+        $unset: { [`friendRequestMessages.${uid}`]: "" },
+      },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to block user" });
   }
 });
 
-app.post('/api/user/unblock', async (req, res) => {
+app.post("/api/user/unblock", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, targetUid } = req.body;
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: uid }, { $pull: { blockedUsers: targetUid } });
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: uid },
+      { $pull: { blockedUsers: targetUid } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to unblock user" });
   }
 });
 
-app.post('/api/user/pass', async (req, res) => {
+app.post("/api/user/pass", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, targetUid } = req.body;
-    if (!uid || !targetUid) return res.status(400).json({ error: "Missing uid or targetUid" });
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: uid }, { $addToSet: { passedUsers: targetUid } });
+    if (!uid || !targetUid)
+      return res.status(400).json({ error: "Missing uid or targetUid" });
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: uid },
+      { $addToSet: { passedUsers: targetUid } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to pass user" });
   }
 });
 
-app.post('/api/report', async (req, res) => {
+app.post("/api/report", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { reporterUid, targetUid, reason, postId, storyId, communityId, type } = req.body;
-    if (!reporterUid || !reason) return res.status(400).json({ error: 'reporterUid and reason are required' });
+    const {
+      reporterUid,
+      targetUid,
+      reason,
+      postId,
+      storyId,
+      communityId,
+      type,
+    } = req.body;
+    if (!reporterUid || !reason)
+      return res
+        .status(400)
+        .json({ error: "reporterUid and reason are required" });
 
     // Infer type from provided IDs if not given explicitly
     let resolvedType = type;
     if (!resolvedType) {
-      if (storyId)     resolvedType = 'story';
-      else if (communityId) resolvedType = 'community';
-      else if (postId) resolvedType = 'post';
-      else             resolvedType = 'user';
+      if (storyId) resolvedType = "story";
+      else if (communityId) resolvedType = "community";
+      else if (postId) resolvedType = "post";
+      else resolvedType = "user";
     }
 
-    const reports = db.collection('reports');
+    const reports = db.collection("reports");
     await reports.insertOne({
       type: resolvedType,
       reporterUid,
       targetUid: targetUid || null,
       reason,
-      postId:      postId      || null,
-      storyId:     storyId     || null,
+      postId: postId || null,
+      storyId: storyId || null,
       communityId: communityId || null,
       createdAt: Date.now(),
-      status: 'pending',
+      status: "pending",
     });
 
     // Auto-suspend if threshold met (user-level reports only)
-    if (targetUid && (resolvedType === 'user' || resolvedType === 'post' || resolvedType === 'story' || resolvedType === 'meetup')) {
+    if (
+      targetUid &&
+      (resolvedType === "user" ||
+        resolvedType === "post" ||
+        resolvedType === "story" ||
+        resolvedType === "meetup")
+    ) {
       try {
-        const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
+        const settings = await db
+          .collection("admin_settings")
+          .findOne({ _id: "global" });
         const threshold = settings?.autoSuspendThreshold || 0;
         if (threshold > 0) {
-          const reportCount = await reports.countDocuments({ targetUid, status: 'pending' });
+          const reportCount = await reports.countDocuments({
+            targetUid,
+            status: "pending",
+          });
           if (reportCount >= threshold) {
-            await db.collection('profiles').updateOne({ uid: targetUid }, { $set: { isSuspended: true } }, { upsert: true });
+            await db
+              .collection("profiles")
+              .updateOne(
+                { uid: targetUid },
+                { $set: { isSuspended: true } },
+                { upsert: true },
+              );
           }
         }
-      } catch (_) { /* non-fatal */ }
+      } catch (_) {
+        /* non-fatal */
+      }
     }
 
     res.json({ success: true });
@@ -1376,64 +1505,80 @@ app.post('/api/report', async (req, res) => {
   }
 });
 
-app.post('/api/friends/request', async (req, res) => {
+app.post("/api/friends/request", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { fromUid, toUid, message } = req.body;
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: fromUid }, { $addToSet: { outgoingRequests: toUid } });
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: fromUid },
+      { $addToSet: { outgoingRequests: toUid } },
+    );
     const updateDoc = { $addToSet: { incomingRequests: fromUid } };
-    if (message) updateDoc.$set = { [`friendRequestMessages.${fromUid}`]: message };
+    if (message)
+      updateDoc.$set = { [`friendRequestMessages.${fromUid}`]: message };
     await profiles.updateOne({ uid: toUid }, updateDoc);
-    await createNotification('friend_request', fromUid, toUid);
+    await createNotification("friend_request", fromUid, toUid);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to send request" });
   }
 });
 
-app.post('/api/friends/accept', async (req, res) => {
+app.post("/api/friends/accept", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { userUid, requesterUid } = req.body;
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: userUid }, {
-      $pull: { incomingRequests: requesterUid },
-      $addToSet: { friends: requesterUid },
-      $unset: { [`friendRequestMessages.${requesterUid}`]: "" }
-    });
-    await profiles.updateOne({ uid: requesterUid }, {
-      $pull: { outgoingRequests: userUid },
-      $addToSet: { friends: userUid }
-    });
-    await createNotification('friend_accept', userUid, requesterUid);
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: userUid },
+      {
+        $pull: { incomingRequests: requesterUid },
+        $addToSet: { friends: requesterUid },
+        $unset: { [`friendRequestMessages.${requesterUid}`]: "" },
+      },
+    );
+    await profiles.updateOne(
+      { uid: requesterUid },
+      {
+        $pull: { outgoingRequests: userUid },
+        $addToSet: { friends: userUid },
+      },
+    );
+    await createNotification("friend_accept", userUid, requesterUid);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to accept request" });
   }
 });
 
-app.post('/api/friends/reject', async (req, res) => {
+app.post("/api/friends/reject", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { userUid, requesterUid } = req.body;
-    const profiles = db.collection('profiles');
-    await profiles.updateOne({ uid: userUid }, {
-      $pull: { incomingRequests: requesterUid },
-      $unset: { [`friendRequestMessages.${requesterUid}`]: "" }
-    });
-    await profiles.updateOne({ uid: requesterUid }, { $pull: { outgoingRequests: userUid } });
+    const profiles = db.collection("profiles");
+    await profiles.updateOne(
+      { uid: userUid },
+      {
+        $pull: { incomingRequests: requesterUid },
+        $unset: { [`friendRequestMessages.${requesterUid}`]: "" },
+      },
+    );
+    await profiles.updateOne(
+      { uid: requesterUid },
+      { $pull: { outgoingRequests: userUid } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to reject request" });
   }
 });
 
-app.post('/api/friends/remove', async (req, res) => {
+app.post("/api/friends/remove", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid1, uid2 } = req.body;
-    const profiles = db.collection('profiles');
+    const profiles = db.collection("profiles");
     await profiles.updateOne({ uid: uid1 }, { $pull: { friends: uid2 } });
     await profiles.updateOne({ uid: uid2 }, { $pull: { friends: uid1 } });
     res.json({ success: true });
@@ -1442,45 +1587,66 @@ app.post('/api/friends/remove', async (req, res) => {
   }
 });
 
-app.post('/api/posts', async (req, res) => {
+app.post("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postData = req.body;
-    const posts = db.collection('posts');
+    const posts = db.collection("posts");
 
     const result = await posts.insertOne({
       ...postData,
-      likes: 0, likedBy: [], comments: [],
-      attendees: [], pendingRequests: [],
-      createdAt: Date.now()
+      likes: 0,
+      likedBy: [],
+      comments: [],
+      attendees: [],
+      pendingRequests: [],
+      createdAt: Date.now(),
     });
 
     const postIdStr = result.insertedId.toString();
-    const isMeetup = postData.type === 'meetup';
-    const notifType = isMeetup ? 'friend_event' : 'friend_post';
+    const isMeetup = postData.type === "meetup";
+    const notifType = isMeetup ? "friend_event" : "friend_post";
     const extra = isMeetup ? { eventTitle: postData.meetupDetails?.title } : {};
 
     // Notify all friends about the new post/event (fire-and-forget)
     setImmediate(async () => {
       try {
-        const poster = await db.collection('profiles').findOne({ uid: postData.uid });
+        const poster = await db
+          .collection("profiles")
+          .findOne({ uid: postData.uid });
         if (poster?.friends?.length) {
           for (const friendUid of poster.friends) {
-            await createNotification(notifType, postData.uid, friendUid, postIdStr, extra).catch(() => {});
+            await createNotification(
+              notifType,
+              postData.uid,
+              friendUid,
+              postIdStr,
+              extra,
+            ).catch(() => {});
           }
         }
         // For meetup posts: also notify all other discoverable users (new_event)
         if (isMeetup) {
-          const allProfiles = await db.collection('profiles').find({
-            uid: { $ne: postData.uid, $nin: poster?.friends || [] },
-            isDiscoverable: true
-          }).limit(80).toArray();
+          const allProfiles = await db
+            .collection("profiles")
+            .find({
+              uid: { $ne: postData.uid, $nin: poster?.friends || [] },
+              isDiscoverable: true,
+            })
+            .limit(80)
+            .toArray();
           for (const p of allProfiles) {
-            await createNotification('new_event', postData.uid, p.uid, postIdStr, extra).catch(() => {});
+            await createNotification(
+              "new_event",
+              postData.uid,
+              p.uid,
+              postIdStr,
+              extra,
+            ).catch(() => {});
           }
         }
       } catch (e) {
-        console.error('Post notification error:', e);
+        console.error("Post notification error:", e);
       }
     });
 
@@ -1490,23 +1656,25 @@ app.post('/api/posts', async (req, res) => {
   }
 });
 
-app.get('/api/posts', async (req, res) => {
+app.get("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     let { viewerUid, page = 1, limit = 10 } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
-    
-    // Fix: Handle 'undefined' or 'null' passed as strings
-    if (viewerUid === 'undefined' || viewerUid === 'null') viewerUid = undefined;
 
-    const posts = db.collection('posts');
+    // Fix: Handle 'undefined' or 'null' passed as strings
+    if (viewerUid === "undefined" || viewerUid === "null")
+      viewerUid = undefined;
+
+    const posts = db.collection("posts");
     let filter = {};
     if (viewerUid) {
       const excludedUids = await getMutualBlockedUids(viewerUid);
       if (excludedUids.length > 0) filter.uid = { $nin: excludedUids };
     }
-    const allPosts = await posts.find(filter)
+    const allPosts = await posts
+      .find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -1518,28 +1686,30 @@ app.get('/api/posts', async (req, res) => {
   }
 });
 
-app.get('/api/posts/user/:uid', async (req, res) => {
+app.get("/api/posts/user/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const posts = db.collection('posts');
-    const userPosts = await posts.find({ uid: req.params.uid }).sort({ createdAt: -1 }).toArray();
+    const posts = db.collection("posts");
+    const userPosts = await posts
+      .find({ uid: req.params.uid })
+      .sort({ createdAt: -1 })
+      .toArray();
     res.json(userPosts);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch user posts" });
   }
 });
 
-app.get('/api/posts/:id', async (req, res) => {
+app.get("/api/posts/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-
 
     if (!ObjectId.isValid(postId)) {
       return res.status(400).json({ error: "Invalid ID format" });
     }
 
-    const posts = db.collection('posts');
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
 
     if (!post) {
@@ -1553,33 +1723,40 @@ app.get('/api/posts/:id', async (req, res) => {
   }
 });
 
-app.put('/api/posts/:id', async (req, res) => {
+app.put("/api/posts/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { uid, content, imageURL } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
-    if (post.uid !== uid) return res.status(403).json({ error: "Unauthorized" });
-    await posts.updateOne({ _id: new ObjectId(postId) }, { $set: { content, imageURL, updatedAt: Date.now() } });
+    if (post.uid !== uid)
+      return res.status(403).json({ error: "Unauthorized" });
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { content, imageURL, updatedAt: Date.now() } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to update post" });
   }
 });
 
-app.delete('/api/posts/:id', async (req, res) => {
+app.delete("/api/posts/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { uid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
-    if (post.uid !== uid) return res.status(403).json({ error: "Unauthorized" });
+    if (post.uid !== uid)
+      return res.status(403).json({ error: "Unauthorized" });
     await posts.deleteOne({ _id: new ObjectId(postId) });
     res.json({ success: true });
   } catch (error) {
@@ -1587,46 +1764,60 @@ app.delete('/api/posts/:id', async (req, res) => {
   }
 });
 
-app.post('/api/posts/:id/like', async (req, res) => {
+app.post("/api/posts/:id/like", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { uid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid Post ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
     const likedBy = post.likedBy || [];
     const isLiked = likedBy.includes(uid);
-    let update = isLiked ? { $pull: { likedBy: uid }, $inc: { likes: -1 } } : { $addToSet: { likedBy: uid }, $inc: { likes: 1 } };
+    let update = isLiked
+      ? { $pull: { likedBy: uid }, $inc: { likes: -1 } }
+      : { $addToSet: { likedBy: uid }, $inc: { likes: 1 } };
     await posts.updateOne({ _id: new ObjectId(postId) }, update);
     const updatedPost = await posts.findOne({ _id: new ObjectId(postId) });
-    if (!isLiked && post.uid !== uid) await createNotification('like', uid, post.uid, postId);
+    if (!isLiked && post.uid !== uid)
+      await createNotification("like", uid, post.uid, postId);
     res.json({ likes: updatedPost.likes, likedBy: updatedPost.likedBy || [] });
   } catch (error) {
     res.status(500).json({ error: "Failed to toggle like" });
   }
 });
 
-app.post('/api/posts/:id/comment', async (req, res) => {
+app.post("/api/posts/:id/comment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { uid, text } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
-    const profiles = db.collection('profiles');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid Post ID" });
+    const profiles = db.collection("profiles");
     const userProfile = await profiles.findOne({ uid });
     const newComment = {
-      id: new ObjectId(), uid, authorName: userProfile?.displayName || "User",
-      authorPhoto: userProfile?.photoURL || "", text, createdAt: Date.now(),
-      likedBy: [], likes: 0
+      id: new ObjectId(),
+      uid,
+      authorName: userProfile?.displayName || "User",
+      authorPhoto: userProfile?.photoURL || "",
+      text,
+      createdAt: Date.now(),
+      likedBy: [],
       likes: 0,
-      likedBy: []
+
+      likedBy: [],
     };
-    const posts = db.collection('posts');
-    await posts.updateOne({ _id: new ObjectId(postId) }, { $push: { comments: newComment } });
+    const posts = db.collection("posts");
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $push: { comments: newComment } },
+    );
     const post = await posts.findOne({ _id: new ObjectId(postId) });
-    if (post && post.uid !== uid) await createNotification('comment', uid, post.uid, postId);
+    if (post && post.uid !== uid)
+      await createNotification("comment", uid, post.uid, postId);
     res.json(newComment);
   } catch (error) {
     res.status(500).json({ error: "Failed to add comment" });
@@ -1634,20 +1825,22 @@ app.post('/api/posts/:id/comment', async (req, res) => {
 });
 
 // Toggle like on a comment
-app.post('/api/posts/:id/likeComment', async (req, res) => {
+app.post("/api/posts/:id/likeComment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { commentId, uid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
-    if (!commentId || !uid) return res.status(400).json({ error: "Missing parameters" });
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid Post ID" });
+    if (!commentId || !uid)
+      return res.status(400).json({ error: "Missing parameters" });
 
-    const posts = db.collection('posts');
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
 
     const comments = post.comments || [];
-    const idx = comments.findIndex(c => {
+    const idx = comments.findIndex((c) => {
       try {
         if (c.id && c.id.toString() === commentId) return true;
       } catch (e) {}
@@ -1655,7 +1848,7 @@ app.post('/api/posts/:id/likeComment', async (req, res) => {
         if (c._id && c._id.toString() === commentId) return true;
       } catch (e) {}
       // fallback to string id
-      return (c.id === commentId || c._id === commentId);
+      return c.id === commentId || c._id === commentId;
     });
 
     if (idx === -1) return res.status(404).json({ error: "Comment not found" });
@@ -1666,203 +1859,249 @@ app.post('/api/posts/:id/likeComment', async (req, res) => {
     const alreadyLiked = comment.likedBy.includes(uid);
 
     if (alreadyLiked) {
-      comment.likedBy = comment.likedBy.filter(u => u !== uid);
+      comment.likedBy = comment.likedBy.filter((u) => u !== uid);
       comment.likes = Math.max(0, comment.likes - 1);
     } else {
       comment.likedBy.push(uid);
       comment.likes = (comment.likes || 0) + 1;
       // Notify the comment author
       if (comment.uid && comment.uid !== uid) {
-        await createNotification('like', uid, comment.uid, postId);
+        await createNotification("like", uid, comment.uid, postId);
       }
     }
 
     // Persist updated comments array
-    await posts.updateOne({ _id: new ObjectId(postId) }, { $set: { comments } });
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { comments } },
+    );
 
     res.json({ likes: comment.likes, likedBy: comment.likedBy });
   } catch (error) {
-    console.error('Like comment error:', error);
-    res.status(500).json({ error: 'Failed to like comment' });
+    console.error("Like comment error:", error);
+    res.status(500).json({ error: "Failed to like comment" });
   }
 });
 
 // Like/unlike a comment on a post
-app.post('/api/posts/:id/likeComment', async (req, res) => {
+app.post("/api/posts/:id/likeComment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { commentId, uid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid Post ID" });
-    if (!commentId || !uid) return res.status(400).json({ error: "Missing parameters" });
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid Post ID" });
+    if (!commentId || !uid)
+      return res.status(400).json({ error: "Missing parameters" });
 
-    const posts = db.collection('posts');
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
 
     const comments = post.comments || [];
 
     // Normalize incoming commentId to string (support ObjectId-like payloads)
-    let commentIdStr = '';
-    if (typeof commentId === 'string') commentIdStr = commentId;
+    let commentIdStr = "";
+    if (typeof commentId === "string") commentIdStr = commentId;
     else if (commentId && commentId.$oid) commentIdStr = commentId.$oid;
-    else if (commentId && typeof commentId.toString === 'function') commentIdStr = commentId.toString();
+    else if (commentId && typeof commentId.toString === "function")
+      commentIdStr = commentId.toString();
     else commentIdStr = String(commentId);
 
     let found = false;
     for (let i = 0; i < comments.length; i++) {
       const c = comments[i];
       const cId = c._id || c.id;
-      const cIdStr = cId && typeof cId.toString === 'function' ? cId.toString() : String(cId);
+      const cIdStr =
+        cId && typeof cId.toString === "function"
+          ? cId.toString()
+          : String(cId);
       if (cIdStr === commentIdStr) {
         found = true;
         c.likedBy = c.likedBy || [];
         const isLiked = c.likedBy.includes(uid);
         if (isLiked) {
-          c.likedBy = c.likedBy.filter(x => x !== uid);
+          c.likedBy = c.likedBy.filter((x) => x !== uid);
           c.likes = Math.max(0, (c.likes || 0) - 1);
         } else {
           c.likedBy.push(uid);
           c.likes = (c.likes || 0) + 1;
         }
         // persist full comments array back to DB
-        await posts.updateOne({ _id: new ObjectId(postId) }, { $set: { comments } });
+        await posts.updateOne(
+          { _id: new ObjectId(postId) },
+          { $set: { comments } },
+        );
 
         // send notification to comment owner
         if (!isLiked && c.uid && c.uid !== uid) {
-          await createNotification('like', uid, c.uid, postId, { commentId: commentIdStr });
+          await createNotification("like", uid, c.uid, postId, {
+            commentId: commentIdStr,
+          });
         }
 
         return res.json({ success: true, comment: c });
       }
     }
 
-    if (!found) return res.status(404).json({ error: 'Comment not found' });
+    if (!found) return res.status(404).json({ error: "Comment not found" });
   } catch (error) {
-    console.error('Like comment error:', error);
+    console.error("Like comment error:", error);
     res.status(500).json({ error: "Failed to like comment" });
   }
 });
 
 // --- MEETUP ACTIONS ---
 
-app.post('/api/meetups/:id/join', async (req, res) => {
+app.post("/api/meetups/:id/join", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { uid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Meetup not found" });
-    await posts.updateOne({ _id: new ObjectId(postId) }, { $addToSet: { pendingRequests: uid } });
-    await createNotification('meetup_request', uid, post.uid, postId);
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $addToSet: { pendingRequests: uid } },
+    );
+    await createNotification("meetup_request", uid, post.uid, postId);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to join meetup" });
   }
 });
 
-app.post('/api/meetups/:id/accept', async (req, res) => {
+app.post("/api/meetups/:id/accept", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { hostUid, requesterUid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Meetup not found" });
-    if (post.uid !== hostUid) return res.status(403).json({ error: "Unauthorized" });
-    await posts.updateOne({ _id: new ObjectId(postId) }, {
-      $pull: { pendingRequests: requesterUid },
-      $addToSet: { attendees: requesterUid }
-    });
-    await createNotification('meetup_accept', hostUid, requesterUid, postId);
+    if (post.uid !== hostUid)
+      return res.status(403).json({ error: "Unauthorized" });
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      {
+        $pull: { pendingRequests: requesterUid },
+        $addToSet: { attendees: requesterUid },
+      },
+    );
+    await createNotification("meetup_accept", hostUid, requesterUid, postId);
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to accept request" });
   }
 });
 
-app.post('/api/meetups/:id/reject', async (req, res) => {
+app.post("/api/meetups/:id/reject", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { hostUid, requesterUid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Meetup not found" });
-    if (post.uid !== hostUid) return res.status(403).json({ error: "Unauthorized" });
-    await posts.updateOne({ _id: new ObjectId(postId) }, { $pull: { pendingRequests: requesterUid } });
+    if (post.uid !== hostUid)
+      return res.status(403).json({ error: "Unauthorized" });
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $pull: { pendingRequests: requesterUid } },
+    );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to reject request" });
   }
 });
 
-app.post('/api/meetups/:id/remove-attendee', async (req, res) => {
+app.post("/api/meetups/:id/remove-attendee", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
     const { hostUid, targetUid } = req.body;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: "Invalid ID" });
-    const posts = db.collection('posts');
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid ID" });
+    const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Meetup not found" });
-    if (post.uid !== hostUid) return res.status(403).json({ error: "Unauthorized" });
+    if (post.uid !== hostUid)
+      return res.status(403).json({ error: "Unauthorized" });
 
-    await posts.updateOne({ _id: new ObjectId(postId) }, {
-      $pull: { attendees: targetUid }
-    });
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      {
+        $pull: { attendees: targetUid },
+      },
+    );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to remove attendee" });
   }
 });
 
-app.get('/api/notifications/:uid', async (req, res) => {
+app.get("/api/notifications/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const notifications = db.collection('notifications');
-    const list = await notifications.find({ toUid: req.params.uid }).sort({ createdAt: -1 }).limit(50).toArray();
+    const notifications = db.collection("notifications");
+    const list = await notifications
+      .find({ toUid: req.params.uid })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
     res.json(list);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch notifications" });
   }
 });
 
-app.post('/api/notifications/mark-read', async (req, res) => {
+app.post("/api/notifications/mark-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { notificationIds } = req.body;
-    const notifications = db.collection('notifications');
-    const ids = notificationIds.map(id => new ObjectId(id));
-    await notifications.updateMany({ _id: { $in: ids } }, { $set: { read: true } });
+    const notifications = db.collection("notifications");
+    const ids = notificationIds.map((id) => new ObjectId(id));
+    await notifications.updateMany(
+      { _id: { $in: ids } },
+      { $set: { read: true } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to mark read" });
   }
 });
 
-app.post('/api/notifications/mark-all-read', async (req, res) => {
+app.post("/api/notifications/mark-all-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.body;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
-    const notifications = db.collection('notifications');
-    await notifications.updateMany({ toUid: uid, read: false }, { $set: { read: true } });
+    const notifications = db.collection("notifications");
+    await notifications.updateMany(
+      { toUid: uid, read: false },
+      { $set: { read: true } },
+    );
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to mark all read" });
   }
 });
 
-app.get('/api/notifications/unread-count/:uid', async (req, res) => {
+app.get("/api/notifications/unread-count/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const notifications = db.collection('notifications');
-    const count = await notifications.countDocuments({ toUid: req.params.uid, read: false });
+    const notifications = db.collection("notifications");
+    const count = await notifications.countDocuments({
+      toUid: req.params.uid,
+      read: false,
+    });
     res.json({ count });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch unread count" });
@@ -1870,10 +2109,16 @@ app.get('/api/notifications/unread-count/:uid', async (req, res) => {
 });
 
 // --- HELPER: Send Push Notification (Expo & Web) with Retry Logic ---
-async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount = 0, maxRetries = 2) {
+async function sendPushNotification(
+  receiverUid,
+  payloadStr,
+  expoPayload,
+  retryCount = 0,
+  maxRetries = 2,
+) {
   if (!db) return;
   try {
-    const profiles = db.collection('profiles');
+    const profiles = db.collection("profiles");
     const receiver = await profiles.findOne({ uid: receiverUid });
     if (!receiver) {
       console.log(`[PUSH] Receiver profile not found: ${receiverUid}`);
@@ -1881,13 +2126,16 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
     }
 
     const expoPushToken =
-      (typeof receiver.expoPushToken === 'string' && receiver.expoPushToken) ||
-      (typeof receiver.pushSubscription === 'string' && Expo.isExpoPushToken(receiver.pushSubscription)
+      (typeof receiver.expoPushToken === "string" && receiver.expoPushToken) ||
+      (typeof receiver.pushSubscription === "string" &&
+      Expo.isExpoPushToken(receiver.pushSubscription)
         ? receiver.pushSubscription
         : null);
 
-    const webPushSubscription = receiver.webPushSubscription ||
-      (receiver.pushSubscription && typeof receiver.pushSubscription === 'object'
+    const webPushSubscription =
+      receiver.webPushSubscription ||
+      (receiver.pushSubscription &&
+      typeof receiver.pushSubscription === "object"
         ? receiver.pushSubscription
         : null);
 
@@ -1903,38 +2151,49 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
       try {
         // Calculate total unread count for the badge
         const [msgCount, notifCount] = await Promise.all([
-          db.collection('messages').countDocuments({ toUid: receiverUid, read: false }),
-          db.collection('notifications').countDocuments({ toUid: receiverUid, read: false })
+          db
+            .collection("messages")
+            .countDocuments({ toUid: receiverUid, read: false }),
+          db
+            .collection("notifications")
+            .countDocuments({ toUid: receiverUid, read: false }),
         ]);
         const totalBadge = msgCount + notifCount;
 
-        const tickets = await expo.sendPushNotificationsAsync([{
-          to: expoPushToken,
-          sound: 'default',
-          priority: 'high',
-          channelId: 'default',
-          badge: totalBadge,
-          ttl: 2419200, // 4 weeks
-          _displayInForeground: true,
-          ...expoPayload
-        }]);
+        const tickets = await expo.sendPushNotificationsAsync([
+          {
+            to: expoPushToken,
+            sound: "default",
+            priority: "high",
+            channelId: "default",
+            badge: totalBadge,
+            ttl: 2419200, // 4 weeks
+            _displayInForeground: true,
+            ...expoPayload,
+          },
+        ]);
 
         const receiptIds = [];
         for (const ticket of tickets || []) {
-          if (ticket?.status === 'error') {
+          if (ticket?.status === "error") {
             const errorCode = ticket?.details?.error;
-            console.error(`[PUSH] Expo Push Ticket Error for ${receiverUid}:`, ticket);
-            if (errorCode === 'DeviceNotRegistered') {
-              console.log(`[PUSH] Removing invalid Expo token for ${receiverUid}`);
+            console.error(
+              `[PUSH] Expo Push Ticket Error for ${receiverUid}:`,
+              ticket,
+            );
+            if (errorCode === "DeviceNotRegistered") {
+              console.log(
+                `[PUSH] Removing invalid Expo token for ${receiverUid}`,
+              );
               await profiles.updateOne(
                 { uid: receiverUid },
                 {
                   $unset: { expoPushToken: "" },
                   $set: { pushSubscription: null },
-                }
+                },
               );
             }
-          } else if (ticket?.status === 'ok') {
+          } else if (ticket?.status === "ok") {
             expoSuccess = true;
           }
           if (ticket?.id) receiptIds.push(ticket.id);
@@ -1942,27 +2201,64 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
 
         if (receiptIds.length) {
           try {
-            const receipts = await expo.getPushNotificationReceiptsAsync(receiptIds);
+            const receipts =
+              await expo.getPushNotificationReceiptsAsync(receiptIds);
             for (const receiptId of Object.keys(receipts || {})) {
               const receipt = receipts[receiptId];
-              if (receipt?.status === 'error') {
-                console.error(`[PUSH] Expo Receipt Error for ${receiverUid}:`, receiptId, receipt);
+              if (receipt?.status === "error") {
+                console.error(
+                  `[PUSH] Expo Receipt Error for ${receiverUid}:`,
+                  receiptId,
+                  receipt,
+                );
               }
             }
           } catch (receiptErr) {
-            console.error(`[PUSH] Expo receipt fetch failed for ${receiverUid}:`, receiptErr);
+            console.error(
+              `[PUSH] Expo receipt fetch failed for ${receiverUid}:`,
+              receiptErr,
+            );
             if (retryCount < maxRetries) {
-              console.log(`[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
-              setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
+              console.log(
+                `[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
+              );
+              setTimeout(
+                () =>
+                  sendPushNotification(
+                    receiverUid,
+                    payloadStr,
+                    expoPayload,
+                    retryCount + 1,
+                    maxRetries,
+                  ),
+                2000,
+              );
             }
           }
         }
-        console.log(`[PUSH] Expo notification sent successfully to ${receiverUid}`);
+        console.log(
+          `[PUSH] Expo notification sent successfully to ${receiverUid}`,
+        );
       } catch (err) {
-        console.error(`[PUSH] Expo Push failed for ${receiverUid}:`, err.message);
+        console.error(
+          `[PUSH] Expo Push failed for ${receiverUid}:`,
+          err.message,
+        );
         if (retryCount < maxRetries) {
-          console.log(`[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
-          setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
+          console.log(
+            `[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
+          );
+          setTimeout(
+            () =>
+              sendPushNotification(
+                receiverUid,
+                payloadStr,
+                expoPayload,
+                retryCount + 1,
+                maxRetries,
+              ),
+            2000,
+          );
         }
       }
     }
@@ -1971,21 +2267,44 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
       try {
         await webpush.sendNotification(webPushSubscription, payloadStr);
         webSuccess = true;
-        console.log(`[PUSH] Web push notification sent successfully to ${receiverUid}`);
+        console.log(
+          `[PUSH] Web push notification sent successfully to ${receiverUid}`,
+        );
       } catch (err) {
-        console.error(`[PUSH] Web Push failed for ${receiverUid}:`, err.message);
+        console.error(
+          `[PUSH] Web Push failed for ${receiverUid}:`,
+          err.message,
+        );
         if (err.statusCode === 410 || err.statusCode === 404) {
-          console.log(`[PUSH] Removing invalid web push subscription for ${receiverUid}`);
+          console.log(
+            `[PUSH] Removing invalid web push subscription for ${receiverUid}`,
+          );
           await profiles.updateOne(
             { uid: receiverUid },
             {
               $unset: { webPushSubscription: "" },
               $set: { pushSubscription: null },
-            }
+            },
           );
-        } else if (retryCount < maxRetries && err.statusCode !== 410 && err.statusCode !== 404) {
-          console.log(`[PUSH] Retrying web push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`);
-          setTimeout(() => sendPushNotification(receiverUid, payloadStr, expoPayload, retryCount + 1, maxRetries), 2000);
+        } else if (
+          retryCount < maxRetries &&
+          err.statusCode !== 410 &&
+          err.statusCode !== 404
+        ) {
+          console.log(
+            `[PUSH] Retrying web push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
+          );
+          setTimeout(
+            () =>
+              sendPushNotification(
+                receiverUid,
+                payloadStr,
+                expoPayload,
+                retryCount + 1,
+                maxRetries,
+              ),
+            2000,
+          );
         }
       }
     }
@@ -1994,37 +2313,55 @@ async function sendPushNotification(receiverUid, payloadStr, expoPayload, retryC
       console.warn(`[PUSH] Both push methods failed for ${receiverUid}`);
     }
   } catch (e) {
-    console.error(`[PUSH] Error in sendPushNotification helper for ${receiverUid}:`, e);
+    console.error(
+      `[PUSH] Error in sendPushNotification helper for ${receiverUid}:`,
+      e,
+    );
   }
 }
 
-app.post('/api/chat/send', async (req, res) => {
+app.post("/api/chat/send", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo } = req.body;
-    const messages = db.collection('messages');
-    const profiles = db.collection('profiles');
+    const { fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo } =
+      req.body;
+    const messages = db.collection("messages");
+    const profiles = db.collection("profiles");
     const sender = await profiles.findOne({ uid: fromUid });
     const authorName = sender?.displayName || "User";
     const authorPhoto = sender?.photoURL || "";
-    
+
     let displayBody = text || "";
     if (!displayBody && mediaType) {
-      if (mediaType === 'image') displayBody = "sent a photo";
-      else if (mediaType === 'emoji') displayBody = "sent a big emoji";
-      else if (mediaType === 'audio') displayBody = "sent a voice note";
+      if (mediaType === "image") displayBody = "sent a photo";
+      else if (mediaType === "emoji") displayBody = "sent a big emoji";
+      else if (mediaType === "audio") displayBody = "sent a voice note";
     }
 
-    let newMessage = { fromUid, text, read: false, createdAt: Date.now(), authorName, authorPhoto, mediaType, mediaUrl, ...(replyTo ? { replyTo } : {}) };
+    let newMessage = {
+      fromUid,
+      text,
+      read: false,
+      createdAt: Date.now(),
+      authorName,
+      authorPhoto,
+      mediaType,
+      mediaUrl,
+      ...(replyTo ? { replyTo } : {}),
+    };
 
     if (groupId) {
       // --- 1. Try community rooms first ---
       let community = null;
       if (ObjectId.isValid(groupId)) {
-        community = await db.collection('communities').findOne({ _id: new ObjectId(groupId) });
+        community = await db
+          .collection("communities")
+          .findOne({ _id: new ObjectId(groupId) });
       }
       if (!community) {
-        community = await db.collection('communities').findOne({ _id: groupId });
+        community = await db
+          .collection("communities")
+          .findOne({ _id: groupId });
       }
 
       let groupTitle, recipients;
@@ -2032,20 +2369,24 @@ app.post('/api/chat/send', async (req, res) => {
       if (community) {
         // Community room
         if (!community.members.includes(fromUid)) {
-          return res.status(403).json({ error: 'You are not a member of this room' });
+          return res
+            .status(403)
+            .json({ error: "You are not a member of this room" });
         }
         groupTitle = community.name;
         newMessage.groupId = community._id.toString();
         newMessage.groupTitle = groupTitle;
         recipients = new Set(community.members);
         // Keep lastActivity fresh
-        await db.collection('communities').updateOne(
-          { _id: community._id },
-          { $set: { lastActivity: Date.now() } }
-        );
+        await db
+          .collection("communities")
+          .updateOne(
+            { _id: community._id },
+            { $set: { lastActivity: Date.now() } },
+          );
       } else {
         // --- 2. Fall back to meetup posts ---
-        const posts = db.collection('posts');
+        const posts = db.collection("posts");
         let query = {};
         if (ObjectId.isValid(groupId)) {
           query = { _id: new ObjectId(groupId) };
@@ -2053,14 +2394,16 @@ app.post('/api/chat/send', async (req, res) => {
           query = { _id: groupId };
         }
         const post = await posts.findOne(query);
-        if (!post) return res.status(404).json({ error: 'Group not found' });
+        if (!post) return res.status(404).json({ error: "Group not found" });
 
         const isHost = post.uid === fromUid;
         const isAttendee = post.attendees && post.attendees.includes(fromUid);
         if (!isHost && !isAttendee) {
-          return res.status(403).json({ error: 'You are not a member of this group' });
+          return res
+            .status(403)
+            .json({ error: "You are not a member of this group" });
         }
-        groupTitle = post.meetupDetails?.title || 'Meetup Group';
+        groupTitle = post.meetupDetails?.title || "Meetup Group";
         newMessage.groupId = String(post._id);
         newMessage.groupTitle = groupTitle;
         recipients = new Set([...(post.attendees || []), post.uid]);
@@ -2070,16 +2413,29 @@ app.post('/api/chat/send', async (req, res) => {
       const fullMessage = { ...newMessage, _id: result.insertedId };
 
       const notifUrl = community
-        ? { expo: `/community/${community._id}`, web: `/app/rooms/${community._id}` }
+        ? {
+            expo: `/community/${community._id}`,
+            web: `/app/rooms/${community._id}`,
+          }
         : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
 
-      const expoPayload = { title: `💬 ${groupTitle}`, body: `${authorName}: ${displayBody}`, data: { url: notifUrl.expo } };
-      const webPayloadStr = JSON.stringify({ title: `💬 ${groupTitle}`, body: `${authorName}: ${displayBody}`, icon: authorPhoto || '/pwa-192x192.png', data: { url: notifUrl.web } });
+      const expoPayload = {
+        title: `💬 ${groupTitle}`,
+        body: `${authorName}: ${displayBody}`,
+        data: { url: notifUrl.expo },
+      };
+      const webPayloadStr = JSON.stringify({
+        title: `💬 ${groupTitle}`,
+        body: `${authorName}: ${displayBody}`,
+        icon: authorPhoto || "/pwa-192x192.png",
+        data: { url: notifUrl.web },
+      });
 
       for (const uid of recipients) {
         sendToUser(uid, fullMessage);
         // Push only — no notification document, badge is driven client-side from the WS message
-        if (uid !== fromUid) sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => {});
+        if (uid !== fromUid)
+          sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => {});
       }
 
       return res.json(fullMessage);
@@ -2092,8 +2448,17 @@ app.post('/api/chat/send', async (req, res) => {
       sendToUser(fromUid, fullMessage);
 
       // Dispatch Push to receiver
-      const expoPayload = { title: authorName, body: displayBody, data: { url: `/chat/${fromUid}` } };
-      const webPayloadStr = JSON.stringify({ title: authorName, body: displayBody, icon: authorPhoto || "/pwa-192x192.png", data: { url: `/chat/${fromUid}` } });
+      const expoPayload = {
+        title: authorName,
+        body: displayBody,
+        data: { url: `/chat/${fromUid}` },
+      };
+      const webPayloadStr = JSON.stringify({
+        title: authorName,
+        body: displayBody,
+        icon: authorPhoto || "/pwa-192x192.png",
+        data: { url: `/chat/${fromUid}` },
+      });
       await sendPushNotification(toUid, webPayloadStr, expoPayload);
 
       return res.json(fullMessage);
@@ -2104,34 +2469,37 @@ app.post('/api/chat/send', async (req, res) => {
   }
 });
 
-app.get('/api/chat/history/:uid1/:uid2', async (req, res) => {
+app.get("/api/chat/history/:uid1/:uid2", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid1, uid2 } = req.params;
-    const messages = db.collection('messages');
-    const history = await messages.find({
-      $or: [{ fromUid: uid1, toUid: uid2 }, { fromUid: uid2, toUid: uid1 }]
-    }).sort({ createdAt: 1 }).toArray();
+    const messages = db.collection("messages");
+    const history = await messages
+      .find({
+        $or: [
+          { fromUid: uid1, toUid: uid2 },
+          { fromUid: uid2, toUid: uid1 },
+        ],
+      })
+      .sort({ createdAt: 1 })
+      .toArray();
     res.json(history);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch history" });
   }
 });
 
-app.get('/api/chat/history/:groupId', async (req, res) => {
+app.get("/api/chat/history/:groupId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { groupId } = req.params;
-    const messages = db.collection('messages');
+    const messages = db.collection("messages");
 
     // Support both string and ObjectId storage for robustness
     let query = { groupId: String(groupId) };
     if (ObjectId.isValid(groupId)) {
       query = {
-        $or: [
-          { groupId: String(groupId) },
-          { groupId: new ObjectId(groupId) }
-        ]
+        $or: [{ groupId: String(groupId) }, { groupId: new ObjectId(groupId) }],
       };
     }
 
@@ -2142,37 +2510,68 @@ app.get('/api/chat/history/:groupId', async (req, res) => {
   }
 });
 
-app.get('/api/chat/inbox/:uid', async (req, res) => {
+app.get("/api/chat/inbox/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    const messages = db.collection('messages');
+    const messages = db.collection("messages");
 
     // 1. Direct Messages
     const directPipeline = [
-      { $match: { groupId: { $exists: false }, $or: [{ fromUid: uid }, { toUid: uid }] } },
+      {
+        $match: {
+          groupId: { $exists: false },
+          $or: [{ fromUid: uid }, { toUid: uid }],
+        },
+      },
       { $sort: { createdAt: -1 } },
       {
         $group: {
           _id: { $cond: [{ $eq: ["$fromUid", uid] }, "$toUid", "$fromUid"] },
           lastMessage: { $first: "$$ROOT" },
-          unreadCount: { $sum: { $cond: [{ $and: [{ $eq: ["$toUid", uid] }, { $eq: ["$read", false] }] }, 1, 0] } }
-        }
+          unreadCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ["$toUid", uid] }, { $eq: ["$read", false] }] },
+                1,
+                0,
+              ],
+            },
+          },
+        },
       },
-      { $lookup: { from: "profiles", localField: "_id", foreignField: "uid", as: "otherUser" } },
+      {
+        $lookup: {
+          from: "profiles",
+          localField: "_id",
+          foreignField: "uid",
+          as: "otherUser",
+        },
+      },
       { $unwind: "$otherUser" },
-      { $project: { _id: 0, type: "direct", partner: "$otherUser", lastMessage: 1, unreadCount: 1 } }
+      {
+        $project: {
+          _id: 0,
+          type: "direct",
+          partner: "$otherUser",
+          lastMessage: 1,
+          unreadCount: 1,
+        },
+      },
     ];
 
     // 2. Group Chats (Meetups) - Fetch all active meetups user is part of
-    const posts = db.collection('posts');
-    const userGroups = await posts.find({
-      $or: [{ uid: uid }, { attendees: uid }],
-      type: 'meetup'
-    }).project({ _id: 1, meetupDetails: 1, createdAt: 1 }).toArray();
+    const posts = db.collection("posts");
+    const userGroups = await posts
+      .find({
+        $or: [{ uid: uid }, { attendees: uid }],
+        type: "meetup",
+      })
+      .project({ _id: 1, meetupDetails: 1, createdAt: 1 })
+      .toArray();
 
-    const groupIds = userGroups.map(g => g._id.toString());
-    const groupObjectIds = userGroups.map(g => g._id);
+    const groupIds = userGroups.map((g) => g._id.toString());
+    const groupObjectIds = userGroups.map((g) => g._id);
 
     // Get actual last messages for these groups, robust against ID type
     const groupPipeline = [
@@ -2180,28 +2579,33 @@ app.get('/api/chat/inbox/:uid', async (req, res) => {
         $match: {
           $or: [
             { groupId: { $in: groupIds } },
-            { groupId: { $in: groupObjectIds } }
-          ]
-        }
+            { groupId: { $in: groupObjectIds } },
+          ],
+        },
       },
       { $sort: { createdAt: -1 } },
       // Normalize groupId to string for grouping to avoid duplicate entries for same group
-      { $group: { _id: { $toString: "$groupId" }, lastMessage: { $first: "$$ROOT" } } }
+      {
+        $group: {
+          _id: { $toString: "$groupId" },
+          lastMessage: { $first: "$$ROOT" },
+        },
+      },
     ];
 
     const [directChats, groupMessages] = await Promise.all([
       messages.aggregate(directPipeline).toArray(),
-      messages.aggregate(groupPipeline).toArray()
+      messages.aggregate(groupPipeline).toArray(),
     ]);
 
     // Map existing messages
     const groupMsgMap = {};
-    groupMessages.forEach(g => {
+    groupMessages.forEach((g) => {
       groupMsgMap[g._id] = g.lastMessage;
     });
 
     // Construct persistent group chat items
-    const groupChats = userGroups.map(g => {
+    const groupChats = userGroups.map((g) => {
       const gid = g._id.toString();
       const existingMsg = groupMsgMap[gid];
 
@@ -2213,25 +2617,27 @@ app.get('/api/chat/inbox/:uid', async (req, res) => {
       } else {
         // Synthetic message for empty groups
         lastMessage = {
-          _id: 'synthetic_' + gid,
-          fromUid: 'system',
-          text: 'Meetup created',
+          _id: "synthetic_" + gid,
+          fromUid: "system",
+          text: "Meetup created",
           createdAt: g.createdAt,
           groupTitle: g.meetupDetails?.title,
-          read: true
+          read: true,
         };
       }
 
       return {
-        type: 'group',
+        type: "group",
         groupId: gid,
         lastMessage: lastMessage,
-        unreadCount: 0 // Future: implement group read receipts
+        unreadCount: 0, // Future: implement group read receipts
       };
     });
 
     // Combine and sort by latest activity
-    const allChats = [...directChats, ...groupChats].sort((a, b) => b.lastMessage.createdAt - a.lastMessage.createdAt);
+    const allChats = [...directChats, ...groupChats].sort(
+      (a, b) => b.lastMessage.createdAt - a.lastMessage.createdAt,
+    );
 
     res.json(allChats);
   } catch (error) {
@@ -2240,13 +2646,16 @@ app.get('/api/chat/inbox/:uid', async (req, res) => {
   }
 });
 
-app.post('/api/chat/mark-read', async (req, res) => {
+app.post("/api/chat/mark-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { myUid, partnerUid, groupId } = req.body;
-    const messages = db.collection('messages');
+    const messages = db.collection("messages");
     if (!groupId) {
-      await messages.updateMany({ toUid: myUid, fromUid: partnerUid, read: false }, { $set: { read: true } });
+      await messages.updateMany(
+        { toUid: myUid, fromUid: partnerUid, read: false },
+        { $set: { read: true } },
+      );
     }
     res.json({ success: true });
   } catch (e) {
@@ -2255,27 +2664,34 @@ app.post('/api/chat/mark-read', async (req, res) => {
 });
 
 // Delete (unsend) a single message — only the sender can do this
-app.delete('/api/chat/message/:messageId', async (req, res) => {
+app.delete("/api/chat/message/:messageId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { messageId } = req.params;
     const { fromUid } = req.body;
     if (!fromUid) return res.status(400).json({ error: "fromUid required" });
 
-    const messages = db.collection('messages');
-    const { ObjectId } = require('mongodb');
+    const messages = db.collection("messages");
+    const { ObjectId } = require("mongodb");
     let query;
-    try { query = { _id: new ObjectId(messageId), fromUid }; }
-    catch { return res.status(400).json({ error: "Invalid message ID" }); }
+    try {
+      query = { _id: new ObjectId(messageId), fromUid };
+    } catch {
+      return res.status(400).json({ error: "Invalid message ID" });
+    }
 
-    const result = await messages.updateOne(query, { $set: { deleted: true, text: '', mediaUrl: null } });
-    if (result.matchedCount === 0) return res.status(403).json({ error: "Not found or not your message" });
+    const result = await messages.updateOne(query, {
+      $set: { deleted: true, text: "", mediaUrl: null },
+    });
+    if (result.matchedCount === 0)
+      return res.status(403).json({ error: "Not found or not your message" });
 
     // Broadcast deletion to WebSocket clients
     const broadcastDelete = (uid) => {
       if (clients.has(uid)) {
-        clients.get(uid).forEach(ws => {
-          if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'message_deleted', messageId }));
+        clients.get(uid).forEach((ws) => {
+          if (ws.readyState === 1)
+            ws.send(JSON.stringify({ type: "message_deleted", messageId }));
         });
       }
     };
@@ -2298,11 +2714,11 @@ app.delete('/api/chat/message/:messageId', async (req, res) => {
   }
 });
 
-app.get('/api/chat/unread-count/:uid', async (req, res) => {
+app.get("/api/chat/unread-count/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    const messages = db.collection('messages');
+    const messages = db.collection("messages");
     const count = await messages.countDocuments({ toUid: uid, read: false });
     res.json({ count });
   } catch (e) {
@@ -2313,11 +2729,12 @@ app.get('/api/chat/unread-count/:uid', async (req, res) => {
 // =====================
 // STORIES (MOMENTS)
 // =====================
-app.post('/api/stories', async (req, res) => {
+app.post("/api/stories", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, authorName, authorPhoto, imageURL, location } = req.body;
-    if (!uid || !imageURL) return res.status(400).json({ error: "Missing required fields" });
+    if (!uid || !imageURL)
+      return res.status(400).json({ error: "Missing required fields" });
 
     const newStory = {
       uid,
@@ -2327,10 +2744,10 @@ app.post('/api/stories', async (req, res) => {
       location, // { lat, lng, name }
       createdAt: Date.now(),
       expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-      views: [] // Track uids of viewers
+      views: [], // Track uids of viewers
     };
 
-    const result = await db.collection('stories').insertOne(newStory);
+    const result = await db.collection("stories").insertOne(newStory);
     res.json({ ...newStory, _id: result.insertedId });
   } catch (error) {
     console.error("Create Story Error:", error);
@@ -2338,29 +2755,38 @@ app.post('/api/stories', async (req, res) => {
   }
 });
 
-app.get('/api/stories', async (req, res) => {
+app.get("/api/stories", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { viewerUid } = req.query;
-    const profile = viewerUid ? await db.collection('profiles').findOne({ uid: viewerUid }) : null;
+    const profile = viewerUid
+      ? await db.collection("profiles").findOne({ uid: viewerUid })
+      : null;
     const myLocation = profile?.lastLocation;
     const radius = profile?.discoveryRadius || 10; // km
 
     const now = Date.now();
     const query = { expiresAt: { $gt: now } };
 
-    const stories = await db.collection('stories').find(query).sort({ createdAt: -1 }).toArray();
+    const stories = await db
+      .collection("stories")
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
 
     // Group by User
     const groupedStories = stories.reduce((acc, story) => {
       // Geo-filtering
       if (myLocation && story.location && story.uid !== viewerUid) {
         const R = 6371; // km
-        const dLat = (story.location.lat - myLocation.lat) * Math.PI / 180;
-        const dLon = (story.location.lng - myLocation.lng) * Math.PI / 180;
-        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos(myLocation.lat * Math.PI / 180) * Math.cos(story.location.lat * Math.PI / 180) *
-          Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const dLat = ((story.location.lat - myLocation.lat) * Math.PI) / 180;
+        const dLon = ((story.location.lng - myLocation.lng) * Math.PI) / 180;
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos((myLocation.lat * Math.PI) / 180) *
+            Math.cos((story.location.lat * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const dist = R * c;
         if (dist > radius) return acc;
@@ -2371,7 +2797,7 @@ app.get('/api/stories', async (req, res) => {
           uid: story.uid,
           authorName: story.authorName,
           authorPhoto: story.authorPhoto,
-          stories: []
+          stories: [],
         };
       }
       acc[story.uid].stories.push(story);
@@ -2385,32 +2811,31 @@ app.get('/api/stories', async (req, res) => {
   }
 });
 
-app.post('/api/stories/:storyId/view', async (req, res) => {
+app.post("/api/stories/:storyId/view", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { storyId } = req.params;
     const { uid } = req.body;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
 
-    await db.collection('stories').updateOne(
-      { _id: new ObjectId(storyId) },
-      { $addToSet: { views: uid } }
-    );
+    await db
+      .collection("stories")
+      .updateOne({ _id: new ObjectId(storyId) }, { $addToSet: { views: uid } });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to record view" });
   }
 });
 
-app.delete('/api/stories/:storyId', async (req, res) => {
+app.delete("/api/stories/:storyId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { storyId } = req.params;
     const { uid } = req.body; // Owner UID for verification
 
-    const result = await db.collection('stories').deleteOne({
+    const result = await db.collection("stories").deleteOne({
       _id: new ObjectId(storyId),
-      uid: uid
+      uid: uid,
     });
 
     if (result.deletedCount === 1) {
@@ -2430,16 +2855,19 @@ const CHAT_EXPIRATION_MS = CHAT_EXPIRATION_DAYS * 24 * 60 * 60 * 1000;
 async function expireInactiveChats() {
   if (!db) return;
   try {
-    const chats = db.collection('chats');
+    const chats = db.collection("chats");
     const now = Date.now();
 
     // Mark chats as expired if inactive for 7 days
     await chats.updateMany(
-      { lastActivity: { $lt: now - CHAT_EXPIRATION_MS }, expired: { $ne: true } },
-      { $set: { expired: true } }
+      {
+        lastActivity: { $lt: now - CHAT_EXPIRATION_MS },
+        expired: { $ne: true },
+      },
+      { $set: { expired: true } },
     );
   } catch (e) {
-    console.error('Error expiring inactive chats:', e);
+    console.error("Error expiring inactive chats:", e);
   }
 }
 
@@ -2447,29 +2875,30 @@ async function expireInactiveChats() {
 setInterval(expireInactiveChats, 24 * 60 * 60 * 1000); // Run daily
 
 // --- Revive Chat API ---
-app.post('/api/chats/:chatId/revive', requireAuth, async (req, res) => {
+app.post("/api/chats/:chatId/revive", requireAuth, async (req, res) => {
   const { chatId } = req.params;
   const uid = req.body.uid;
 
-  if (!db) return res.status(500).json({ error: 'Database not initialized' });
+  if (!db) return res.status(500).json({ error: "Database not initialized" });
 
   try {
-    const chats = db.collection('chats');
+    const chats = db.collection("chats");
     const chat = await chats.findOne({ _id: new ObjectId(chatId) });
 
-    if (!chat) return res.status(404).json({ error: 'Chat not found' });
-    if (chat.expired !== true) return res.status(400).json({ error: 'Chat is not expired' });
+    if (!chat) return res.status(404).json({ error: "Chat not found" });
+    if (chat.expired !== true)
+      return res.status(400).json({ error: "Chat is not expired" });
 
     // Revive the chat
     await chats.updateOne(
       { _id: new ObjectId(chatId) },
-      { $set: { expired: false, lastActivity: Date.now() } }
+      { $set: { expired: false, lastActivity: Date.now() } },
     );
 
-    res.json({ message: 'Chat revived successfully' });
+    res.json({ message: "Chat revived successfully" });
   } catch (e) {
-    console.error('Error reviving chat:', e);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error("Error reviving chat:", e);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -2478,192 +2907,249 @@ app.post('/api/chats/:chatId/revive', requireAuth, async (req, res) => {
 // ============================================================
 
 // Create a community room
-app.post('/api/communities', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/communities", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid, name, description, tags, isPrivate } = req.body;
-    if (!uid || !name || typeof name !== 'string' || name.trim().length === 0) {
-      return res.status(400).json({ error: 'uid and name are required' });
+    if (!uid || !name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ error: "uid and name are required" });
     }
     const trimmedName = name.trim().slice(0, 80);
-    if (trimmedName.length < 2) return res.status(400).json({ error: 'Name must be at least 2 characters' });
-    const communities = db.collection('communities');
+    if (trimmedName.length < 2)
+      return res
+        .status(400)
+        .json({ error: "Name must be at least 2 characters" });
+    const communities = db.collection("communities");
     const result = await communities.insertOne({
       name: trimmedName,
-      description: (description || '').trim().slice(0, 300),
+      description: (description || "").trim().slice(0, 300),
       ownerUid: uid,
       members: [uid],
       createdAt: Date.now(),
       lastActivity: Date.now(),
-      tags: Array.isArray(tags) ? tags.slice(0, 5).map(t => String(t).slice(0, 30)) : [],
+      tags: Array.isArray(tags)
+        ? tags.slice(0, 5).map((t) => String(t).slice(0, 30))
+        : [],
       isPrivate: isPrivate === true,
       pinnedMessageId: null,
       pinnedMessageText: null,
     });
     res.json({ success: true, id: result.insertedId.toString() });
   } catch (e) {
-    console.error('Create community error:', e);
-    res.status(500).json({ error: 'Failed to create community' });
+    console.error("Create community error:", e);
+    res.status(500).json({ error: "Failed to create community" });
   }
 });
 
 // List all public communities
-app.get('/api/communities', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/communities", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const communities = db.collection('communities');
-    const list = await communities.find({})
+    const communities = db.collection("communities");
+    const list = await communities
+      .find({})
       .sort({ lastActivity: -1 })
       .limit(100)
       .toArray();
     res.json(list);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch communities' });
+    res.status(500).json({ error: "Failed to fetch communities" });
   }
 });
 
 // Get a single community
-app.get('/api/communities/:id', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/communities/:id", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid ID' });
-    const communities = db.collection('communities');
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid ID" });
+    const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
     res.json(community);
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch community' });
+    res.status(500).json({ error: "Failed to fetch community" });
   }
 });
 
 // Join a community
-app.post('/api/communities/:id/join', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/communities/:id/join", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { uid } = req.body;
-    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const communities = db.collection('communities');
+    if (!uid || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
     await communities.updateOne(
       { _id: new ObjectId(id) },
-      { $addToSet: { members: uid }, $set: { lastActivity: Date.now() } }
+      { $addToSet: { members: uid }, $set: { lastActivity: Date.now() } },
     );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to join community' });
+    res.status(500).json({ error: "Failed to join community" });
   }
 });
 
 // Leave a community
-app.post('/api/communities/:id/leave', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/communities/:id/leave", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { uid } = req.body;
-    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const communities = db.collection('communities');
+    if (!uid || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
-    if (community.ownerUid === uid) return res.status(400).json({ error: 'Owner cannot leave. Delete the room instead.' });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
+    if (community.ownerUid === uid)
+      return res
+        .status(400)
+        .json({ error: "Owner cannot leave. Delete the room instead." });
     await communities.updateOne(
       { _id: new ObjectId(id) },
-      { $pull: { members: uid } }
+      { $pull: { members: uid } },
     );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to leave community' });
+    res.status(500).json({ error: "Failed to leave community" });
   }
 });
 
 // Update a community (owner only)
-app.put('/api/communities/:id', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.put("/api/communities/:id", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { uid, name, description } = req.body;
-    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const communities = db.collection('communities');
+    if (!uid || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
-    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can edit this room' });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
+    if (community.ownerUid !== uid)
+      return res
+        .status(403)
+        .json({ error: "Only the owner can edit this room" });
     const updates = {};
-    if (name && name.trim().length >= 2) updates.name = name.trim().slice(0, 80);
-    if (description !== undefined) updates.description = (description || '').trim().slice(0, 300);
-    if (Array.isArray(req.body.tags)) updates.tags = req.body.tags.slice(0, 5).map(t => String(t).slice(0, 30));
-    if (typeof req.body.isPrivate === 'boolean') updates.isPrivate = req.body.isPrivate;
+    if (name && name.trim().length >= 2)
+      updates.name = name.trim().slice(0, 80);
+    if (description !== undefined)
+      updates.description = (description || "").trim().slice(0, 300);
+    if (Array.isArray(req.body.tags))
+      updates.tags = req.body.tags
+        .slice(0, 5)
+        .map((t) => String(t).slice(0, 30));
+    if (typeof req.body.isPrivate === "boolean")
+      updates.isPrivate = req.body.isPrivate;
     await communities.updateOne({ _id: new ObjectId(id) }, { $set: updates });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to update community' });
+    res.status(500).json({ error: "Failed to update community" });
   }
 });
 
 // Delete a community (owner only)
-app.delete('/api/communities/:id', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/communities/:id", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { uid } = req.body;
-    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const communities = db.collection('communities');
+    if (!uid || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
-    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can delete this room' });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
+    if (community.ownerUid !== uid)
+      return res
+        .status(403)
+        .json({ error: "Only the owner can delete this room" });
     await communities.deleteOne({ _id: new ObjectId(id) });
     // Remove all messages for this room
-    await db.collection('messages').deleteMany({ groupId: id });
+    await db.collection("messages").deleteMany({ groupId: id });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete community' });
+    res.status(500).json({ error: "Failed to delete community" });
   }
 });
 
 // Delete a single group message (sender or room owner)
-app.delete('/api/communities/:id/messages/:msgId', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/communities/:id/messages/:msgId", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id, msgId } = req.params;
     const { uid } = req.body;
-    if (!uid || !ObjectId.isValid(msgId) || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const messages = db.collection('messages');
+    if (!uid || !ObjectId.isValid(msgId) || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const messages = db.collection("messages");
     const msg = await messages.findOne({ _id: new ObjectId(msgId) });
-    if (!msg) return res.status(404).json({ error: 'Message not found' });
-    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
+    if (!msg) return res.status(404).json({ error: "Message not found" });
+    const community = await db
+      .collection("communities")
+      .findOne({ _id: new ObjectId(id) });
     const isOwner = community?.ownerUid === uid;
-    if (msg.fromUid !== uid && !isOwner) return res.status(403).json({ error: 'Not authorized' });
-    await messages.updateOne({ _id: new ObjectId(msgId) }, { $set: { deleted: true, text: '', mediaUrl: null } });
+    if (msg.fromUid !== uid && !isOwner)
+      return res.status(403).json({ error: "Not authorized" });
+    await messages.updateOne(
+      { _id: new ObjectId(msgId) },
+      { $set: { deleted: true, text: "", mediaUrl: null } },
+    );
     // Broadcast deletion to room subscribers
     const roomWs = rooms?.get(id);
     if (roomWs) {
-      const payload = JSON.stringify({ type: 'message_deleted', messageId: msgId });
-      roomWs.forEach(ws => { try { ws.send(payload); } catch {} });
+      const payload = JSON.stringify({
+        type: "message_deleted",
+        messageId: msgId,
+      });
+      roomWs.forEach((ws) => {
+        try {
+          ws.send(payload);
+        } catch {}
+      });
     }
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete message' });
+    res.status(500).json({ error: "Failed to delete message" });
   }
 });
 
 // Pin a message (room owner only)
-app.put('/api/communities/:id/pin', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.put("/api/communities/:id/pin", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { uid, messageId, messageText } = req.body;
-    if (!uid || !ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid request' });
-    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
-    if (community.ownerUid !== uid) return res.status(403).json({ error: 'Only the owner can pin messages' });
-    await db.collection('communities').updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { pinnedMessageId: messageId || null, pinnedMessageText: messageText || null } }
-    );
+    if (!uid || !ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid request" });
+    const community = await db
+      .collection("communities")
+      .findOne({ _id: new ObjectId(id) });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
+    if (community.ownerUid !== uid)
+      return res.status(403).json({ error: "Only the owner can pin messages" });
+    await db
+      .collection("communities")
+      .updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            pinnedMessageId: messageId || null,
+            pinnedMessageText: messageText || null,
+          },
+        },
+      );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to pin message' });
+    res.status(500).json({ error: "Failed to pin message" });
   }
 });
 
@@ -2672,21 +3158,22 @@ app.put('/api/communities/:id/pin', async (req, res) => {
 // All routes require the X-Admin-Secret header to match
 // SUPER_ADMIN_SECRET in the environment.
 // ============================================================
-const SUPER_ADMIN_SECRET = process.env.SUPER_ADMIN_SECRET || 'orbyt_super_admin_secret_change_me';
+const SUPER_ADMIN_SECRET =
+  process.env.SUPER_ADMIN_SECRET || "orbyt_super_admin_secret_change_me";
 
 function requireAdmin(req, res, next) {
-  const provided = req.headers['x-admin-secret'];
+  const provided = req.headers["x-admin-secret"];
   if (!provided || provided !== SUPER_ADMIN_SECRET) {
-    return res.status(403).json({ error: 'Forbidden' });
+    return res.status(403).json({ error: "Forbidden" });
   }
   next();
 }
 
 // Admin login — just validates the secret and returns a session token
-app.post('/api/admin/login', authLimiter, (req, res) => {
+app.post("/api/admin/login", authLimiter, (req, res) => {
   const { secret } = req.body;
   if (!secret || secret !== SUPER_ADMIN_SECRET) {
-    return res.status(403).json({ error: 'Invalid admin credentials' });
+    return res.status(403).json({ error: "Invalid admin credentials" });
   }
   // Return the secret itself as the "token" — the client stores it
   // and sends it back as X-Admin-Secret on every subsequent request.
@@ -2694,45 +3181,85 @@ app.post('/api/admin/login', authLimiter, (req, res) => {
 });
 
 // GET /api/admin/users — server-side search / filter / sort / pagination
-app.get('/api/admin/users', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const page    = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit   = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
-    const search  = (req.query.search  || '').trim().toLowerCase();
-    const filter  = req.query.filter  || 'all';          // all|flagged|suspended
-    const sortBy  = req.query.sort    || 'reportCount';  // reportCount|postCount|displayName|createdAt|friendCount
-    const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const search = (req.query.search || "").trim().toLowerCase();
+    const filter = req.query.filter || "all"; // all|flagged|suspended
+    const sortBy = req.query.sort || "reportCount"; // reportCount|postCount|displayName|createdAt|friendCount
+    const sortDir = req.query.sortDir === "asc" ? 1 : -1;
 
-    const usersCol  = db.collection('users');
-    const profiles  = db.collection('profiles');
-    const posts     = db.collection('posts');
-    const stories   = db.collection('stories');
-    const reports   = db.collection('reports');
+    const usersCol = db.collection("users");
+    const profiles = db.collection("profiles");
+    const posts = db.collection("posts");
+    const stories = db.collection("stories");
+    const reports = db.collection("reports");
 
-    const [allUsers, allProfiles, postCounts, storyCounts, reportCounts] = await Promise.all([
-      usersCol.find({}).project({ _id: 1, email: 1, createdAt: 1, authType: 1 }).toArray(),
-      profiles.find({}).project({ uid: 1, displayName: 1, photoURL: 1, createdAt: 1, jobRole: 1, bio: 1, friends: 1, isSuspended: 1 }).toArray(),
-      posts.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
-      stories.aggregate([{ $group: { _id: '$uid', count: { $sum: 1 } } }]).toArray(),
-      reports.aggregate([{ $group: { _id: '$targetUid', count: { $sum: 1 } } }]).toArray(),
-    ]);
+    const [allUsers, allProfiles, postCounts, storyCounts, reportCounts] =
+      await Promise.all([
+        usersCol
+          .find({})
+          .project({ _id: 1, email: 1, createdAt: 1, authType: 1 })
+          .toArray(),
+        profiles
+          .find({})
+          .project({
+            uid: 1,
+            displayName: 1,
+            photoURL: 1,
+            createdAt: 1,
+            jobRole: 1,
+            bio: 1,
+            friends: 1,
+            isSuspended: 1,
+          })
+          .toArray(),
+        posts
+          .aggregate([{ $group: { _id: "$uid", count: { $sum: 1 } } }])
+          .toArray(),
+        stories
+          .aggregate([{ $group: { _id: "$uid", count: { $sum: 1 } } }])
+          .toArray(),
+        reports
+          .aggregate([{ $group: { _id: "$targetUid", count: { $sum: 1 } } }])
+          .toArray(),
+      ]);
 
-    const profileMap = {}; allProfiles.forEach(p => { profileMap[p.uid] = p; });
-    const postCountMap = {};   postCounts.forEach(r => { postCountMap[r._id] = r.count; });
-    const storyCountMap = {};  storyCounts.forEach(r => { storyCountMap[r._id] = r.count; });
-    const reportCountMap = {}; reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
+    const profileMap = {};
+    allProfiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
+    const postCountMap = {};
+    postCounts.forEach((r) => {
+      postCountMap[r._id] = r.count;
+    });
+    const storyCountMap = {};
+    storyCounts.forEach((r) => {
+      storyCountMap[r._id] = r.count;
+    });
+    const reportCountMap = {};
+    reportCounts.forEach((r) => {
+      reportCountMap[r._id] = r.count;
+    });
 
-    let result = allUsers.map(u => {
+    let result = allUsers.map((u) => {
       const uid = u._id.toString();
       const p = profileMap[uid] || {};
       return {
-        uid, email: u.email, authType: u.authType || 'email',
-        displayName: p.displayName || u.email?.split('@')[0] || 'Unknown',
-        photoURL: p.photoURL || '', bio: p.bio || '', jobRole: p.jobRole || '',
+        uid,
+        email: u.email,
+        authType: u.authType || "email",
+        displayName: p.displayName || u.email?.split("@")[0] || "Unknown",
+        photoURL: p.photoURL || "",
+        bio: p.bio || "",
+        jobRole: p.jobRole || "",
         createdAt: u.createdAt,
-        postCount: postCountMap[uid] || 0, storyCount: storyCountMap[uid] || 0,
-        reportCount: reportCountMap[uid] || 0, friendCount: (p.friends || []).length,
+        postCount: postCountMap[uid] || 0,
+        storyCount: storyCountMap[uid] || 0,
+        reportCount: reportCountMap[uid] || 0,
+        friendCount: (p.friends || []).length,
         isSuspended: p.isSuspended || false,
       };
     });
@@ -2740,60 +3267,72 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
     // Counts before search/filter (for filter pill badges)
     const counts = {
       all: result.length,
-      flagged: result.filter(u => u.reportCount > 0).length,
-      suspended: result.filter(u => u.isSuspended).length,
+      flagged: result.filter((u) => u.reportCount > 0).length,
+      suspended: result.filter((u) => u.isSuspended).length,
     };
 
     // Search
     if (search) {
-      result = result.filter(u =>
-        (u.displayName || '').toLowerCase().includes(search) ||
-        (u.email || '').toLowerCase().includes(search) ||
-        u.uid.includes(search)
+      result = result.filter(
+        (u) =>
+          (u.displayName || "").toLowerCase().includes(search) ||
+          (u.email || "").toLowerCase().includes(search) ||
+          u.uid.includes(search),
       );
     }
 
     // Filter
-    if (filter === 'flagged')   result = result.filter(u => u.reportCount > 0);
-    else if (filter === 'suspended') result = result.filter(u => u.isSuspended);
+    if (filter === "flagged") result = result.filter((u) => u.reportCount > 0);
+    else if (filter === "suspended")
+      result = result.filter((u) => u.isSuspended);
 
     // Sort
     result.sort((a, b) => {
       let diff = 0;
-      if (sortBy === 'displayName')  diff = (a.displayName || '').localeCompare(b.displayName || '');
-      else if (sortBy === 'createdAt')  diff = (new Date(a.createdAt).getTime()||0) - (new Date(b.createdAt).getTime()||0);
-      else if (sortBy === 'postCount')  diff = a.postCount - b.postCount;
-      else if (sortBy === 'friendCount') diff = a.friendCount - b.friendCount;
+      if (sortBy === "displayName")
+        diff = (a.displayName || "").localeCompare(b.displayName || "");
+      else if (sortBy === "createdAt")
+        diff =
+          (new Date(a.createdAt).getTime() || 0) -
+          (new Date(b.createdAt).getTime() || 0);
+      else if (sortBy === "postCount") diff = a.postCount - b.postCount;
+      else if (sortBy === "friendCount") diff = a.friendCount - b.friendCount;
       else diff = a.reportCount - b.reportCount;
       return diff * sortDir;
     });
 
     const total = result.length;
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.json({ users: result.slice((page - 1) * limit, page * limit), total, page, pages, counts });
+    res.json({
+      users: result.slice((page - 1) * limit, page * limit),
+      total,
+      page,
+      pages,
+      counts,
+    });
   } catch (e) {
-    console.error('Admin get users error:', e);
-    res.status(500).json({ error: 'Failed to fetch users' });
+    console.error("Admin get users error:", e);
+    res.status(500).json({ error: "Failed to fetch users" });
   }
 });
 
 // DELETE /api/admin/users/:uid — permanently delete a user and ALL their data
-app.delete('/api/admin/users/:uid', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/users/:uid", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
 
     const collections = {
-      users: db.collection('users'),
-      profiles: db.collection('profiles'),
-      posts: db.collection('posts'),
-      stories: db.collection('stories'),
-      messages: db.collection('messages'),
-      notifications: db.collection('notifications'),
-      reports: db.collection('reports'),
-      profile_views: db.collection('profile_views'),
-      communities: db.collection('communities'),
+      users: db.collection("users"),
+      profiles: db.collection("profiles"),
+      posts: db.collection("posts"),
+      stories: db.collection("stories"),
+      messages: db.collection("messages"),
+      notifications: db.collection("notifications"),
+      reports: db.collection("reports"),
+      profile_views: db.collection("profile_views"),
+      communities: db.collection("communities"),
     };
 
     // 1. Delete user auth record
@@ -2811,109 +3350,196 @@ app.delete('/api/admin/users/:uid', requireAdmin, async (req, res) => {
     await collections.stories.deleteMany({ uid });
 
     // 5. Delete all messages sent or received
-    await collections.messages.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+    await collections.messages.deleteMany({
+      $or: [{ fromUid: uid }, { toUid: uid }],
+    });
 
     // 6. Delete all notifications involving this user
-    await collections.notifications.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+    await collections.notifications.deleteMany({
+      $or: [{ fromUid: uid }, { toUid: uid }],
+    });
 
     // 7. Delete all reports by or against this user
-    await collections.reports.deleteMany({ $or: [{ reporterUid: uid }, { targetUid: uid }] });
+    await collections.reports.deleteMany({
+      $or: [{ reporterUid: uid }, { targetUid: uid }],
+    });
 
     // 8. Delete profile views
-    await collections.profile_views.deleteMany({ $or: [{ viewerUid: uid }, { targetUid: uid }] });
+    await collections.profile_views.deleteMany({
+      $or: [{ viewerUid: uid }, { targetUid: uid }],
+    });
 
     // 9. Remove this user from all friend/block lists
-    await collections.profiles.updateMany({}, {
-      $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid, blockedUsers: uid, passedUsers: uid }
-    });
+    await collections.profiles.updateMany(
+      {},
+      {
+        $pull: {
+          friends: uid,
+          incomingRequests: uid,
+          outgoingRequests: uid,
+          blockedUsers: uid,
+          passedUsers: uid,
+        },
+      },
+    );
 
     // 10. Remove from community member lists
-    await collections.communities.updateMany({}, {
-      $pull: { members: uid }
-    });
+    await collections.communities.updateMany(
+      {},
+      {
+        $pull: { members: uid },
+      },
+    );
 
     // 11. Remove comments & likes left by this user on posts
-    await collections.posts.updateMany({}, {
-      $pull: { comments: { uid }, likedBy: uid }
-    });
+    await collections.posts.updateMany(
+      {},
+      {
+        $pull: { comments: { uid }, likedBy: uid },
+      },
+    );
     // Re-calculate like counts
-    const affectedPosts = await collections.posts.find({ likedBy: { $exists: true } }).toArray();
+    const affectedPosts = await collections.posts
+      .find({ likedBy: { $exists: true } })
+      .toArray();
     for (const post of affectedPosts) {
-      await collections.posts.updateOne({ _id: post._id }, { $set: { likes: (post.likedBy || []).length } });
+      await collections.posts.updateOne(
+        { _id: post._id },
+        { $set: { likes: (post.likedBy || []).length } },
+      );
     }
 
     // Log admin action
     auditLogs.push({
       timestamp: new Date().toISOString(),
-      action: 'admin_delete_user',
+      action: "admin_delete_user",
       targetUid: uid,
       ip: req.ip,
     });
 
-    res.json({ success: true, message: `User ${uid} and all their data have been permanently deleted.` });
+    res.json({
+      success: true,
+      message: `User ${uid} and all their data have been permanently deleted.`,
+    });
   } catch (e) {
-    console.error('Admin delete user error:', e);
-    res.status(500).json({ error: 'Failed to delete user' });
+    console.error("Admin delete user error:", e);
+    res.status(500).json({ error: "Failed to delete user" });
   }
 });
 
 // GET /api/admin/reports — server-side status-filter / search / pagination
-app.get('/api/admin/reports', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/reports", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const page   = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
-    const status = req.query.status || 'all';  // all|pending|resolved|dismissed
-    const search = (req.query.search || '').trim().toLowerCase();
-    const typeFilter = req.query.type || 'all'; // all|user|post|story|meetup|community
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 25));
+    const status = req.query.status || "all"; // all|pending|resolved|dismissed
+    const search = (req.query.search || "").trim().toLowerCase();
+    const typeFilter = req.query.type || "all"; // all|user|post|story|meetup|community
 
-    const allReports = await db.collection('reports').find({}).sort({ createdAt: -1 }).toArray();
+    const allReports = await db
+      .collection("reports")
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
 
     // Enrich reporter / target profiles
-    const uids = [...new Set(allReports.flatMap(r => [r.reporterUid, r.targetUid].filter(Boolean)))];
-    const profileDocs = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const uids = [
+      ...new Set(
+        allReports.flatMap((r) => [r.reporterUid, r.targetUid].filter(Boolean)),
+      ),
+    ];
+    const profileDocs = await db
+      .collection("profiles")
+      .find({ uid: { $in: uids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1 })
+      .toArray();
     const profileMap = {};
-    profileDocs.forEach(p => { profileMap[p.uid] = p; });
+    profileDocs.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
     // Enrich posts (post / meetup type)
-    const postIds = allReports.filter(r => r.postId && ObjectId.isValid(r.postId)).map(r => new ObjectId(r.postId));
-    const postDocs = postIds.length > 0
-      ? await db.collection('posts').find({ _id: { $in: postIds } }).project({ _id: 1, content: 1, imageURL: 1, type: 1, meetupDetails: 1 }).toArray()
-      : [];
+    const postIds = allReports
+      .filter((r) => r.postId && ObjectId.isValid(r.postId))
+      .map((r) => new ObjectId(r.postId));
+    const postDocs =
+      postIds.length > 0
+        ? await db
+            .collection("posts")
+            .find({ _id: { $in: postIds } })
+            .project({
+              _id: 1,
+              content: 1,
+              imageURL: 1,
+              type: 1,
+              meetupDetails: 1,
+            })
+            .toArray()
+        : [];
     const postMap = {};
-    postDocs.forEach(p => { postMap[p._id.toString()] = p; });
+    postDocs.forEach((p) => {
+      postMap[p._id.toString()] = p;
+    });
 
     // Enrich stories
-    const storyIds = allReports.filter(r => r.storyId).map(r => r.storyId);
-    const storyDocs = storyIds.length > 0
-      ? await db.collection('stories').find({
-          $or: [
-            { _id: { $in: storyIds.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id)) } },
-            { _id: { $in: storyIds } },
-          ]
-        }).project({ _id: 1, uid: 1, imageURL: 1, videoURL: 1, text: 1, caption: 1 }).toArray()
-      : [];
+    const storyIds = allReports.filter((r) => r.storyId).map((r) => r.storyId);
+    const storyDocs =
+      storyIds.length > 0
+        ? await db
+            .collection("stories")
+            .find({
+              $or: [
+                {
+                  _id: {
+                    $in: storyIds
+                      .filter((id) => ObjectId.isValid(id))
+                      .map((id) => new ObjectId(id)),
+                  },
+                },
+                { _id: { $in: storyIds } },
+              ],
+            })
+            .project({
+              _id: 1,
+              uid: 1,
+              imageURL: 1,
+              videoURL: 1,
+              text: 1,
+              caption: 1,
+            })
+            .toArray()
+        : [];
     const storyMap = {};
-    storyDocs.forEach(s => { storyMap[s._id.toString()] = s; });
+    storyDocs.forEach((s) => {
+      storyMap[s._id.toString()] = s;
+    });
 
     // Enrich communities
     const comIds = allReports
-      .filter(r => r.communityId && ObjectId.isValid(r.communityId))
-      .map(r => new ObjectId(r.communityId));
-    const comDocs = comIds.length > 0
-      ? await db.collection('communities').find({ _id: { $in: comIds } }).project({ _id: 1, name: 1, description: 1 }).toArray()
-      : [];
+      .filter((r) => r.communityId && ObjectId.isValid(r.communityId))
+      .map((r) => new ObjectId(r.communityId));
+    const comDocs =
+      comIds.length > 0
+        ? await db
+            .collection("communities")
+            .find({ _id: { $in: comIds } })
+            .project({ _id: 1, name: 1, description: 1 })
+            .toArray()
+        : [];
     const comMap = {};
-    comDocs.forEach(c => { comMap[c._id.toString()] = c; });
+    comDocs.forEach((c) => {
+      comMap[c._id.toString()] = c;
+    });
 
-    let enriched = allReports.map(r => {
+    let enriched = allReports.map((r) => {
       // Infer type for legacy records without a type field
       let resolvedType = r.type;
       if (!resolvedType) {
-        if (r.storyId)      resolvedType = 'story';
-        else if (r.communityId) resolvedType = 'community';
-        else if (r.postId)  resolvedType = 'post';
-        else                resolvedType = 'user';
+        if (r.storyId) resolvedType = "story";
+        else if (r.communityId) resolvedType = "community";
+        else if (r.postId) resolvedType = "post";
+        else resolvedType = "user";
       }
 
       const post = r.postId ? postMap[r.postId] : null;
@@ -2924,9 +3550,11 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
         ...r,
         _id: r._id.toString(),
         type: resolvedType,
-        reporterName: profileMap[r.reporterUid]?.displayName || 'Unknown',
+        reporterName: profileMap[r.reporterUid]?.displayName || "Unknown",
         reporterPhoto: profileMap[r.reporterUid]?.photoURL || null,
-        targetName: profileMap[r.targetUid]?.displayName || (community?.name ? `Room: ${community.name}` : 'Unknown'),
+        targetName:
+          profileMap[r.targetUid]?.displayName ||
+          (community?.name ? `Room: ${community.name}` : "Unknown"),
         targetPhoto: profileMap[r.targetUid]?.photoURL || null,
         // Post content (post/meetup)
         postContent: post?.content || null,
@@ -2943,10 +3571,10 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
 
     // Status counts before any filtering
     const statusCounts = {
-      all:       enriched.length,
-      pending:   enriched.filter(r => r.status === 'pending').length,
-      resolved:  enriched.filter(r => r.status === 'resolved').length,
-      dismissed: enriched.filter(r => r.status === 'dismissed').length,
+      all: enriched.length,
+      pending: enriched.filter((r) => r.status === "pending").length,
+      resolved: enriched.filter((r) => r.status === "resolved").length,
+      dismissed: enriched.filter((r) => r.status === "dismissed").length,
     };
 
     // Type counts
@@ -2956,229 +3584,303 @@ app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     }
 
     // Apply filters
-    if (status !== 'all')     enriched = enriched.filter(r => r.status === status);
-    if (typeFilter !== 'all') enriched = enriched.filter(r => r.type === typeFilter);
+    if (status !== "all")
+      enriched = enriched.filter((r) => r.status === status);
+    if (typeFilter !== "all")
+      enriched = enriched.filter((r) => r.type === typeFilter);
     if (search) {
-      enriched = enriched.filter(r =>
-        (r.reason || '').toLowerCase().includes(search) ||
-        (r.reporterName || '').toLowerCase().includes(search) ||
-        (r.targetName || '').toLowerCase().includes(search) ||
-        (r.communityName || '').toLowerCase().includes(search)
+      enriched = enriched.filter(
+        (r) =>
+          (r.reason || "").toLowerCase().includes(search) ||
+          (r.reporterName || "").toLowerCase().includes(search) ||
+          (r.targetName || "").toLowerCase().includes(search) ||
+          (r.communityName || "").toLowerCase().includes(search),
       );
     }
 
     const total = enriched.length;
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.json({ reports: enriched.slice((page - 1) * limit, page * limit), total, page, pages, statusCounts, typeCounts });
+    res.json({
+      reports: enriched.slice((page - 1) * limit, page * limit),
+      total,
+      page,
+      pages,
+      statusCounts,
+      typeCounts,
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch reports' });
+    res.status(500).json({ error: "Failed to fetch reports" });
   }
 });
 
 // PATCH /api/admin/reports/:id — update report status (resolve / dismiss)
-app.patch('/api/admin/reports/:id', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.patch("/api/admin/reports/:id", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
     const { status } = req.body; // 'resolved' | 'dismissed'
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
-    await db.collection('reports').updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { status, resolvedAt: Date.now() } }
-    );
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
+    await db
+      .collection("reports")
+      .updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status, resolvedAt: Date.now() } },
+      );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to update report' });
+    res.status(500).json({ error: "Failed to update report" });
   }
 });
 
 // PATCH /api/admin/users/:uid/suspend — toggle user suspension
-app.patch('/api/admin/users/:uid/suspend', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.patch("/api/admin/users/:uid/suspend", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    if (!uid) return res.status(400).json({ error: 'Missing uid' });
-    const profile = await db.collection('profiles').findOne({ uid });
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
+    const profile = await db.collection("profiles").findOne({ uid });
     const current = profile?.isSuspended || false;
-    await db.collection('profiles').updateOne({ uid }, { $set: { isSuspended: !current } }, { upsert: true });
+    await db
+      .collection("profiles")
+      .updateOne(
+        { uid },
+        { $set: { isSuspended: !current } },
+        { upsert: true },
+      );
     res.json({ success: true, isSuspended: !current });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to update suspension' });
+    res.status(500).json({ error: "Failed to update suspension" });
   }
 });
 
 // GET /api/admin/posts — paginated list of all posts with author + report counts
-app.get('/api/admin/posts', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/posts", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
-    const flaggedOnly = req.query.flagged === 'true';
-    const searchQuery = (req.query.search || '').trim();
+    const flaggedOnly = req.query.flagged === "true";
+    const searchQuery = (req.query.search || "").trim();
 
     // Build filter query
     const filterQuery = {};
     if (flaggedOnly) {
       // Use find+project so postId is always a raw value regardless of how it's stored
-      const reportDocs = await db.collection('reports')
-        .find({ status: 'pending', postId: { $exists: true, $ne: null } })
+      const reportDocs = await db
+        .collection("reports")
+        .find({ status: "pending", postId: { $exists: true, $ne: null } })
         .project({ postId: 1 })
         .toArray();
-      const postIdStrings = [...new Set(
-        reportDocs.map(r => String(r.postId)).filter(s => s && s !== 'null' && s !== 'undefined' && s.length > 0)
-      )];
+      const postIdStrings = [
+        ...new Set(
+          reportDocs
+            .map((r) => String(r.postId))
+            .filter(
+              (s) => s && s !== "null" && s !== "undefined" && s.length > 0,
+            ),
+        ),
+      ];
       if (postIdStrings.length === 0) {
         return res.json({ posts: [], total: 0, page: 1, pages: 0 });
       }
-      const flaggedIds = postIdStrings.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
+      const flaggedIds = postIdStrings
+        .filter((id) => ObjectId.isValid(id))
+        .map((id) => new ObjectId(id));
       if (flaggedIds.length === 0) {
         return res.json({ posts: [], total: 0, page: 1, pages: 0 });
       }
       filterQuery._id = { $in: flaggedIds };
     }
     if (searchQuery) {
-      filterQuery.content = { $regex: searchQuery, $options: 'i' };
+      filterQuery.content = { $regex: searchQuery, $options: "i" };
     }
 
-    const total = await db.collection('posts').countDocuments(filterQuery);
-    const posts = await db.collection('posts')
+    const total = await db.collection("posts").countDocuments(filterQuery);
+    const posts = await db
+      .collection("posts")
       .find(filterQuery)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
 
-    const postIds = posts.map(p => p._id.toString());
-    const reportCounts = await db.collection('reports')
+    const postIds = posts.map((p) => p._id.toString());
+    const reportCounts = await db
+      .collection("reports")
       .aggregate([
-        { $match: { postId: { $in: postIds }, status: 'pending' } },
-        { $group: { _id: '$postId', count: { $sum: 1 } } },
-      ]).toArray();
+        { $match: { postId: { $in: postIds }, status: "pending" } },
+        { $group: { _id: "$postId", count: { $sum: 1 } } },
+      ])
+      .toArray();
     const reportCountMap = {};
-    reportCounts.forEach(r => { reportCountMap[r._id] = r.count; });
+    reportCounts.forEach((r) => {
+      reportCountMap[r._id] = r.count;
+    });
 
-    const uids = [...new Set(posts.map(p => p.uid).filter(Boolean))];
-    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const uids = [...new Set(posts.map((p) => p.uid).filter(Boolean))];
+    const profiles = await db
+      .collection("profiles")
+      .find({ uid: { $in: uids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1 })
+      .toArray();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.uid] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
-    const result = posts.map(p => {
+    const result = posts.map((p) => {
       const profile = profileMap[p.uid] || {};
-      const createdAt = p.createdAt instanceof Date ? p.createdAt.getTime() : (typeof p.createdAt === 'number' ? p.createdAt : 0);
+      const createdAt =
+        p.createdAt instanceof Date
+          ? p.createdAt.getTime()
+          : typeof p.createdAt === "number"
+            ? p.createdAt
+            : 0;
       return {
         _id: p._id.toString(),
-        uid: p.uid || '',
-        authorName: profile.displayName || p.uid || 'Unknown',
-        authorPhoto: profile.photoURL || '',
-        content: p.content || '',
+        uid: p.uid || "",
+        authorName: profile.displayName || p.uid || "Unknown",
+        authorPhoto: profile.photoURL || "",
+        content: p.content || "",
         imageURL: p.imageURL || null,
         likeCount: (p.likes || []).length,
         commentCount: (p.comments || []).length,
         reportCount: reportCountMap[p._id.toString()] || 0,
         createdAt,
-        type: p.type || 'post',
+        type: p.type || "post",
       };
     });
 
     res.json({ posts: result, total, page, pages: Math.ceil(total / limit) });
   } catch (e) {
-    console.error('Admin get posts error:', e);
-    res.status(500).json({ error: 'Failed to fetch posts' });
+    console.error("Admin get posts error:", e);
+    res.status(500).json({ error: "Failed to fetch posts" });
   }
 });
 
 // DELETE /api/admin/posts/:postId — admin force-delete any post
-app.delete('/api/admin/posts/:postId', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/posts/:postId", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { postId } = req.params;
-    if (!ObjectId.isValid(postId)) return res.status(400).json({ error: 'Invalid post id' });
-    await db.collection('posts').deleteOne({ _id: new ObjectId(postId) });
-    await db.collection('reports').deleteMany({ postId });
+    if (!ObjectId.isValid(postId))
+      return res.status(400).json({ error: "Invalid post id" });
+    await db.collection("posts").deleteOne({ _id: new ObjectId(postId) });
+    await db.collection("reports").deleteMany({ postId });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete post' });
+    res.status(500).json({ error: "Failed to delete post" });
   }
 });
 
 // POST /api/admin/broadcast — send a system notification to a segment of users
-app.post('/api/admin/broadcast', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { title, message, segment } = req.body; // segment: 'all' | 'new' | 'flagged' | 'suspended'
-    if (!message || !message.trim()) return res.status(400).json({ error: 'Message is required' });
+    if (!message || !message.trim())
+      return res.status(400).json({ error: "Message is required" });
     let query = {};
-    if (segment === 'new') {
+    if (segment === "new") {
       query = { createdAt: { $gte: new Date(Date.now() - 7 * 86400000) } };
     }
-    let allUsers = await db.collection('users').find(query).project({ _id: 1 }).toArray();
-    if (segment === 'flagged') {
-      const reporterUids = await db.collection('reports').distinct('targetUid', { status: 'pending' });
-      allUsers = allUsers.filter(u => reporterUids.includes(u._id.toString()));
-    } else if (segment === 'suspended') {
-      const suspendedProfiles = await db.collection('profiles').find({ isSuspended: true }).project({ uid: 1 }).toArray();
-      const suspendedUids = new Set(suspendedProfiles.map(p => p.uid));
-      allUsers = allUsers.filter(u => suspendedUids.has(u._id.toString()));
+    let allUsers = await db
+      .collection("users")
+      .find(query)
+      .project({ _id: 1 })
+      .toArray();
+    if (segment === "flagged") {
+      const reporterUids = await db
+        .collection("reports")
+        .distinct("targetUid", { status: "pending" });
+      allUsers = allUsers.filter((u) =>
+        reporterUids.includes(u._id.toString()),
+      );
+    } else if (segment === "suspended") {
+      const suspendedProfiles = await db
+        .collection("profiles")
+        .find({ isSuspended: true })
+        .project({ uid: 1 })
+        .toArray();
+      const suspendedUids = new Set(suspendedProfiles.map((p) => p.uid));
+      allUsers = allUsers.filter((u) => suspendedUids.has(u._id.toString()));
     }
     const now = Date.now();
-    const notifications = allUsers.map(u => ({
+    const notifications = allUsers.map((u) => ({
       toUid: u._id.toString(),
-      type: 'announcement',
-      title: (title || 'Orbyt').trim(),
+      type: "announcement",
+      title: (title || "Orbyt").trim(),
       message: message.trim(),
       createdAt: now,
       read: false,
     }));
     if (notifications.length > 0) {
-      const result = await db.collection('notifications').insertMany(notifications);
+      const result = await db
+        .collection("notifications")
+        .insertMany(notifications);
       // Push real-time WebSocket notification to every online user + Expo push for offline users
       notifications.forEach((notif, i) => {
         const insertedId = result.insertedIds[i];
         const fullNotif = { ...notif, _id: insertedId };
         // WebSocket for online users
         sendToUser(notif.toUid, {
-          type: 'notification',
+          type: "notification",
           notification: fullNotif,
         });
         // Expo push notification for offline / background users
         sendPushNotification(notif.toUid, null, {
-          title: notif.title || 'Orbyt',
+          title: notif.title || "Orbyt",
           body: notif.message,
-          data: { url: '/notifications', notificationId: insertedId.toString() },
+          data: {
+            url: "/notifications",
+            notificationId: insertedId.toString(),
+          },
         });
       });
     }
     res.json({ success: true, sent: notifications.length });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to broadcast' });
+    res.status(500).json({ error: "Failed to broadcast" });
   }
 });
 
 // GET /api/admin/communities — server-side search / sort / pagination
-app.get('/api/admin/communities', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/communities", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const page    = Math.max(1, parseInt(req.query.page)  || 1);
-    const limit   = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
-    const search  = (req.query.search  || '').trim().toLowerCase();
-    const sortBy  = req.query.sort    || 'reportCount'; // reportCount|memberCount|name|createdAt
-    const sortDir = req.query.sortDir === 'asc' ? 1 : -1;
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(500, Math.max(1, parseInt(req.query.limit) || 200));
+    const search = (req.query.search || "").trim().toLowerCase();
+    const sortBy = req.query.sort || "reportCount"; // reportCount|memberCount|name|createdAt
+    const sortDir = req.query.sortDir === "asc" ? 1 : -1;
 
-    const allComms = await db.collection('communities').find({}).toArray();
+    const allComms = await db.collection("communities").find({}).toArray();
 
     // Count pending community reports per community
-    const communityReportAgg = await db.collection('reports').aggregate([
-      { $match: { type: 'community', status: 'pending', targetCommunityId: { $exists: true } } },
-      { $group: { _id: '$targetCommunityId', count: { $sum: 1 } } },
-    ]).toArray();
+    const communityReportAgg = await db
+      .collection("reports")
+      .aggregate([
+        {
+          $match: {
+            type: "community",
+            status: "pending",
+            targetCommunityId: { $exists: true },
+          },
+        },
+        { $group: { _id: "$targetCommunityId", count: { $sum: 1 } } },
+      ])
+      .toArray();
     const comReportMap = {};
-    communityReportAgg.forEach(r => { comReportMap[String(r._id)] = r.count; });
+    communityReportAgg.forEach((r) => {
+      comReportMap[String(r._id)] = r.count;
+    });
 
-    let result = allComms.map(c => ({
+    let result = allComms.map((c) => ({
       id: c._id.toString(),
       name: c.name,
-      description: c.description || '',
-      createdBy: c.uid || c.createdBy || '',
+      description: c.description || "",
+      createdBy: c.uid || c.createdBy || "",
       memberCount: (c.members || []).length,
       isPrivate: c.isPrivate || false,
       isFlagged: c.isFlagged || false,
@@ -3188,88 +3890,123 @@ app.get('/api/admin/communities', requireAdmin, async (req, res) => {
     }));
 
     if (search) {
-      result = result.filter(c =>
-        (c.name || '').toLowerCase().includes(search) ||
-        (c.description || '').toLowerCase().includes(search)
+      result = result.filter(
+        (c) =>
+          (c.name || "").toLowerCase().includes(search) ||
+          (c.description || "").toLowerCase().includes(search),
       );
     }
 
     result.sort((a, b) => {
       let diff = 0;
-      if (sortBy === 'name') diff = (a.name || '').localeCompare(b.name || '');
-      else if (sortBy === 'createdAt') diff = (new Date(a.createdAt).getTime()||0) - (new Date(b.createdAt).getTime()||0);
-      else if (sortBy === 'memberCount') diff = a.memberCount - b.memberCount;
+      if (sortBy === "name") diff = (a.name || "").localeCompare(b.name || "");
+      else if (sortBy === "createdAt")
+        diff =
+          (new Date(a.createdAt).getTime() || 0) -
+          (new Date(b.createdAt).getTime() || 0);
+      else if (sortBy === "memberCount") diff = a.memberCount - b.memberCount;
       else diff = a.reportCount - b.reportCount; // reportCount default
       return diff * sortDir;
     });
 
     const total = result.length;
     const pages = Math.max(1, Math.ceil(total / limit));
-    res.json({ communities: result.slice((page - 1) * limit, page * limit), total, page, pages });
+    res.json({
+      communities: result.slice((page - 1) * limit, page * limit),
+      total,
+      page,
+      pages,
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch communities' });
+    res.status(500).json({ error: "Failed to fetch communities" });
   }
 });
 
 // DELETE /api/admin/communities/:id — hard-delete a community
-app.delete('/api/admin/communities/:id', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/communities/:id", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
-    await db.collection('communities').deleteOne({ _id: new ObjectId(id) });
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
+    await db.collection("communities").deleteOne({ _id: new ObjectId(id) });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete community' });
+    res.status(500).json({ error: "Failed to delete community" });
   }
 });
 
 // PATCH /api/admin/communities/:id/flag — toggle admin-flag on a community
-app.patch('/api/admin/communities/:id/flag', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.patch("/api/admin/communities/:id/flag", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
-    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
+    const community = await db
+      .collection("communities")
+      .findOne({ _id: new ObjectId(id) });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
     const isFlagged = !community.isFlagged;
-    await db.collection('communities').updateOne({ _id: new ObjectId(id) }, { $set: { isFlagged } });
+    await db
+      .collection("communities")
+      .updateOne({ _id: new ObjectId(id) }, { $set: { isFlagged } });
     res.json({ success: true, isFlagged });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to update flag' });
+    res.status(500).json({ error: "Failed to update flag" });
   }
 });
 
 // GET /api/admin/communities/:id/peek — admin read-only view of a community (messages + members)
-app.get('/api/admin/communities/:id/peek', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/communities/:id/peek", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    if (!ObjectId.isValid(id)) return res.status(400).json({ error: 'Invalid id' });
-    const community = await db.collection('communities').findOne({ _id: new ObjectId(id) });
-    if (!community) return res.status(404).json({ error: 'Community not found' });
+    if (!ObjectId.isValid(id))
+      return res.status(400).json({ error: "Invalid id" });
+    const community = await db
+      .collection("communities")
+      .findOne({ _id: new ObjectId(id) });
+    if (!community)
+      return res.status(404).json({ error: "Community not found" });
 
     // Get messages (support both ObjectId and string groupId storage)
     const msgQuery = { $or: [{ groupId: id }, { groupId: new ObjectId(id) }] };
     const [messages, messageCount] = await Promise.all([
-      db.collection('messages').find(msgQuery).sort({ createdAt: -1 }).limit(100).toArray(),
-      db.collection('messages').countDocuments(msgQuery),
+      db
+        .collection("messages")
+        .find(msgQuery)
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .toArray(),
+      db.collection("messages").countDocuments(msgQuery),
     ]);
     messages.reverse(); // oldest first for display
 
     // Enrich messages with sender profiles
-    const senderUids = [...new Set(messages.map(m => m.fromUid || m.senderId).filter(Boolean))];
-    const senderProfiles = await db.collection('profiles').find({ uid: { $in: senderUids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
-    const profileMap = {}; senderProfiles.forEach(p => { profileMap[p.uid] = p; });
+    const senderUids = [
+      ...new Set(messages.map((m) => m.fromUid || m.senderId).filter(Boolean)),
+    ];
+    const senderProfiles = await db
+      .collection("profiles")
+      .find({ uid: { $in: senderUids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1 })
+      .toArray();
+    const profileMap = {};
+    senderProfiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
-    const enrichedMessages = messages.map(m => {
-      const uid = m.fromUid || m.senderId || '';
+    const enrichedMessages = messages.map((m) => {
+      const uid = m.fromUid || m.senderId || "";
       const p = profileMap[uid] || {};
       return {
-        _id: m._id.toString(), uid,
-        senderName: p.displayName || 'Unknown',
+        _id: m._id.toString(),
+        uid,
+        senderName: p.displayName || "Unknown",
         senderPhoto: p.photoURL || null,
-        text: m.text || m.content || m.message || '',
+        text: m.text || m.content || m.message || "",
         mediaType: m.mediaType || null,
         mediaUrl: m.mediaUrl || m.imageURL || null,
         createdAt: m.createdAt,
@@ -3278,27 +4015,36 @@ app.get('/api/admin/communities/:id/peek', requireAdmin, async (req, res) => {
 
     // Get member profiles
     const memberUids = community.members || [];
-    const memberProfiles = await db.collection('profiles')
+    const memberProfiles = await db
+      .collection("profiles")
       .find({ uid: { $in: memberUids } })
-      .project({ uid: 1, displayName: 1, photoURL: 1, jobRole: 1, isSuspended: 1 })
+      .project({
+        uid: 1,
+        displayName: 1,
+        photoURL: 1,
+        jobRole: 1,
+        isSuspended: 1,
+      })
       .toArray();
 
     // Community report count
-    const reportCount = await db.collection('reports').countDocuments({
-      type: 'community', targetCommunityId: id, status: 'pending'
+    const reportCount = await db.collection("reports").countDocuments({
+      type: "community",
+      targetCommunityId: id,
+      status: "pending",
     });
 
     res.json({
       community: {
         id: community._id.toString(),
         name: community.name,
-        description: community.description || '',
+        description: community.description || "",
         isPrivate: community.isPrivate || false,
         isFlagged: community.isFlagged || false,
         tags: community.tags || [],
         memberCount: memberUids.length,
         messageCount,
-        ownerUid: community.ownerUid || community.uid || '',
+        ownerUid: community.ownerUid || community.uid || "",
         createdAt: community.createdAt,
         reportCount,
       },
@@ -3306,172 +4052,263 @@ app.get('/api/admin/communities/:id/peek', requireAdmin, async (req, res) => {
       members: memberProfiles,
     });
   } catch (e) {
-    console.error('Admin community peek error:', e);
-    res.status(500).json({ error: 'Failed to peek community' });
+    console.error("Admin community peek error:", e);
+    res.status(500).json({ error: "Failed to peek community" });
   }
 });
 
 // POST /api/report-community — users report a community (kept for back-compat, delegates to /api/report)
-app.post('/api/report-community', async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/report-community", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { reporterUid, communityId, reason } = req.body;
     if (!reporterUid || !communityId || !reason) {
-      return res.status(400).json({ error: 'reporterUid, communityId, and reason are required' });
+      return res
+        .status(400)
+        .json({ error: "reporterUid, communityId, and reason are required" });
     }
-    await db.collection('reports').insertOne({
-      type: 'community',
+    await db.collection("reports").insertOne({
+      type: "community",
       reporterUid,
       targetUid: null,
       communityId: String(communityId),
       reason,
       createdAt: Date.now(),
-      status: 'pending',
+      status: "pending",
     });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to submit report' });
+    res.status(500).json({ error: "Failed to submit report" });
   }
 });
 
 // GET /api/admin/stats — dashboard overview numbers
-app.get('/api/admin/stats', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/stats", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const [users, posts, stories, reports, communities] = await Promise.all([
-      db.collection('users').countDocuments(),
-      db.collection('posts').countDocuments(),
-      db.collection('stories').countDocuments(),
-      db.collection('reports').countDocuments({ status: 'pending' }),
-      db.collection('communities').countDocuments(),
+      db.collection("users").countDocuments(),
+      db.collection("posts").countDocuments(),
+      db.collection("stories").countDocuments(),
+      db.collection("reports").countDocuments({ status: "pending" }),
+      db.collection("communities").countDocuments(),
     ]);
     // New users in last 7 days
     const since7d = Date.now() - 7 * 24 * 60 * 60 * 1000;
-    const newUsers7d = await db.collection('users').countDocuments({ createdAt: { $gte: new Date(since7d) } });
+    const newUsers7d = await db
+      .collection("users")
+      .countDocuments({ createdAt: { $gte: new Date(since7d) } });
 
     const onlineUsers = clients.size;
-    const pushSubscriptions = await db.collection('profiles').countDocuments({
-      $or: [{ webPushSubscription: { $exists: true, $ne: null } }, { expoPushToken: { $exists: true, $ne: null } }]
+    const pushSubscriptions = await db.collection("profiles").countDocuments({
+      $or: [
+        { webPushSubscription: { $exists: true, $ne: null } },
+        { expoPushToken: { $exists: true, $ne: null } },
+      ],
     });
-    res.json({ users, posts, stories, pendingReports: reports, communities, newUsers7d, onlineUsers, pushSubscriptions });
+    res.json({
+      users,
+      posts,
+      stories,
+      pendingReports: reports,
+      communities,
+      newUsers7d,
+      onlineUsers,
+      pushSubscriptions,
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    res.status(500).json({ error: "Failed to fetch stats" });
   }
 });
 
 // GET /api/admin/analytics — comprehensive analytics data
-app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const now = Date.now();
     const DAY = 86400000;
     const days30ago = now - 30 * DAY;
-    const days7ago  = now - 7  * DAY;
+    const days7ago = now - 7 * DAY;
     const days60ago = now - 60 * DAY;
 
     const toMs = (v) => {
       if (!v) return 0;
       if (v instanceof Date) return v.getTime();
-      if (typeof v === 'number') return v;
+      if (typeof v === "number") return v;
       return new Date(v).getTime();
     };
 
     // Parallel fetch all collections we need
-    const [allUsers, allPosts, allReports, allCommunities, allStories, allProfiles] = await Promise.all([
-      db.collection('users').find({}).project({ createdAt: 1, authType: 1, uid: 1 }).toArray(),
-      db.collection('posts').find({}).project({ createdAt: 1, uid: 1, type: 1 }).toArray(),
-      db.collection('reports').find({}).project({ createdAt: 1, status: 1, type: 1, reporterUid: 1, targetUid: 1 }).toArray(),
-      db.collection('communities').find({}).project({ createdAt: 1, members: 1 }).toArray(),
-      db.collection('stories').find({}).project({ createdAt: 1, uid: 1 }).toArray(),
-      db.collection('profiles').find({}).project({ uid: 1, isSuspended: 1, displayName: 1, photoURL: 1 }).toArray(),
+    const [
+      allUsers,
+      allPosts,
+      allReports,
+      allCommunities,
+      allStories,
+      allProfiles,
+    ] = await Promise.all([
+      db
+        .collection("users")
+        .find({})
+        .project({ createdAt: 1, authType: 1, uid: 1 })
+        .toArray(),
+      db
+        .collection("posts")
+        .find({})
+        .project({ createdAt: 1, uid: 1, type: 1 })
+        .toArray(),
+      db
+        .collection("reports")
+        .find({})
+        .project({
+          createdAt: 1,
+          status: 1,
+          type: 1,
+          reporterUid: 1,
+          targetUid: 1,
+        })
+        .toArray(),
+      db
+        .collection("communities")
+        .find({})
+        .project({ createdAt: 1, members: 1 })
+        .toArray(),
+      db
+        .collection("stories")
+        .find({})
+        .project({ createdAt: 1, uid: 1 })
+        .toArray(),
+      db
+        .collection("profiles")
+        .find({})
+        .project({ uid: 1, isSuspended: 1, displayName: 1, photoURL: 1 })
+        .toArray(),
     ]);
 
     const profileMap = {};
-    allProfiles.forEach(p => { profileMap[p.uid] = p; });
+    allProfiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
     // ── 30-day daily buckets ──────────────────────────────────────────────
     const buckets = {};
     for (let i = 0; i < 30; i++) {
       const key = new Date(now - (29 - i) * DAY).toISOString().slice(0, 10);
-      buckets[key] = { date: key, signups: 0, posts: 0, reports: 0, communities: 0, stories: 0 };
+      buckets[key] = {
+        date: key,
+        signups: 0,
+        posts: 0,
+        reports: 0,
+        communities: 0,
+        stories: 0,
+      };
     }
 
-    allUsers.forEach(u => {
+    allUsers.forEach((u) => {
       const key = new Date(toMs(u.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].signups++;
     });
-    allPosts.forEach(p => {
+    allPosts.forEach((p) => {
       const key = new Date(toMs(p.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].posts++;
     });
-    allReports.forEach(r => {
+    allReports.forEach((r) => {
       const key = new Date(toMs(r.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].reports++;
     });
-    allCommunities.forEach(c => {
+    allCommunities.forEach((c) => {
       const key = new Date(toMs(c.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].communities++;
     });
-    allStories.forEach(s => {
+    allStories.forEach((s) => {
       const key = new Date(toMs(s.createdAt)).toISOString().slice(0, 10);
       if (buckets[key]) buckets[key].stories++;
     });
 
     // ── DAU / WAU / MAU ───────────────────────────────────────────────────
     const activityByUid = [
-      ...allPosts.map(p => ({ uid: p.uid, ms: toMs(p.createdAt) })),
-      ...allStories.map(s => ({ uid: s.uid, ms: toMs(s.createdAt) })),
+      ...allPosts.map((p) => ({ uid: p.uid, ms: toMs(p.createdAt) })),
+      ...allStories.map((s) => ({ uid: s.uid, ms: toMs(s.createdAt) })),
     ];
-    const dauUids = new Set(activityByUid.filter(p => p.ms >= now - DAY).map(p => p.uid));
-    const wauUids = new Set(activityByUid.filter(p => p.ms >= days7ago).map(p => p.uid));
-    const mauUids = new Set(activityByUid.filter(p => p.ms >= days30ago).map(p => p.uid));
+    const dauUids = new Set(
+      activityByUid.filter((p) => p.ms >= now - DAY).map((p) => p.uid),
+    );
+    const wauUids = new Set(
+      activityByUid.filter((p) => p.ms >= days7ago).map((p) => p.uid),
+    );
+    const mauUids = new Set(
+      activityByUid.filter((p) => p.ms >= days30ago).map((p) => p.uid),
+    );
 
     // ── Growth rate (last 30d vs prior 30d) ───────────────────────────────
-    const usersLast30  = allUsers.filter(u => toMs(u.createdAt) >= days30ago).length;
-    const usersPrior30 = allUsers.filter(u => { const ms = toMs(u.createdAt); return ms >= days60ago && ms < days30ago; }).length;
-    const postsLast30  = allPosts.filter(p => toMs(p.createdAt) >= days30ago).length;
-    const postsPrior30 = allPosts.filter(p => { const ms = toMs(p.createdAt); return ms >= days60ago && ms < days30ago; }).length;
+    const usersLast30 = allUsers.filter(
+      (u) => toMs(u.createdAt) >= days30ago,
+    ).length;
+    const usersPrior30 = allUsers.filter((u) => {
+      const ms = toMs(u.createdAt);
+      return ms >= days60ago && ms < days30ago;
+    }).length;
+    const postsLast30 = allPosts.filter(
+      (p) => toMs(p.createdAt) >= days30ago,
+    ).length;
+    const postsPrior30 = allPosts.filter((p) => {
+      const ms = toMs(p.createdAt);
+      return ms >= days60ago && ms < days30ago;
+    }).length;
 
-    const growthRate = (curr, prev) => prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / prev) * 100);
+    const growthRate = (curr, prev) =>
+      prev === 0
+        ? curr > 0
+          ? 100
+          : 0
+        : Math.round(((curr - prev) / prev) * 100);
 
     // ── Auth type breakdown ───────────────────────────────────────────────
     const authTypes = { google: 0, email: 0 };
-    allUsers.forEach(u => { const t = u.authType === 'google' ? 'google' : 'email'; authTypes[t]++; });
+    allUsers.forEach((u) => {
+      const t = u.authType === "google" ? "google" : "email";
+      authTypes[t]++;
+    });
 
     // ── Report breakdown ──────────────────────────────────────────────────
     const reportStatus = { pending: 0, resolved: 0, dismissed: 0 };
-    allReports.forEach(r => { if (reportStatus[r.status] !== undefined) reportStatus[r.status]++; });
+    allReports.forEach((r) => {
+      if (reportStatus[r.status] !== undefined) reportStatus[r.status]++;
+    });
 
-    const reportTypes  = { user: 0, post: 0, story: 0, meetup: 0, community: 0 };
-    allReports.forEach(r => {
-      const t = r.type || 'post';
+    const reportTypes = { user: 0, post: 0, story: 0, meetup: 0, community: 0 };
+    allReports.forEach((r) => {
+      const t = r.type || "post";
       if (reportTypes[t] !== undefined) reportTypes[t]++;
-      else reportTypes['post']++;
+      else reportTypes["post"]++;
     });
 
     // ── Content type breakdown ────────────────────────────────────────────
     const postTypes = { post: 0, meetup: 0 };
-    allPosts.forEach(p => {
-      if (p.type === 'meetup') postTypes.meetup++;
+    allPosts.forEach((p) => {
+      if (p.type === "meetup") postTypes.meetup++;
       else postTypes.post++;
     });
     const contentBreakdown = [
-      { label: 'Regular Posts', value: postTypes.post },
-      { label: 'Meetups',       value: postTypes.meetup },
-      { label: 'Stories',       value: allStories.length },
-      { label: 'Rooms',         value: allCommunities.length },
+      { label: "Regular Posts", value: postTypes.post },
+      { label: "Meetups", value: postTypes.meetup },
+      { label: "Stories", value: allStories.length },
+      { label: "Rooms", value: allCommunities.length },
     ];
 
     // ── Top reported users (by pending reports against them) ─────────────
     const targetCounts = {};
-    allReports.filter(r => r.status === 'pending' && r.targetUid).forEach(r => {
-      targetCounts[r.targetUid] = (targetCounts[r.targetUid] || 0) + 1;
-    });
+    allReports
+      .filter((r) => r.status === "pending" && r.targetUid)
+      .forEach((r) => {
+        targetCounts[r.targetUid] = (targetCounts[r.targetUid] || 0) + 1;
+      });
     const topReported = Object.entries(targetCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([uid, count]) => ({
-        uid, count,
+        uid,
+        count,
         displayName: profileMap[uid]?.displayName || uid.slice(0, 8),
         photoURL: profileMap[uid]?.photoURL || null,
         isSuspended: profileMap[uid]?.isSuspended || false,
@@ -3479,27 +4316,30 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
 
     // ── Most active posters (last 30d) ────────────────────────────────────
     const posterCounts = {};
-    allPosts.filter(p => toMs(p.createdAt) >= days30ago).forEach(p => {
-      posterCounts[p.uid] = (posterCounts[p.uid] || 0) + 1;
-    });
+    allPosts
+      .filter((p) => toMs(p.createdAt) >= days30ago)
+      .forEach((p) => {
+        posterCounts[p.uid] = (posterCounts[p.uid] || 0) + 1;
+      });
     const topPosters = Object.entries(posterCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
       .map(([uid, count]) => ({
-        uid, count,
+        uid,
+        count,
         displayName: profileMap[uid]?.displayName || uid.slice(0, 8),
         photoURL: profileMap[uid]?.photoURL || null,
       }));
 
     // ── Suspension stats ──────────────────────────────────────────────────
-    const suspendedCount = allProfiles.filter(p => p.isSuspended).length;
+    const suspendedCount = allProfiles.filter((p) => p.isSuspended).length;
     const totalUserCount = allUsers.length;
 
     // ── Community sizes ───────────────────────────────────────────────────
     const communityActivity = allCommunities
       .sort((a, b) => (b.members?.length || 0) - (a.members?.length || 0))
       .slice(0, 5)
-      .map(c => ({
+      .map((c) => ({
         members: c.members?.length || 0,
         id: c._id.toString(),
       }));
@@ -3509,16 +4349,16 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       dau: dauUids.size,
       wau: wauUids.size,
       mau: mauUids.size,
-      totalUsers:       totalUserCount,
-      totalPosts:       allPosts.length,
-      totalReports:     allReports.length,
+      totalUsers: totalUserCount,
+      totalPosts: allPosts.length,
+      totalReports: allReports.length,
       totalCommunities: allCommunities.length,
-      totalStories:     allStories.length,
+      totalStories: allStories.length,
       suspendedCount,
       usersLast30,
       postsLast30,
-      userGrowthRate:  growthRate(usersLast30, usersPrior30),
-      postGrowthRate:  growthRate(postsLast30, postsPrior30),
+      userGrowthRate: growthRate(usersLast30, usersPrior30),
+      postGrowthRate: growthRate(postsLast30, postsPrior30),
       authTypes,
       reportStatus,
       reportTypes,
@@ -3527,220 +4367,294 @@ app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
       topPosters,
     });
   } catch (e) {
-    console.error('Analytics error:', e);
-    res.status(500).json({ error: 'Failed to fetch analytics', detail: e.message });
+    console.error("Analytics error:", e);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch analytics", detail: e.message });
   }
 });
 
 // GET /api/admin/settings — fetch global admin settings
-app.get('/api/admin/settings', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/settings", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const settings = await db.collection('admin_settings').findOne({ _id: 'global' });
+    const settings = await db
+      .collection("admin_settings")
+      .findOne({ _id: "global" });
     res.json({ autoSuspendThreshold: settings?.autoSuspendThreshold ?? 0 });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch settings' });
+    res.status(500).json({ error: "Failed to fetch settings" });
   }
 });
 
 // POST /api/admin/settings — save global admin settings
-app.post('/api/admin/settings', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.post("/api/admin/settings", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const threshold = parseInt(req.body.autoSuspendThreshold) || 0;
-    await db.collection('admin_settings').updateOne(
-      { _id: 'global' }, { $set: { autoSuspendThreshold: threshold } }, { upsert: true }
-    );
+    await db
+      .collection("admin_settings")
+      .updateOne(
+        { _id: "global" },
+        { $set: { autoSuspendThreshold: threshold } },
+        { upsert: true },
+      );
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to save settings' });
+    res.status(500).json({ error: "Failed to save settings" });
   }
 });
 
 // DELETE /api/admin/posts/bulk-flagged — bulk delete posts with >= minReports
-app.delete('/api/admin/posts/bulk-flagged', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/posts/bulk-flagged", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const minReports = parseInt(req.query.minReports) || 3;
-    const pendingReports = await db.collection('reports').find({ status: 'pending' }).toArray();
+    const pendingReports = await db
+      .collection("reports")
+      .find({ status: "pending" })
+      .toArray();
     const countMap = {};
-    pendingReports.forEach(r => { if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1; });
+    pendingReports.forEach((r) => {
+      if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1;
+    });
     const postIdsToDelete = Object.entries(countMap)
       .filter(([, cnt]) => cnt >= minReports)
       .map(([id]) => id);
-    if (postIdsToDelete.length === 0) return res.json({ success: true, deleted: 0 });
-    const validIds = postIdsToDelete.filter(id => ObjectId.isValid(id)).map(id => new ObjectId(id));
-    await db.collection('posts').deleteMany({ _id: { $in: validIds } });
-    await db.collection('reports').deleteMany({ postId: { $in: postIdsToDelete } });
+    if (postIdsToDelete.length === 0)
+      return res.json({ success: true, deleted: 0 });
+    const validIds = postIdsToDelete
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+    await db.collection("posts").deleteMany({ _id: { $in: validIds } });
+    await db
+      .collection("reports")
+      .deleteMany({ postId: { $in: postIdsToDelete } });
     res.json({ success: true, deleted: validIds.length });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to bulk delete' });
+    res.status(500).json({ error: "Failed to bulk delete" });
   }
 });
 
 // DELETE /api/admin/stories/all — delete every story
-app.delete('/api/admin/stories/all', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/stories/all", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const result = await db.collection('stories').deleteMany({});
-    await db.collection('reports').deleteMany({ storyId: { $exists: true } });
+    const result = await db.collection("stories").deleteMany({});
+    await db.collection("reports").deleteMany({ storyId: { $exists: true } });
     res.json({ success: true, deleted: result.deletedCount });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete all stories' });
+    res.status(500).json({ error: "Failed to delete all stories" });
   }
 });
 
 // GET /api/admin/stories — paginated list of all stories
-app.get('/api/admin/stories', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/stories", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
-    const search = (req.query.search || '').trim();
+    const search = (req.query.search || "").trim();
 
     const filter = {};
-    if (search) filter.caption = { $regex: search, $options: 'i' };
+    if (search) filter.caption = { $regex: search, $options: "i" };
 
-    const total = await db.collection('stories').countDocuments(filter);
-    const stories = await db.collection('stories')
+    const total = await db.collection("stories").countDocuments(filter);
+    const stories = await db
+      .collection("stories")
       .find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
 
-    const uids = [...new Set(stories.map(s => s.uid).filter(Boolean))];
-    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const uids = [...new Set(stories.map((s) => s.uid).filter(Boolean))];
+    const profiles = await db
+      .collection("profiles")
+      .find({ uid: { $in: uids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1 })
+      .toArray();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.uid] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
     // Report counts per story
-    const storyIds = stories.map(s => s._id.toString());
-    const reportDocs = await db.collection('reports').aggregate([
-      { $match: { storyId: { $in: storyIds }, status: 'pending' } },
-      { $group: { _id: '$storyId', count: { $sum: 1 } } },
-    ]).toArray();
+    const storyIds = stories.map((s) => s._id.toString());
+    const reportDocs = await db
+      .collection("reports")
+      .aggregate([
+        { $match: { storyId: { $in: storyIds }, status: "pending" } },
+        { $group: { _id: "$storyId", count: { $sum: 1 } } },
+      ])
+      .toArray();
     const reportMap = {};
-    reportDocs.forEach(r => { reportMap[r._id] = r.count; });
+    reportDocs.forEach((r) => {
+      reportMap[r._id] = r.count;
+    });
 
-    const enriched = stories.map(s => ({
+    const enriched = stories.map((s) => ({
       _id: s._id.toString(),
       uid: s.uid,
-      authorName:  profileMap[s.uid]?.displayName || 'Unknown',
-      authorPhoto: profileMap[s.uid]?.photoURL    || null,
-      imageURL:  s.imageURL  || null,
-      videoURL:  s.videoURL  || null,
-      caption:   s.caption   || s.text || null,
-      createdAt: s.createdAt ? (s.createdAt instanceof Date ? s.createdAt.getTime() : s.createdAt) : 0,
+      authorName: profileMap[s.uid]?.displayName || "Unknown",
+      authorPhoto: profileMap[s.uid]?.photoURL || null,
+      imageURL: s.imageURL || null,
+      videoURL: s.videoURL || null,
+      caption: s.caption || s.text || null,
+      createdAt: s.createdAt
+        ? s.createdAt instanceof Date
+          ? s.createdAt.getTime()
+          : s.createdAt
+        : 0,
       reportCount: reportMap[s._id.toString()] || 0,
     }));
 
-    res.json({ stories: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+    res.json({
+      stories: enriched,
+      total,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch stories' });
+    res.status(500).json({ error: "Failed to fetch stories" });
   }
 });
 
 // DELETE /api/admin/stories/:storyId — admin force-delete a story
-app.delete('/api/admin/stories/:storyId', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/stories/:storyId", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { storyId } = req.params;
-    if (!ObjectId.isValid(storyId)) return res.status(400).json({ error: 'Invalid story ID' });
-    await db.collection('stories').deleteOne({ _id: new ObjectId(storyId) });
-    await db.collection('reports').deleteMany({ storyId });
+    if (!ObjectId.isValid(storyId))
+      return res.status(400).json({ error: "Invalid story ID" });
+    await db.collection("stories").deleteOne({ _id: new ObjectId(storyId) });
+    await db.collection("reports").deleteMany({ storyId });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete story' });
+    res.status(500).json({ error: "Failed to delete story" });
   }
 });
 
 // GET /api/admin/events — paginated list of all meetup posts
-app.get('/api/admin/events', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.get("/api/admin/events", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
-    const search  = (req.query.search  || '').trim();
-    const filter  = req.query.filter   || 'all'; // all | upcoming | past | flagged
+    const search = (req.query.search || "").trim();
+    const filter = req.query.filter || "all"; // all | upcoming | past | flagged
 
     const now = Date.now();
-    const query = { type: 'meetup' };
-    if (search) query['meetupDetails.title'] = { $regex: search, $options: 'i' };
+    const query = { type: "meetup" };
+    if (search)
+      query["meetupDetails.title"] = { $regex: search, $options: "i" };
 
-    const total = await db.collection('posts').countDocuments(query);
-    let events = await db.collection('posts')
+    const total = await db.collection("posts").countDocuments(query);
+    let events = await db
+      .collection("posts")
       .find(query)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
 
-    const uids = [...new Set(events.map(e => e.uid).filter(Boolean))];
-    const profiles = await db.collection('profiles').find({ uid: { $in: uids } }).project({ uid: 1, displayName: 1, photoURL: 1 }).toArray();
+    const uids = [...new Set(events.map((e) => e.uid).filter(Boolean))];
+    const profiles = await db
+      .collection("profiles")
+      .find({ uid: { $in: uids } })
+      .project({ uid: 1, displayName: 1, photoURL: 1 })
+      .toArray();
     const profileMap = {};
-    profiles.forEach(p => { profileMap[p.uid] = p; });
+    profiles.forEach((p) => {
+      profileMap[p.uid] = p;
+    });
 
     // Pending report counts
-    const eventIds = events.map(e => e._id.toString());
-    const reportDocs = await db.collection('reports').aggregate([
-      { $match: { $or: [{ postId: { $in: eventIds } }, { type: 'meetup', postId: { $in: eventIds } }], status: 'pending' } },
-      { $group: { _id: '$postId', count: { $sum: 1 } } },
-    ]).toArray();
+    const eventIds = events.map((e) => e._id.toString());
+    const reportDocs = await db
+      .collection("reports")
+      .aggregate([
+        {
+          $match: {
+            $or: [
+              { postId: { $in: eventIds } },
+              { type: "meetup", postId: { $in: eventIds } },
+            ],
+            status: "pending",
+          },
+        },
+        { $group: { _id: "$postId", count: { $sum: 1 } } },
+      ])
+      .toArray();
     const reportMap = {};
-    reportDocs.forEach(r => { reportMap[r._id] = r.count; });
+    reportDocs.forEach((r) => {
+      reportMap[r._id] = r.count;
+    });
 
-    const enriched = events.map(e => {
-      const toMs = v => v instanceof Date ? v.getTime() : (typeof v === 'number' ? v : new Date(v).getTime());
+    const enriched = events.map((e) => {
+      const toMs = (v) =>
+        v instanceof Date
+          ? v.getTime()
+          : typeof v === "number"
+            ? v
+            : new Date(v).getTime();
       const md = e.meetupDetails || {};
       // Compute event date as ms from YYYY-MM-DD + startTime
       let eventMs = 0;
       try {
-        if (md.date && md.startTime) eventMs = new Date(`${md.date}T${md.startTime}`).getTime();
+        if (md.date && md.startTime)
+          eventMs = new Date(`${md.date}T${md.startTime}`).getTime();
       } catch (_) {}
       return {
-        _id:          e._id.toString(),
-        uid:          e.uid,
-        authorName:   profileMap[e.uid]?.displayName || 'Unknown',
-        authorPhoto:  profileMap[e.uid]?.photoURL    || null,
-        title:        md.title        || e.content?.slice(0, 60) || 'Untitled Event',
-        activity:     md.activity     || null,
-        date:         md.date         || null,
-        startTime:    md.startTime    || null,
-        venueName:    md.venueName    || null,
-        feeType:      md.feeType      || null,
-        maxGuests:    md.maxGuests    || null,
-        attendeeCount:   (e.attendees       || []).length,
-        pendingCount:    (e.pendingRequests || []).length,
-        imageURL:     e.imageURL      || null,
-        createdAt:    toMs(e.createdAt),
+        _id: e._id.toString(),
+        uid: e.uid,
+        authorName: profileMap[e.uid]?.displayName || "Unknown",
+        authorPhoto: profileMap[e.uid]?.photoURL || null,
+        title: md.title || e.content?.slice(0, 60) || "Untitled Event",
+        activity: md.activity || null,
+        date: md.date || null,
+        startTime: md.startTime || null,
+        venueName: md.venueName || null,
+        feeType: md.feeType || null,
+        maxGuests: md.maxGuests || null,
+        attendeeCount: (e.attendees || []).length,
+        pendingCount: (e.pendingRequests || []).length,
+        imageURL: e.imageURL || null,
+        createdAt: toMs(e.createdAt),
         eventMs,
-        isPast:       eventMs > 0 && eventMs < now,
-        reportCount:  reportMap[e._id.toString()] || 0,
+        isPast: eventMs > 0 && eventMs < now,
+        reportCount: reportMap[e._id.toString()] || 0,
       };
     });
 
-    res.json({ events: enriched, total, page, pages: Math.max(1, Math.ceil(total / limit)) });
+    res.json({
+      events: enriched,
+      total,
+      page,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to fetch events' });
+    res.status(500).json({ error: "Failed to fetch events" });
   }
 });
 
 // DELETE /api/admin/events/:eventId — admin force-delete a meetup post
-app.delete('/api/admin/events/:eventId', requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: 'Database not connected' });
+app.delete("/api/admin/events/:eventId", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { eventId } = req.params;
-    if (!ObjectId.isValid(eventId)) return res.status(400).json({ error: 'Invalid event ID' });
-    await db.collection('posts').deleteOne({ _id: new ObjectId(eventId), type: 'meetup' });
-    await db.collection('reports').deleteMany({ postId: eventId });
+    if (!ObjectId.isValid(eventId))
+      return res.status(400).json({ error: "Invalid event ID" });
+    await db
+      .collection("posts")
+      .deleteOne({ _id: new ObjectId(eventId), type: "meetup" });
+    await db.collection("reports").deleteMany({ postId: eventId });
     res.json({ success: true });
   } catch (e) {
-    res.status(500).json({ error: 'Failed to delete event' });
+    res.status(500).json({ error: "Failed to delete event" });
   }
 });
 
-server.listen(port, '0.0.0.0', () => {
+server.listen(port, "0.0.0.0", () => {
   console.log(`Server + WebSocket running on port ${port}`);
 });
-
