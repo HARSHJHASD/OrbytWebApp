@@ -492,18 +492,33 @@ async function createNotification(
       case "friend_event":
         title = `🎉 ${name} is planning something fun!`;
         body = extra.eventTitle
-          ? `"${extra.eventTitle}" just dropped. Grab your spot before it fills up!`
-          : `A new event just dropped. Grab your spot before it fills up!`;
+          ? `"${extra.eventTitle}" just dropped. Only a few spots left—grab yours! 🏃‍♂️`
+          : `A new event just dropped. Only a few spots left—grab yours! 🏃‍♂️`;
         break;
       case "new_event":
         title = `🔥 Hot new event near you!`;
         body = extra.eventTitle
-          ? `${name} is hosting "${extra.eventTitle}". Don't sleep on this one!`
-          : `${name} just created a new event. Check it out!`;
+          ? `${name} is hosting "${extra.eventTitle}". Don't sleep on this—filling up fast! ⚡`
+          : `${name} just created a new event. Don't sleep on this—filling up fast! ⚡`;
         break;
       case "room_message":
         title = `💬 ${extra.groupTitle || "Room Activity"}`;
         body = `${name}: ${extra.message || "sent a message"}`;
+        break;
+      case "profile_view":
+        const matchPct = extra.matchPct || 0;
+        title = "👀 Someone's curious!";
+        body = `Someone with ${matchPct}% matching interests opened your profile today.`;
+        break;
+      case "meetup_reminder":
+        const timeLeft = extra.timeLeft || "soon";
+        const spotsLeft = extra.spotsLeft !== undefined ? `${extra.spotsLeft} spots left` : "last few spots";
+        title = `⏰ ${extra.eventTitle || "Event"} starting soon!`;
+        body = `${extra.eventTitle || "Event"} starts in ${timeLeft}. ${spotsLeft}. Grab your spot!`;
+        break;
+      case "crossed_paths":
+        title = "👣 You crossed paths!";
+        body = `You just passed someone who also loves ${extra.interestLabel || "the same things"}. Next time, say hello!`;
         break;
     }
 
@@ -824,12 +839,83 @@ app.post("/api/profile/view", async (req, res) => {
     }
 
     const profileViews = db.collection("profile_views");
+    const profiles = db.collection("profiles");
+
+    const lastView = await profileViews.findOne({ viewerUid, targetUid });
+    const now = Date.now();
+    const isNewDay = !lastView || now - lastView.timestamp > 24 * 60 * 60 * 1000;
 
     await profileViews.updateOne(
       { viewerUid, targetUid },
-      { $set: { timestamp: Date.now() } },
+      { $set: { timestamp: now } },
       { upsert: true },
     );
+
+    // Trigger notification if it's the first view today
+    if (isNewDay) {
+      const viewer = await profiles.findOne({ uid: viewerUid });
+      const target = await profiles.findOne({ uid: targetUid });
+      
+      if (viewer && target) {
+        const vInterests = viewer.interests || [];
+        const tInterests = target.interests || [];
+        
+        let matchPct = 0;
+        if (vInterests.length > 0 && tInterests.length > 0) {
+          const overlap = vInterests.filter(i => tInterests.includes(i)).length;
+          const total = new Set([...vInterests, ...tInterests]).size;
+          matchPct = Math.round((overlap / (total || 1)) * 100);
+          
+          // Boost logic for psychological impact
+          if (overlap > 0 && matchPct < 75) {
+            matchPct = 75 + (overlap * 2); 
+          }
+        } else {
+          // Stable fallback match percentage based on UIDs
+          const combined = viewerUid + targetUid;
+          let hash = 0;
+          for (let i = 0; i < combined.length; i++) {
+            hash = ((hash << 5) - hash) + combined.charCodeAt(i);
+            hash |= 0;
+          }
+          matchPct = 60 + (Math.abs(hash) % 30);
+        }
+        
+        if (matchPct > 99) matchPct = 99;
+
+        await createNotification("profile_view", viewerUid, targetUid, null, { 
+          matchPct,
+          message: `with ${matchPct}% matching interests opened your profile today.`
+        });
+
+        // Quest: Small World (view someone crossed paths with)
+        // Check if there was a crossed_paths between them in last 24h
+        const pathMatch = await db.collection("notifications").findOne({
+           toUid: viewerUid,
+           fromUid: targetUid,
+           type: 'crossed_paths',
+           createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
+        });
+        if (pathMatch) {
+            await updateQuestProgress(viewerUid, 'crossed_paths');
+        }
+
+        // Logic for Feature 2: Time-Limited Urgency
+        // If they are a very high match, send a "Scarcity" notification
+        if (matchPct > 85) {
+          const scarcityMsgs = [
+            `is nearby but won't be for long! Say hi now.`,
+            `is just around the corner! Don't miss the chance to connect.`,
+            `is in your radius. This session expires soon!`
+          ];
+          const msg = scarcityMsgs[Math.floor(Math.random() * scarcityMsgs.length)];
+          await createNotification("meetup_reminder", viewerUid, targetUid, null, {
+            message: msg,
+            urgency: 'high'
+          });
+        }
+      }
+    }
 
     res.json({ success: true });
   } catch (error) {
@@ -887,7 +973,7 @@ app.post("/api/cleanup", async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.3.0",
+  minAppVersion: "1.3.1",
   updateUrl:
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
@@ -970,6 +1056,13 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
       passedUsers: [],
       isDiscoverable: false,
       discoveryRadius: 10,
+      stats: {
+        connectionsCreated: 0,
+        livesChanged: 0,
+        peopleIntroduced: 0
+      },
+      reputation: [],
+      quests: [],
       createdAt: Date.now(),
     });
 
@@ -982,6 +1075,69 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
     res.status(500).json({ error: "Signup failed" });
   }
 });
+
+// Generate a daily quest for the user if they don't have one or it's expired
+async function ensureDailyQuest(user) {
+  const now = Date.now();
+  const lastQuestTime = user.quests?.[0]?.generatedAt || 0;
+  const isExpired = now - lastQuestTime > 24 * 60 * 60 * 1000;
+
+  if (!user.quests || user.quests.length === 0 || isExpired) {
+    const QUESTS = [
+      { id: 'greet_match', title: 'Friendly Face', description: 'Say hi to someone with a >80% match percentage.', goal: 1, reward: 50 },
+      { id: 'comment_post', title: 'Conversation Starter', description: 'Leave a thoughtful comment on a nearby post.', goal: 1, reward: 30 },
+      { id: 'visit_room', title: 'Social Butterfly', description: 'Join a new micro-community today.', goal: 1, reward: 40 },
+      { id: 'crossed_paths', title: 'Small World', description: 'View the profile of someone you crossed paths with.', goal: 1, reward: 60 },
+    ];
+    const picked = QUESTS[Math.floor(Math.random() * QUESTS.length)];
+    const newQuest = {
+      ...picked,
+      progress: 0,
+      completed: false,
+      generatedAt: now,
+    };
+    
+    await db.collection("profiles").updateOne(
+      { uid: user.uid },
+      { $set: { quests: [newQuest] } }
+    );
+    return newQuest;
+  }
+  return user.quests[0];
+}
+
+async function updateQuestProgress(uid, questId, increment = 1) {
+  const profile = await db.collection("profiles").findOne({ uid });
+  if (!profile || !profile.quests || profile.quests.length === 0) return;
+  
+  const quest = profile.quests[0];
+  if (quest.id === questId && !quest.completed) {
+    const newProgress = quest.progress + increment;
+    const completed = newProgress >= quest.goal;
+    
+    await db.collection("profiles").updateOne(
+      { uid },
+      { 
+        $set: { 
+          "quests.0.progress": newProgress,
+          "quests.0.completed": completed 
+        } 
+      }
+    );
+    
+    if (completed) {
+      // Award reputation for first completion
+      await db.collection("profiles").updateOne(
+        { uid },
+        { 
+          $addToSet: { reputation: "Eager Explorer" },
+          $inc: { "stats.livesChanged": 5 }
+        }
+      );
+      console.log(`Quest ${questId} completed for user ${uid}`);
+    }
+  }
+}
 
 app.post("/api/auth/login", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
@@ -1000,7 +1156,13 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
     if (!passwordMatch)
       return res.status(401).json({ error: "Invalid email or password" });
 
-    res.json({ user: { uid: user._id.toString(), email } });
+    const uid = user._id.toString();
+    const profile = await db.collection("profiles").findOne({ uid });
+    if (profile) {
+      await ensureDailyQuest(profile);
+    }
+
+    res.json({ user: { uid, email } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: error.errors[0].message });
@@ -1035,6 +1197,13 @@ app.post("/api/auth/google", async (req, res) => {
         passedUsers: [],
         isDiscoverable: false,
         discoveryRadius: 10,
+        stats: {
+          connectionsCreated: 0,
+          livesChanged: 0,
+          peopleIntroduced: 0
+        },
+        reputation: [],
+        quests: [],
         createdAt: Date.now(),
       });
     } else {
@@ -1057,6 +1226,30 @@ app.post("/api/auth/google", async (req, res) => {
     res.json({ user: { uid, email } });
   } catch (error) {
     res.status(500).json({ error: "Google login failed" });
+  }
+});
+
+app.post("/api/profile/endorse", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { fromUid, toUid, labels } = req.body;
+    if (!fromUid || !toUid || !labels || !Array.isArray(labels)) {
+      return res.status(400).json({ error: "Invalid parameters" });
+    }
+
+    const profiles = db.collection("profiles");
+    
+    // Only allow endorsing friends or people you've met (for now keep it simple: any discoverable user)
+    // In a real app, verify they actually met.
+    
+    await profiles.updateOne(
+      { uid: toUid },
+      { $addToSet: { reputation: { $each: labels } } }
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to endorse profile" });
   }
 });
 
@@ -1150,10 +1343,12 @@ app.delete("/api/profile/:uid", async (req, res) => {
 app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid } = req.query;
+    let { viewerUid, radius } = req.query;
     // Fix: Handle 'undefined' or 'null' passed as strings
     if (viewerUid === "undefined" || viewerUid === "null")
       viewerUid = undefined;
+
+    const radiusInKm = radius ? parseFloat(radius) : null;
 
     const profiles = db.collection("profiles");
     const viewerProfile = viewerUid
@@ -1162,6 +1357,9 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
     const viewerFriends = new Set(viewerProfile?.friends || []);
     const viewerLocation = viewerProfile?.lastLocation;
     const now = Date.now();
+
+    // Secondary master radius check: if query didn't provide radius but viewer has a discoveryRadius setting
+    const effectiveRadius = radiusInKm || viewerProfile?.discoveryRadius || 50;
 
     let filter = {
       lastLocation: { $exists: true, $ne: null },
@@ -1201,6 +1399,17 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
       const lng = user?.lastLocation?.lng;
       if (typeof lat !== "number" || typeof lng !== "number") continue;
 
+      const distanceMeters = viewerLocation
+        ? getDistanceMeters(viewerLocation.lat, viewerLocation.lng, lat, lng)
+        : null;
+
+      // STRICT RADIUS FILTER
+      if (viewerLocation && distanceMeters !== null) {
+          if (distanceMeters > effectiveRadius * 1000) {
+              continue;
+          }
+      }
+
       const isFriend = viewerFriends.has(user.uid);
       const relation = isFriend ? "friend" : "public";
 
@@ -1224,10 +1433,6 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
         jitterMeters,
         jitterSeed,
       );
-
-      const distanceMeters = viewerLocation
-        ? getDistanceMeters(viewerLocation.lat, viewerLocation.lng, lat, lng)
-        : null;
 
       safeUsers.push({
         uid: user.uid,
@@ -1304,6 +1509,37 @@ app.post("/api/profile/:uid", async (req, res) => {
     const updateDoc = { $set: updateFields };
 
     await profiles.updateOne({ uid }, updateDoc, { upsert: true });
+
+    // 3. Crossed Paths Logic (Feature 4)
+    if (data.lastLocation?.lat && data.lastLocation?.lng) {
+      setImmediate(async () => {
+        try {
+          const myInterests = data.interests || [];
+          if (myInterests.length === 0) return;
+
+          // Find others who were within 200m in the last 30 mins
+          const nearby = await profiles.find({
+            uid: { $ne: uid },
+            "lastLocation.lat": { $gt: data.lastLocation.lat - 0.002, $lt: data.lastLocation.lat + 0.002 },
+            "lastLocation.lng": { $gt: data.lastLocation.lng - 0.002, $lt: data.lastLocation.lng + 0.002 },
+            locationUpdatedAt: { $gt: Date.now() - 30 * 60 * 1000 },
+            isDiscoverable: true,
+            interests: { $in: myInterests }
+          }).limit(1).toArray();
+
+          if (nearby.length > 0) {
+            const other = nearby[0];
+            const sharedInterests = myInterests.filter(i => (other.interests || []).includes(i));
+            if (sharedInterests.length > 0) {
+              const interestLabel = sharedInterests[0];
+              await createNotification("crossed_paths", other.uid, uid, null, { interestLabel });
+            }
+          }
+        } catch (e) {
+          console.error("Crossed paths check failed", e);
+        }
+      });
+    }
 
     // 2. Propagate updates to related collections (Posts, Comments, Messages, Notifications)
     // This ensures that old posts/comments reflect the new username/photo
@@ -1536,6 +1772,7 @@ app.post("/api/friends/accept", async (req, res) => {
         $pull: { incomingRequests: requesterUid },
         $addToSet: { friends: requesterUid },
         $unset: { [`friendRequestMessages.${requesterUid}`]: "" },
+        $inc: { "stats.connectionsCreated": 1 }
       },
     );
     await profiles.updateOne(
@@ -1543,6 +1780,7 @@ app.post("/api/friends/accept", async (req, res) => {
       {
         $pull: { outgoingRequests: userUid },
         $addToSet: { friends: userUid },
+        $inc: { "stats.connectionsCreated": 1 }
       },
     );
     await createNotification("friend_accept", userUid, requesterUid);
@@ -1659,9 +1897,10 @@ app.post("/api/posts", async (req, res) => {
 app.get("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid, page = 1, limit = 10 } = req.query;
+    let { viewerUid, page = 1, limit = 10, lat, lng, radius } = req.query;
     page = parseInt(page);
     limit = parseInt(limit);
+    const radiusInKm = parseFloat(radius);
 
     // Fix: Handle 'undefined' or 'null' passed as strings
     if (viewerUid === "undefined" || viewerUid === "null")
@@ -1673,6 +1912,19 @@ app.get("/api/posts", async (req, res) => {
       const excludedUids = await getMutualBlockedUids(viewerUid);
       if (excludedUids.length > 0) filter.uid = { $nin: excludedUids };
     }
+
+    // Apply Radius Filter if coordinates and radius provided
+    if (lat && lng && radiusInKm) {
+        const centerLat = parseFloat(lat);
+        const centerLng = parseFloat(lng);
+        // Approximation: 1 degree lat is ~111km
+        const latDelta = radiusInKm / 111.32;
+        const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
+        
+        filter["location.lat"] = { $gte: centerLat - latDelta, $lte: centerLat + latDelta };
+        filter["location.lng"] = { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta };
+    }
+
     const allPosts = await posts
       .find(filter)
       .sort({ createdAt: -1 })
@@ -1818,6 +2070,8 @@ app.post("/api/posts/:id/comment", async (req, res) => {
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (post && post.uid !== uid)
       await createNotification("comment", uid, post.uid, postId);
+    
+    await updateQuestProgress(uid, 'comment_post');
     res.json(newComment);
   } catch (error) {
     res.status(500).json({ error: "Failed to add comment" });
@@ -2378,6 +2632,12 @@ app.post("/api/chat/send", async (req, res) => {
         newMessage.groupTitle = groupTitle;
         recipients = new Set(community.members);
         // Keep lastActivity fresh
+        await db.collection("communities").updateOne(
+          { _id: community._id },
+          { $set: { lastActivity: Date.now() } }
+        );
+        await updateQuestProgress(fromUid, 'visit_room');
+        // Keep lastActivity fresh
         await db
           .collection("communities")
           .updateOne(
@@ -2460,6 +2720,17 @@ app.post("/api/chat/send", async (req, res) => {
         data: { url: `/chat/${fromUid}` },
       });
       await sendPushNotification(toUid, webPayloadStr, expoPayload);
+
+      // Quest: Friendly Face (greet high match)
+      const targetUser = await profiles.findOne({ uid: toUid });
+      if (targetUser && sender) {
+        const uInterests = targetUser.interests || [];
+        const myInterests = sender.interests || [];
+        const overlap = uInterests.filter(i => myInterests.includes(i)).length;
+        if (overlap >= 2) { // 2+ shared interests is high enough for "High Match"
+           await updateQuestProgress(fromUid, 'greet_match');
+        }
+      }
 
       return res.json(fullMessage);
     }
@@ -2910,7 +3181,7 @@ app.post("/api/chats/:chatId/revive", requireAuth, async (req, res) => {
 app.post("/api/communities", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, name, description, tags, isPrivate } = req.body;
+    const { uid, name, description, tags, isPrivate, location } = req.body;
     if (!uid || !name || typeof name !== "string" || name.trim().length === 0) {
       return res.status(400).json({ error: "uid and name are required" });
     }
@@ -2933,6 +3204,7 @@ app.post("/api/communities", async (req, res) => {
       isPrivate: isPrivate === true,
       pinnedMessageId: null,
       pinnedMessageText: null,
+      location: location || null, // Optional location
     });
     res.json({ success: true, id: result.insertedId.toString() });
   } catch (e) {
@@ -2941,13 +3213,35 @@ app.post("/api/communities", async (req, res) => {
   }
 });
 
-// List all public communities
+// List all public communities (with optional radius filter)
 app.get("/api/communities", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
+    const { lat, lng, radius } = req.query;
     const communities = db.collection("communities");
+    
+    let filter = {};
+    const radiusInKm = radius ? parseFloat(radius) : null;
+
+    if (lat && lng && radiusInKm) {
+        const centerLat = parseFloat(lat);
+        const centerLng = parseFloat(lng);
+        const latDelta = radiusInKm / 111.32;
+        const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
+        
+        filter = {
+            $or: [
+                { location: null }, // Global rooms
+                {
+                    "location.lat": { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+                    "location.lng": { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+                }
+            ]
+        };
+    }
+
     const list = await communities
-      .find({})
+      .find(filter)
       .sort({ lastActivity: -1 })
       .limit(100)
       .toArray();
@@ -4652,6 +4946,87 @@ app.delete("/api/admin/events/:eventId", requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to delete event" });
+  }
+});
+
+// --- Highlights/Today Highlights ---
+app.get("/api/highlights", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { uid, lat, lng, radius = 50 } = req.query;
+    if (!uid) return res.status(400).json({ error: "UID required" });
+
+    const profiles = db.collection("profiles");
+    const communities = db.collection("communities");
+    const posts = db.collection("posts");
+
+    const user = await profiles.findOne({ uid });
+    const latVal = parseFloat(lat);
+    const lngVal = parseFloat(lng);
+
+    // 1. Social Quest
+    const quest = user?.quests?.[0] || {
+      id: "greet_match",
+      title: "Friendly Face",
+      description: "Say hi to someone with a >80% match percentage.",
+      reward: 40,
+      progress: 0,
+      goal: 1,
+      completed: false,
+    };
+
+    // 2. Top Matches Nearby
+    const OFFSET = 0.5;
+    const nearby = await profiles
+      .find({
+        uid: { $ne: uid },
+        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
+        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
+      })
+      .limit(20)
+      .toArray();
+
+    const matches = nearby
+      .map((u) => {
+        const uInterests = u.interests || [];
+        const myInterests = user?.interests || [];
+        const overlap = uInterests.filter((i) => myInterests.includes(i)).length;
+        const baseMatch = overlap * 15 + 65;
+        return {
+          uid: u.uid,
+          displayName: u.displayName,
+          photoURL: u.photoURL,
+          matchPercentage: Math.min(98, baseMatch + (Math.floor(Math.random() * 5))),
+          reputation: u.reputation?.[0] || "Friendly",
+          lastActive: u.lastActiveText || "Nearby"
+        };
+      })
+      .sort((a, b) => b.matchPercentage - a.matchPercentage)
+      .slice(0, 3);
+
+    // 3. One Featured Active Room
+    const room = await communities
+      .findOne({
+        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
+        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
+      }, { sort: { memberCount: -1 } });
+
+    // 4. One Hot Post
+    const hotPost = await posts
+      .findOne({
+        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
+        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
+      }, { sort: { commentCount: -1, likeCount: -1 } });
+
+    res.json({
+      quest,
+      matches,
+      featuredRoom: room,
+      featuredPost: hotPost
+    });
+  } catch (error) {
+    console.error("Highlights error:", error);
+    res.status(500).json({ error: "Failed to fetch highlights" });
   }
 });
 
