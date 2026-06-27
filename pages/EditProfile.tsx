@@ -24,6 +24,7 @@ const EditProfile: React.FC = () => {
   const [bio, setBio] = useState('');
   const [dob, setDob] = useState('');
   const [jobRole, setJobRole] = useState('');
+  const [liveStatusMode, setLiveStatusMode] = useState('');
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
   const [thatsMePhotos, setThatsMePhotos] = useState<string[]>([]);
   const [gender, setGender] = useState<UserProfile['gender'] | ''>('');
@@ -43,6 +44,7 @@ const EditProfile: React.FC = () => {
             setBio(profile.bio || '');
             setDob(profile.dob || '');
             setJobRole(profile.jobRole || '');
+            setLiveStatusMode(profile.liveStatusMode || '');
             setSelectedInterests(profile.interests || []);
             setThatsMePhotos(profile.thatsMePhotos || []);
             setGender(profile.gender || '');
@@ -204,6 +206,7 @@ const EditProfile: React.FC = () => {
         bio: bio.trim(),
         dob,
         jobRole: jobRole.trim(),
+        liveStatusMode: liveStatusMode.trim(),
         interests: selectedInterests,
         thatsMePhotos: thatsMePhotos,
       };
@@ -288,6 +291,30 @@ const EditProfile: React.FC = () => {
               onSelect={setJobRole}
               icon={<Briefcase className="w-5 h-5" />}
             />
+
+            {/* Live Status Mode */}
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-slate-300 ml-1">
+                Live Status Mode
+              </label>
+              <p className="text-xs text-slate-500 ml-1 -mt-1">Broadcast your vibe — enables Orbit Collision detection when someone nearby matches.</p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {['', 'Startup Founder', 'Looking for a Co-founder', 'Networking', 'Open to Opportunities', 'Working on my startup', 'Investing/VC', 'Freelancing', 'Hiring'].map(mode => (
+                  <button
+                    key={mode || 'off'}
+                    type="button"
+                    onClick={() => setLiveStatusMode(mode)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                      liveStatusMode === mode
+                        ? 'bg-violet-500 border-violet-500 text-white shadow-lg shadow-violet-500/20'
+                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-violet-500/50 hover:text-slate-200'
+                    }`}
+                  >
+                    {mode || 'Off'}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             <Input
               label="Date of Birth"

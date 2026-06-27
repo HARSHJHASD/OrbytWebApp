@@ -7,12 +7,14 @@ import {
   Loader2,
   PauseCircle,
   Radar,
+  ShieldOff,
   Trash2,
   UserX,
   Code,
   Moon,
   Sun,
-  Monitor
+  Monitor,
+  Zap
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -30,6 +32,8 @@ const Settings: React.FC = () => {
   const [pushLoading, setPushLoading] = useState(false);
 
   const [isDiscoverable, setIsDiscoverable] = useState(true);
+  const [isFuzzed, setIsFuzzed] = useState(false);
+  const [liveStatusMode, setLiveStatusMode] = useState('');
   const [discoveryRadius, setDiscoveryRadius] = useState(10);
   const [loading, setLoading] = useState(true);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -60,6 +64,8 @@ const Settings: React.FC = () => {
         if (profile) {
           setIsDiscoverable(profile?.isDiscoverable !== false);
           setDiscoveryRadius(profile?.discoveryRadius || 10);
+          setIsFuzzed(!!profile?.isFuzzed);
+          setLiveStatusMode(profile?.liveStatusMode || '');
 
           // Load blocked users
           if (profile?.blockedUsers && profile?.blockedUsers?.length > 0) {
@@ -90,6 +96,27 @@ const Settings: React.FC = () => {
       });
     } catch (e) {
       setIsDiscoverable(!newValue);
+    }
+  };
+
+  const toggleFuzzed = async () => {
+    if (!user) return;
+    const next = !isFuzzed;
+    setIsFuzzed(next);
+    try {
+      await api.profile.createOrUpdate(user.uid, { isFuzzed: next });
+    } catch (e) {
+      setIsFuzzed(!next);
+    }
+  };
+
+  const saveLiveStatus = async (mode: string) => {
+    setLiveStatusMode(mode);
+    if (!user) return;
+    try {
+      await api.profile.createOrUpdate(user.uid, { liveStatusMode: mode });
+    } catch (e) {
+      console.error('Failed to save live status', e);
     }
   };
 
@@ -320,6 +347,55 @@ const Settings: React.FC = () => {
                   className={`inline-block h-6 w-6 bg-white rounded-full transform transition ${!isDiscoverable ? "translate-x-5" : "translate-x-0"}`}
                 />
               </button>
+            </div>
+          </div>
+
+          {/* The Decoy */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+            <div className="flex items-center gap-4">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isFuzzed ? "bg-primary-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400"}`}>
+                <ShieldOff className="w-6 h-6" />
+              </div>
+              <div className="flex-1">
+                <h4 className="text-slate-900 dark:text-white font-bold text-base">The Decoy</h4>
+                <p className="text-xs text-slate-400">
+                  Drift your pin ~300m so people see you're in the neighborhood, not your door.
+                </p>
+              </div>
+              <button
+                onClick={toggleFuzzed}
+                className={`relative inline-flex h-7 w-12 rounded-full transition ${isFuzzed ? "bg-primary-500" : "bg-slate-700"}`}
+              >
+                <span className={`inline-block h-6 w-6 bg-white rounded-full transform transition ${isFuzzed ? "translate-x-5" : "translate-x-0"}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Live Status Mode */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${liveStatusMode ? "bg-violet-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-400"}`}>
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-slate-900 dark:text-white font-bold text-base">Live Status Mode</h4>
+                <p className="text-xs text-slate-400">Broadcasts your vibe — enables Orbit Collision detection.</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {['', 'Startup Founder', 'Looking for a Co-founder', 'Networking', 'Open to Opportunities', 'Working on my startup', 'Investing/VC', 'Freelancing', 'Hiring'].map(mode => (
+                <button
+                  key={mode || 'off'}
+                  onClick={() => saveLiveStatus(mode)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    liveStatusMode === mode
+                      ? 'bg-violet-500 border-violet-500 text-white'
+                      : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-violet-500/50'
+                  }`}
+                >
+                  {mode || 'Off'}
+                </button>
+              ))}
             </div>
           </div>
         </section>

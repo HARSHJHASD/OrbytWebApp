@@ -16,12 +16,13 @@ const haversineKm = (lat1: number, lng1: number, lat2: number, lng2: number): nu
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-const NEARBY_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
-const NEARBY_INITIAL_DELAY_MS = 30 * 1000;            // 30 seconds after mount
+const NEARBY_CHECK_INTERVAL_MS = 60 * 1000; // 60 seconds
+const NEARBY_INITIAL_DELAY_MS = 15 * 1000;            // 15 seconds after mount
 
 const KNOWN_NOTIFICATION_TYPES = [
     'friend_request', 'friend_accept', 'like', 'comment',
     'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event', 'announcement',
+    'vibe_wave', 'vibe_check', 'orbit_collision',
 ] as const;
 
 // Only check during times when metro-city users are typically free:
@@ -51,6 +52,7 @@ interface NotificationContextType {
     clearUnreadMessages: () => void;
     clearUnreadRooms: () => void;
     showToast: (message: string, type?: 'error' | 'success' | 'info') => void;
+    activeCollision: any | null;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -64,6 +66,7 @@ const NotificationContext = createContext<NotificationContextType>({
     clearUnreadMessages: () => { },
     clearUnreadRooms: () => { },
     showToast: () => { },
+    activeCollision: null,
 });
 
 let globalToastHandler: ((message: string, type: 'error' | 'success' | 'info') => void) | null = null;
@@ -85,6 +88,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [unreadRooms, setUnreadRooms] = useState(0);
+    const [activeCollision, setActiveCollision] = useState<any | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const keepAliveRef = useRef<any>(null);
     const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -117,7 +121,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const checkNearbyPeople = useCallback(async () => {
         if (!user || !navigator.geolocation) return;
-        if (!isActiveHour()) return;
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 try {
@@ -132,9 +135,23 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         if (!p.lastLocation?.lat || !p.lastLocation?.lng) return false;
                         return haversineKm(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <= radius;
                     });
+
+                    // Orbit Collision Check (within 20m = 0.02km)
+                    if (myProfile?.liveStatusMode) {
+                        const collisions = nearbyUsers.filter((p: any) => {
+                            if (!p.liveStatusMode || p.liveStatusMode !== myProfile.liveStatusMode) return false;
+                            return haversineKm(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <= 0.02;
+                        });
+                        if (collisions.length > 0 && !activeCollision) {
+                            setActiveCollision(collisions[0]);
+                            // Auto-clear after 5 minutes
+                            setTimeout(() => setActiveCollision(null), 5 * 60 * 1000);
+                        }
+                    }
+
                     const newPeople = nearbyUsers.filter((p: any) => !lastNearbyUidsRef.current.has(p.uid));
                     lastNearbyUidsRef.current = new Set(nearbyUsers.map((p: any) => p.uid as string));
-                    if (newPeople.length > 0) {
+                    if (newPeople.length > 0 && isActiveHour()) {
                         const first = newPeople[0];
                         addToast({
                             title: `${newPeople.length} ${newPeople.length === 1 ? 'person' : 'people'} near you!`,
@@ -226,26 +243,38 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                             type: 'notification',
                         });
                     } else {
+                        const t = data.notification.type;
                         addToast({
-                            title: data.notification.type === 'friend_post'
+                            title: t === 'friend_post'
                                 ? `📸 ${data.notification.fromName} graced the feed`
-                                : data.notification.type === 'friend_event'
+                                : t === 'friend_event'
                                 ? `🎉 ${data.notification.fromName} allegedly has a plan`
-                                : data.notification.type === 'new_event'
+                                : t === 'new_event'
                                 ? `🔥 Someone nearby made plans. No pressure.`
+                                : t === 'vibe_wave'
+                                ? `⚡️ Vibe Check: Someone's near!`
+                                : t === 'vibe_check'
+                                ? `🔥 Vibe Confirmed!`
+                                : t === 'orbit_collision'
+                                ? `☄️ Orbit Collision Detected`
                                 : data.notification.fromName,
-                            body: data.notification.type === 'like' ? 'actually noticed your post. wild, right?' :
-                                  data.notification.type === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
-                                  data.notification.type === 'friend_request' ? 'slid into your orbit' :
-                                  data.notification.type === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
-                                  data.notification.type === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
-                                  data.notification.type === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
-                                  data.notification.type === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
-                                  data.notification.type === 'friend_event' ? 'planned something. probably involves leaving the house.' :
-                                  data.notification.type === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
+                            body: t === 'like' ? 'actually noticed your post. wild, right?' :
+                                  t === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
+                                  t === 'friend_request' ? 'slid into your orbit' :
+                                  t === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
+                                  t === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
+                                  t === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
+                                  t === 'vibe_wave' ? `${data.notification.fromName} sent a wave. Click to reach back.` :
+                                  t === 'vibe_check' ? `${data.notification.fromName} caught your wave. It's a match.` :
+                                  t === 'orbit_collision' ? `You just intersected paths with ${data.notification.fromName}!` :
+                                  t === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
+                                  t === 'friend_event' ? 'planned something. probably involves leaving the house.' :
+                                  t === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
                                   'did something. unclear what.',
                             icon: data.notification.fromPhoto,
-                            url: data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
+                            url: (t === 'vibe_wave' || t === 'vibe_check' || t === 'orbit_collision')
+                                ? `/app/profile/${data.notification.fromUid}`
+                                : data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
                             type: 'notification',
                         });
                     }
@@ -304,7 +333,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, []);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms, showToast }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms, showToast, activeCollision }}>
             {children}
             
             {/* Toast Container */}

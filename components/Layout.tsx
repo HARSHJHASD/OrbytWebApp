@@ -4,13 +4,16 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import DeviceFrame from './DeviceFrame';
+import CollisionCard from './CollisionCard';
 // import MainLogo from '../assets/logo.png'; 
 
 const Layout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { unreadMessages, unreadRooms, clearUnreadMessages, clearUnreadRooms } = useNotifications();
+  const { unreadMessages, unreadRooms, clearUnreadMessages, clearUnreadRooms, activeCollision } = useNotifications();
+  const [dismissedCollision, setDismissedCollision] = useState(false);
+  useEffect(() => { setDismissedCollision(false); }, [activeCollision]);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   useEffect(() => {
@@ -210,11 +213,17 @@ const Layout: React.FC = () => {
     </div>
   ), [isDesktop, isOffline, unreadMessages, unreadRooms, location.pathname, user]);
 
-  return isDesktop ? (
-    <DeviceFrame>
-      {content}
-    </DeviceFrame>
-  ) : content;
+  return (
+    <>
+      {isDesktop ? <DeviceFrame>{content}</DeviceFrame> : content}
+      {activeCollision && !dismissedCollision && (
+        <CollisionCard
+          profile={activeCollision}
+          onDismiss={() => setDismissedCollision(true)}
+        />
+      )}
+    </>
+  );
 };
 
 export default Layout;

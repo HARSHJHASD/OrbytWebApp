@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Search,
   Settings,
+  Sparkles,
   UserPlus,
   X,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useUserLocation } from "../components/LocationGuard";
 import PostItem from "../components/PostItem";
+import VibeModal from "../components/VibeModal";
 import { useAuth } from "../context/AuthContext";
 import { useNotifications } from "../context/NotificationContext";
 import { usePushNotifications } from "../hooks/usePushNotifications";
@@ -93,6 +95,8 @@ const Feed: React.FC = () => {
       return stored ? new Set<string>(JSON.parse(stored)) : new Set<string>();
     } catch { return new Set<string>(); }
   });
+
+  const [showVibeModal, setShowVibeModal] = useState(false);
 
   const handleMuteUser = (uid: string) => {
     setMutedUids(prev => {
@@ -661,6 +665,14 @@ const Feed: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Vibe Button */}
+          <button
+            onClick={() => setShowVibeModal(true)}
+            className="p-2 rounded-full hover:bg-slate-800 transition-colors text-violet-400 hover:text-violet-300"
+          >
+            <Sparkles className="w-6 h-6" />
+          </button>
+
           {/* Settings Button */}
           <button
             onClick={() => navigate("/app/settings")}
@@ -927,6 +939,13 @@ const Feed: React.FC = () => {
         />
       )}
       
+      {/* Vibe Modal */}
+      <VibeModal
+        visible={showVibeModal}
+        onClose={() => setShowVibeModal(false)}
+        userId={user?.uid || ''}
+      />
+
       {/* Search Results Modal */}
       <SearchResultsModal
         isOpen={showSearchModal}

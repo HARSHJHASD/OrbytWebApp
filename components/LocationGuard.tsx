@@ -28,10 +28,24 @@ const LocationGuard: React.FC<LocationGuardProps> = ({ children }) => {
     return new Promise<void>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const loc = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
+          let lat = position.coords.latitude;
+          let lng = position.coords.longitude;
+
+          // The Decoy: apply ~300m fuzzing if enabled on profile
+          if (user) {
+            try {
+              const profile = await api.profile.get(user.uid);
+              if (profile?.isFuzzed) {
+                // 300m in degrees ≈ 0.0027
+                lat += (Math.random() - 0.5) * 2 * 0.0027;
+                lng += (Math.random() - 0.5) * 2 * (0.0027 / Math.cos(lat * Math.PI / 180));
+              }
+            } catch (e) {
+              // silently ignore — don't block location update
+            }
+          }
+
+          const loc = { lat, lng };
           setCurrentLocation(loc);
           setHasPermission(true);
           setLoading(false);

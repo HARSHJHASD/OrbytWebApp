@@ -520,6 +520,18 @@ async function createNotification(
         title = "👣 You crossed paths!";
         body = `You just passed someone who also loves ${extra.interestLabel || "the same things"}. Next time, say hello!`;
         break;
+      case "vibe_wave":
+        title = "⚡️ Vibe Check: Someone's near!";
+        body = `${name} sent a wave. Tap to reach back.`;
+        break;
+      case "vibe_check":
+        title = "🔥 Vibe Confirmed!";
+        body = `${name} caught your wave. It's a match.`;
+        break;
+      case "orbit_collision":
+        title = "☄️ Orbit Collision Detected";
+        body = `You just intersected paths with ${name}!`;
+        break;
     }
 
     const notifUrl = extra.groupId
@@ -2359,6 +2371,72 @@ app.get("/api/notifications/unread-count/:uid", async (req, res) => {
     res.json({ count });
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch unread count" });
+  }
+});
+
+// --- VIBE WAVE: Broadcast an anonymous ping to all nearby users ---
+app.post("/api/vibe/send", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { uid, radius, lat, lng } = req.body;
+    if (!uid || !radius || lat == null || lng == null) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const profiles = db.collection("profiles");
+
+    // Fetch all profiles that have a last location
+    const allProfiles = await profiles
+      .find({ uid: { $ne: uid }, isDiscoverable: { $ne: false }, "lastLocation.lat": { $exists: true } })
+      .project({ uid: 1, lastLocation: 1 })
+      .toArray();
+
+    // Haversine filter for radius
+    const R = 6371;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const nearbyUids = allProfiles
+      .filter((p) => {
+        const dLat = toRad(p.lastLocation.lat - lat);
+        const dLng = toRad(p.lastLocation.lng - lng);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(lat)) * Math.cos(toRad(p.lastLocation.lat)) * Math.sin(dLng / 2) ** 2;
+        const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return distKm <= radius;
+      })
+      .map((p) => p.uid);
+
+    // Send vibe_wave notification to each nearby user (fire-and-forget)
+    const notifPromises = nearbyUids.map((toUid) =>
+      createNotification("vibe_wave", uid, toUid)
+    );
+    await Promise.allSettled(notifPromises);
+
+    res.json({ sent: nearbyUids.length });
+  } catch (error) {
+    console.error("Failed to send vibe:", error);
+    res.status(500).json({ error: "Failed to send vibe" });
+  }
+});
+
+// --- VIBE ACKNOWLEDGE: Receiver taps back — sends vibe_check to original sender ---
+app.post("/api/vibe/acknowledge", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { notificationId } = req.body;
+    if (!notificationId) return res.status(400).json({ error: "Missing notificationId" });
+
+    const notifications = db.collection("notifications");
+    const notif = await notifications.findOne({ _id: new ObjectId(notificationId) });
+    if (!notif) return res.status(404).json({ error: "Notification not found" });
+
+    // The person who received the vibe_wave is now acknowledging — send vibe_check back to the original sender
+    await createNotification("vibe_check", notif.toUid, notif.fromUid);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Failed to acknowledge vibe:", error);
+    res.status(500).json({ error: "Failed to acknowledge vibe" });
   }
 });
 

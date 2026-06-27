@@ -482,6 +482,31 @@ export const api = {
         return 0;
       }
     },
+    sendVibe: async (uid: string, radius: number, lat: number, lng: number) => {
+      try {
+        const response = await fetch(`${API_BASE}/vibe/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid, radius, lat, lng }),
+        });
+        if (!response?.ok) return null;
+        return await response.json();
+      } catch (error) {
+        console.error('Failed to send vibe:', error);
+        return null;
+      }
+    },
+    acknowledgeVibe: async (notificationId: string) => {
+      try {
+        await fetch(`${API_BASE}/vibe/acknowledge`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notificationId }),
+        });
+      } catch (error) {
+        console.error('Failed to acknowledge vibe:', error);
+      }
+    },
   },
 
   push: {
