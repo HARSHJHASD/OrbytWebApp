@@ -354,7 +354,7 @@ const Feed: React.FC = () => {
 
   // Search for people and posts
   useEffect(() => {
-    const performSearch = async () => {
+    const timer = setTimeout(async () => {
       if (!searchQuery.trim() || !user) {
         setSearchResults({ people: [], posts: [] });
         setShowSearchModal(false);
@@ -398,15 +398,13 @@ const Feed: React.FC = () => {
         });
       } catch (err) {
         console.error('Search error:', err);
-        setSearchResults({ people: [], posts: [] });
       } finally {
         setLoadingSearchResults(false);
       }
-    };
+    }, 400); // 400ms debounce
 
-    const timer = setTimeout(performSearch, 300); // Debounce search
     return () => clearTimeout(timer);
-  }, [searchQuery, posts, blockedUids, user]);
+  }, [searchQuery, posts, user, blockedUids]);
 
   const handleRefresh = async () => {
     setRefreshing(true);

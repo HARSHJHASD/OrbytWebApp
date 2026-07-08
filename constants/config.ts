@@ -33,10 +33,10 @@ export const API_CONFIG = {
   // WebSocket URLs for different environments
   WEBSOCKET: {
     LOCAL: (hostname: string, port: number) =>
-      `ws://${hostname}:${port}`,
+      `wss://${hostname}:${port}`,
     VERCEL: 'wss://backend.strangerchat.space',
     PRODUCTION: (protocol: string, hostname: string) =>
-      protocol === 'https:' ? `wss://${hostname}` : `ws://${hostname}`,
+      protocol === 'https:' ? `wss://${hostname}` : `wss://${hostname}`,
   },
 } as const;
 
