@@ -41,6 +41,8 @@ function getNotifMeta(type: Notification['type']) {
             return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created an event nearby. social obligations incoming 🔥' };
         case 'announcement':
             return { icon: <Megaphone className="w-4 h-4" />, color: 'bg-violet-600', label: '' };
+        case 'message':
+            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-600', label: 'sent you a message' };
         default:
             return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'did something. unclear what.' };
     }
@@ -64,6 +66,8 @@ function getNotifLink(n: Notification): string {
             return '/app?tab=meetup';
         case 'announcement':
             return `/app/notifications`;
+        case 'message':
+            return `/app/chat/${n.fromUid}`;
         default:
             return `/app/notifications`;
     }
