@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, ArrowRight, Sparkles, Zap, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Clock, ArrowRight, Sparkles, Zap } from 'lucide-react';
 
 const Blog: React.FC = () => {
     const navigate = useNavigate();

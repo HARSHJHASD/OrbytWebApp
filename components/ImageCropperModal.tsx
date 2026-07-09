@@ -1,4 +1,4 @@
-import { Check, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import Cropper from 'react-easy-crop';
 
@@ -48,7 +48,7 @@ export default function ImageCropperModal({
         setZoom(newZoom);
     }, []);
 
-    const handleCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
+    const handleCropComplete = useCallback((_croppedArea: Area, croppedAreaPixels: Area) => {
         setCroppedAreaPixels(croppedAreaPixels);
     }, []);
 

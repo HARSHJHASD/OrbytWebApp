@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { X, Sparkles, Loader2, Zap } from 'lucide-react';
 import { api } from '../services/api';
 import { useUserLocation } from './LocationGuard';
-import { useTheme } from '../context/ThemeContext';
 
 interface VibeModalProps {
   visible: boolean;
@@ -13,7 +12,6 @@ interface VibeModalProps {
 const RADIUS_OPTIONS = [2, 5, 10, 15];
 
 const VibeModal: React.FC<VibeModalProps> = ({ visible, onClose, userId }) => {
-  const { isDark } = useTheme();
   const [selectedRadius, setSelectedRadius] = useState(5);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);

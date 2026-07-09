@@ -3,7 +3,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet/dist/leaflet.css";
 import { Check, ChevronRight, Instagram, Loader2, LocateFixed, MessageCircle, RefreshCw, Search, Sparkles, User, UserPlus, X, MapPin } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Circle, MapContainer, Marker, Polyline, CircleMarker, TileLayer, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-markercluster";
 import { useNavigate } from "react-router-dom";
@@ -97,7 +97,6 @@ const MapPage: React.FC = () => {
   const [showVibeModal, setShowVibeModal] = useState(false);
   const [connecting, setConnecting] = useState<Set<string>>(new Set());
   const [connected, setConnected] = useState<Set<string>>(new Set());
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
   type FilterType = "all" | "friends" | "interests";
   const [filter, setFilter] = useState<FilterType>("all");
@@ -122,7 +121,6 @@ const MapPage: React.FC = () => {
       ]);
       setUsers(data);
       setCurrentUserProfile(profile);
-      setLastRefreshed(new Date());
     } catch (e) {
       console.error("Failed to load map users", e);
     } finally {

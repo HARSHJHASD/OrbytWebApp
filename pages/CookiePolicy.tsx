@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Cookie, Shield, Eye, Settings, Terminal } from 'lucide-react';
+import { ArrowLeft, Cookie, Shield, Settings, Terminal } from 'lucide-react';
 
 const CookiePolicy: React.FC = () => {
     const navigate = useNavigate();

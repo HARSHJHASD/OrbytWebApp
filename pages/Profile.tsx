@@ -2,7 +2,6 @@ import {
   Ban,
   Bookmark,
   Briefcase,
-  Camera,
   Check,
   ChevronRight,
   Edit2,
@@ -13,7 +12,6 @@ import {
   List,
   Loader2,
   LogOut,
-  Lock,
   Mail,
   MapPin,
   MessageCircle,
@@ -37,11 +35,9 @@ import { useAuth } from "../context/AuthContext";
 import { api } from "../services/api";
 import { POPULAR_INTERESTS, Post, UserProfile } from "../types";
 import { calculateDistance } from "../util/location";
-import { useTheme } from "../context/ThemeContext";
 
 export default function Profile() {
   const { user, logout } = useAuth();
-  const { isDark } = useTheme();
   const { uid } = useParams<{ uid: string }>();
   const navigate = useNavigate();
   const { location: myLocation } = useUserLocation();
@@ -283,7 +279,7 @@ export default function Profile() {
 
   const handleLogout = async () => {
     await logout();
-    navigate("/app");
+    navigate("/auth");
   };
 
   const handleSendRequest = async () => {
@@ -1094,11 +1090,11 @@ export default function Profile() {
                   className="aspect-square bg-slate-200 dark:bg-slate-800 overflow-hidden cursor-pointer"
                   onClick={() => navigate(`/app/post/${post?._id}`)}
                 >
-                  {post?.imageUrl ? (
-                    <img src={post?.imageUrl} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
+                  {post?.imageURL ? (
+                    <img src={post?.imageURL} alt="" className="w-full h-full object-cover hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center p-2">
-                      <p className="text-xs text-slate-500 dark:text-slate-400 text-center line-clamp-4">{post?.text}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 text-center line-clamp-4">{post?.content}</p>
                     </div>
                   )}
                 </div>

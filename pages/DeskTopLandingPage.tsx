@@ -601,7 +601,7 @@ const DesktopLanding: React.FC = () => {
                     </p>
                     <p className="text-xs text-slate-500">
                       {t?.jobRole ||
-                        (t?.interests && t.interests.length > 0
+                        ('interests' in t && t.interests && t.interests.length > 0
                           ? t.interests[0]
                           : "Member")}
                     </p>

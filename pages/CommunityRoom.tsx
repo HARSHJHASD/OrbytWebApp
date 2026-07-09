@@ -83,7 +83,6 @@ const CommunityRoom: React.FC = () => {
   const [showMembers, setShowMembers] = useState(false);
   const [reportStep, setReportStep] = useState<null | 'pick' | 'done'>(null);
   const REPORT_REASONS = ['Spam','Harassment','Hate speech','Inappropriate content','Scam / Fraud','Other'];
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [mentionQuery, setMentionQuery] = useState('');
@@ -164,13 +163,12 @@ const CommunityRoom: React.FC = () => {
     if (!msgText && !imgUrl) return;
     setSending(true);
     setText('');
-    setImagePreview(null);
     setReplyTo(null);
     try {
       const sent = await api.chat.send(
         user.uid, undefined, msgText, communityId,
         imgUrl ? 'image' : undefined, imgUrl,
-        replyTo?._id, replyTo?.text?.slice(0, 80),
+        replyTo ? { _id: replyTo._id, text: replyTo.text?.slice(0, 80), fromName: replyTo.authorName || replyTo.fromUid || '' } : undefined,
       );
       setMessages(prev => prev.some(m => m._id === sent._id) ? prev : [...prev, sent]);
     } catch (e) {

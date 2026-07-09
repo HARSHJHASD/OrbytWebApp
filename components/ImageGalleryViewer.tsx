@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 interface ImageGalleryViewerProps {
   visible: boolean;
@@ -48,10 +48,9 @@ export default function ImageGalleryViewer({
   };
 
   useEffect(() => {
-    if (visible) {
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-    }
+    if (!visible) return;
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [visible, currentIndex]);
 
   if (!visible || !images || images.length === 0) return null;

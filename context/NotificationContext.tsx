@@ -89,8 +89,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [unreadRooms, setUnreadRooms] = useState(0);
     const [activeCollision, setActiveCollision] = useState<any | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
-    const keepAliveRef = useRef<any>(null);
     const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const lastNearbyUidsRef = useRef<Set<string>>(new Set());
 

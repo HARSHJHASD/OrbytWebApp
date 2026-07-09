@@ -1,9 +1,7 @@
 import {
   ArrowRight,
-  Ban,
   Bell,
   ChevronLeft,
-  EyeOff,
   Loader2,
   PauseCircle,
   Radar,
@@ -36,8 +34,6 @@ const Settings: React.FC = () => {
   const [liveStatusMode, setLiveStatusMode] = useState('');
   const [discoveryRadius, setDiscoveryRadius] = useState(10);
   const [loading, setLoading] = useState(true);
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [deletingAccount, setDeletingAccount] = useState(false);
 
   // Blocked Users
   const [blockedUsers, setBlockedUsers] = useState<Array<{ uid: string; displayName: string; photoURL?: string }>>([]);
@@ -137,25 +133,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  const handleConfirmDelete = async () => {
-    if (!user) return;
-
-    setDeletingAccount(true);
-
-    try {
-      const success = await api.profile.delete(user.uid);
-
-      if (success) {
-        await logout();
-        navigate("/auth");
-      }
-    } catch (e) {
-      console.error("Account deletion failed:", e);
-    } finally {
-      setDeletingAccount(false);
-      setConfirmDeleteOpen(false);
-    }
-  };
 
   const handleLogout = async () => {
     await logout();
@@ -423,7 +400,7 @@ const Settings: React.FC = () => {
             </button>
 
             <button
-              onClick={() => setConfirmDeleteOpen(true)}
+              onClick={() => navigate('/delete-account')}
               className="w-full p-4 text-red-600 dark:text-red-500 font-bold border-t border-slate-100 dark:border-slate-800 hover:bg-red-500/10 flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4" />

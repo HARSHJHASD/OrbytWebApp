@@ -104,14 +104,14 @@ const AreaLineChart = React.memo(function AreaLineChart({ data, keys }: {
     if (data.length < 2) return '';
     return data.map((d, i) => {
       if (i === 0) return `M${scaleX(0).toFixed(1)},${scaleY(d[key] as number).toFixed(1)}`;
-      const x0 = scaleX(i - 1); const y0 = scaleY(data[i - 1][key] as number);
+      const x0 = scaleX(i - 1); const y0 = scaleY(data[i - 1]![key] as number);
       const x1 = scaleX(i);     const y1 = scaleY(d[key] as number);
       const cpx = (x0 + x1) / 2;
       return `C${cpx.toFixed(1)},${y0.toFixed(1)} ${cpx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
     }).join(' ');
   };
 
-  const area = (key: keyof ChartRow, color: string) => {
+  const area = (key: keyof ChartRow, _color: string) => {
     const bottom = PAD.t + iH;
     return `${smooth(key)} L${scaleX(data.length - 1).toFixed(1)},${bottom} L${PAD.l},${bottom} Z`;
   };
@@ -240,36 +240,6 @@ const DonutChart = React.memo(function DonutChart({ segments }: { segments: { la
   );
 });
 
-/** Horizontal ranked bar list (for top users) */
-const HBarChart = React.memo(function HBarChart({ items, color }: { items: { label: string; value: number; sublabel?: string; photo?: string | null }[]; color: string }) {
-  const max = Math.max(...items.map(i => i.value), 1);
-  return (
-    <div className="space-y-2.5">
-      {items.map((item, i) => (
-        <div key={i} className="flex items-center gap-3">
-          <span className="text-slate-600 text-xs w-4 flex-shrink-0 font-mono">#{i + 1}</span>
-          {item.photo ? (
-            <img src={item.photo} className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-slate-700" alt={item.label} />
-          ) : (
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-              {item.label[0]?.toUpperCase()}
-            </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-white text-xs font-semibold truncate">{item.label}</span>
-              {item.sublabel && <span className="text-xs text-slate-500 truncate">{item.sublabel}</span>}
-              <span className="ml-auto text-white text-xs font-bold flex-shrink-0">{item.value}</span>
-            </div>
-            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all" style={{ width: `${(item.value / max) * 100}%`, background: color }} />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-});
 
 // ── Modals ────────────────────────────────────────────────────────────────────
 const DeleteUserModal = React.memo(function DeleteUserModal({ user, onConfirm, onCancel }: { user: AdminUser; onConfirm: () => void; onCancel: () => void }) {
@@ -840,7 +810,6 @@ const AdminDashboard: React.FC = () => {
   const [postsTotal, setPostsTotal] = useState(0);
   const [postsPages, setPostsPages] = useState(1);
   const [postsFilter, setPostsFilter] = useState<'all' | 'flagged'>('all');
-  const [postsSearch, setPostsSearch] = useState('');
   const [deletingPost, setDeletingPost] = useState<string | null>(null);
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkThreshold, setBulkThreshold] = useState(3);
@@ -914,7 +883,7 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  const fetchPosts = useCallback(async (page = 1, flagged = false, search = '') => {
+  const fetchPosts = useCallback(async (page = 1, flagged = false, _search = '') => {
     if (!token) return;
     setPostsLoading(true);
     try {
@@ -2262,7 +2231,7 @@ const AdminDashboard: React.FC = () => {
                               {(analytics.topReported as { displayName: string; count: number; isSuspended: boolean; photoURL: string | null }[]).map((u, index) => (
                                 <tr key={index} className="border-b border-slate-800/40 text-slate-300">
                                   <td className="py-2.5 flex items-center gap-2">
-                                    <Avatar src={u.photoURL} name={u.displayName} size={24} />
+                                    <Avatar src={u.photoURL ?? undefined} name={u.displayName} size={24} />
                                     <span className="font-semibold text-white">{u.displayName}</span>
                                   </td>
                                   <td className="py-2.5 font-bold text-red-400">{u.count}</td>
@@ -2298,7 +2267,7 @@ const AdminDashboard: React.FC = () => {
                               {(analytics.topPosters as { displayName: string; count: number; photoURL: string | null }[]).map((u, index) => (
                                 <tr key={index} className="border-b border-slate-800/40 text-slate-300">
                                   <td className="py-2.5 flex items-center gap-2">
-                                    <Avatar src={u.photoURL} name={u.displayName} size={24} />
+                                    <Avatar src={u.photoURL ?? undefined} name={u.displayName} size={24} />
                                     <span className="font-semibold text-white">{u.displayName}</span>
                                   </td>
                                   <td className="py-2.5 font-bold text-amber-400">{u.count}</td>

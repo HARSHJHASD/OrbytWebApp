@@ -1,6 +1,5 @@
 import { Briefcase, Calendar, Camera, CheckCircle, ChevronLeft, Instagram, Shield, Sparkles, User as UserIcon } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import SearchableDropdown from '../components/ui/SearchableDropdown';
@@ -16,7 +15,6 @@ const STEPS = ['Legal', 'Basic Info', "That's Me", 'Socials', 'Interests'];
 
 const Onboarding: React.FC = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +37,7 @@ const Onboarding: React.FC = () => {
 
   useEffect(() => {
     if (user?.email && !displayName) {
-      setDisplayName(user.email.split('@')[0]);
+      setDisplayName(user.email.split('@')[0] ?? '');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -84,6 +82,7 @@ const Onboarding: React.FC = () => {
         const file = files[i];
         const targetIndex = index + i;
         if (targetIndex >= 3) break;
+        if (!file) continue;
 
         if (file.size > 10 * 1024 * 1024) {
           continue;

@@ -6,7 +6,6 @@ import { useUserLocation } from '../components/LocationGuard';
 import { calculateDistance } from '../util/location';
 import { POPULAR_INTERESTS, UserProfile } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { useTheme } from '../context/ThemeContext';
 
 /* ──────────────────────────────────────────────────────────────────────────
    Swipeable card — pure pointer-events, no library required
@@ -20,7 +19,6 @@ interface SwipeableCardProps {
 }
 
 const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwipe, onNavigate, isTop }) => {
-    const { isDark } = useTheme();
     const cardRef = useRef<HTMLDivElement>(null);
     const startX = useRef(0);
     const currentX = useRef(0);
@@ -62,7 +60,6 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
         }
     }, [onSwipe]);
 
-    const swipeColor = transform.x > 40 ? 'rgba(34,197,94,0.15)' : transform.x < -40 ? 'rgba(239,68,68,0.15)' : 'transparent';
 
     return (
         <div
@@ -155,7 +152,6 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
    ────────────────────────────────────────────────────────────────────────── */
 export default function Discover() {
     const { user } = useAuth();
-    const { isDark } = useTheme();
     const navigate = useNavigate();
     const { location: myLocation } = useUserLocation();
 
@@ -174,12 +170,7 @@ export default function Discover() {
 
                 const maxDistanceMeters = (myProf?.discoveryRadius || 10) * 1000;
 
-                // Exclude yourself, friends, people you've already sent a request to, and people who sent you one
-                let localSwiped: string[] = [];
-                try {
-                    const stored = localStorage.getItem(`swipedUsers_${user?.uid}`);
-                    if (stored) localSwiped = JSON.parse(stored);
-                } catch (e) { }
+
 
                 const excluded = new Set<string>([
                     user?.uid,
@@ -223,16 +214,17 @@ export default function Discover() {
 
     const handleSwipe = useCallback((index: number, dir: 'left' | 'right') => {
         const targetUid = profiles[index]?.uid;
-        if (dir === 'right' && user) {
+        if (!targetUid) return;
+        if (dir === 'right' && user?.uid) {
             // Do not await to avoid blocking the UI swipe update
-            api.friends.sendRequest(user?.uid, targetUid).catch(e => {
+            api.friends.sendRequest(user.uid, targetUid).catch(e => {
                 console.error("Failed to send request", e);
             });
         }
         
         // Sync to server
-        if (user) {
-            api.profile.pass(user?.uid, targetUid).catch(e => {
+        if (user?.uid) {
+            api.profile.pass(user.uid, targetUid).catch(e => {
                 console.error("Failed to sync pass", e);
             });
         }

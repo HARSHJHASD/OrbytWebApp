@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 export function usePushNotifications() {
     const { user } = useAuth();
     const [isSupported, setIsSupported] = useState(false);
-    const [isSubscribed, setIsSubscribed] = useState(false);
+    const isSubscribed = false;
 
     useEffect(() => {
         setIsSupported(false);

@@ -15,7 +15,6 @@ import {
   Navigation,
   PartyPopper,
   Send,
-  Share2,
   Trash2,
   UserMinus,
   UserPlus,
@@ -24,11 +23,9 @@ import {
 } from "lucide-react";
 import React, { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useUserLocation } from "./LocationGuard";
 import { api } from "../services/api";
 import { calculateDistance } from "../util/location";
-import { useUserLocation } from "./LocationGuard";
-import { useTheme } from "../context/ThemeContext";
-import { Post, Comment } from '../types';
 
 const REACTIONS = ['❤️','😂','😮','🔥','👏'];
 const REPORT_REASONS = ['Spam','Harassment','Misinformation','Nudity / Sexual content','Hate speech','Other'];
@@ -42,7 +39,6 @@ const PostItem: React.FC<any> = ({
   onEdit,
   onDeleteComment,
   onLikeComment,
-  onReport,
   onBlock,
   onBookmark,
   isBookmarked,
@@ -50,7 +46,6 @@ const PostItem: React.FC<any> = ({
 }) => {
   const navigate = useNavigate();
   const { location: myLocation } = useUserLocation();
-  const { isDark } = useTheme();
   const [showAllComments, setShowAllComments] = useState(false);
   const [commentText, setCommentText] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);

@@ -1,5 +1,5 @@
 import { Users, FileText, MapPin, X, ArrowRight } from 'lucide-react';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserProfile, Post } from '../types';
 
@@ -20,7 +20,6 @@ export default function SearchResultsModal({
   query,
   people,
   posts,
-  currentUserId,
   loadingPeople,
   loadingPosts,
 }: SearchResultsModalProps) {
@@ -164,7 +163,7 @@ export default function SearchResultsModal({
                       {posts.map((post) => (
                         <button
                           key={post._id}
-                          onClick={() => handlePostClick(post._id)}
+                          onClick={() => post._id && handlePostClick(post._id)}
                           className="w-full p-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded-xl transition-colors border border-slate-200 dark:border-slate-800 group"
                         >
                           <div className="flex items-start gap-3">

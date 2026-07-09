@@ -31,23 +31,7 @@ import { triggerHaptic } from "../util/haptics";
 import { MainLogo } from "../util/Images";
 import ConfirmModal from "../components/ui/ConfirmModal";
 
-const getDistanceMeters = (
-  lat1: number,
-  lng1: number,
-  lat2: number,
-  lng2: number,
-) => {
-  const R = 6371e3;
-  const φ1 = (lat1 * Math.PI) / 180;
-  const φ2 = (lat2 * Math.PI) / 180;
-  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
-  const Δλ = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
+
 
 const PostSkeleton = () => (
   <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-sm animate-pulse">
@@ -210,16 +194,8 @@ const Feed: React.FC = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Push Notifications
-  const { isSupported, isSubscribed, subscribe } = usePushNotifications();
-  const [subscribing, setSubscribing] = useState(false);
-
-
-  const handleSubscribe = async () => {
-    setSubscribing(true);
-    await subscribe();
-    setSubscribing(false);
-  };
+  // Push Notifications (subscription managed in Settings)
+  usePushNotifications();
 
   const fetchPosts = async (isLoadMore = false) => {
     try {
@@ -380,7 +356,7 @@ const Feed: React.FC = () => {
         );
 
         // Search profiles - query from all users
-        const allUsers = await api.profile.getAll();
+        const allUsers = await api.profile.getAllWithLocation(user?.uid);
         const searchedPeople = allUsers.filter((u: any) =>
           u.uid !== user?.uid &&
           !blockedUids.has(u.uid) &&
@@ -554,6 +530,8 @@ const Feed: React.FC = () => {
       }
     }
   };
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  void openNotifications;
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -618,10 +596,7 @@ const Feed: React.FC = () => {
     }
   };
   const { unreadCount: notifUnreadCount } = useNotifications();
-  const isActive = (path: string) => {
-    if (path === "/") return location.pathname === "/";
-    return location.pathname.startsWith(path);
-  };
+
 
   return (
     <div
@@ -898,7 +873,7 @@ const Feed: React.FC = () => {
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center font-bold text-slate-500 text-xs">
-                              {n.fromName[0]}
+                              {n.fromName?.[0] ?? '?'}
                             </div>
                           )}
                         </div>
