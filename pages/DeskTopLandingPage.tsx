@@ -98,7 +98,6 @@ const DesktopLanding: React.FC = () => {
         const config = await api.config.getVersion();
         if (config?.minAppVersion) setLatestVersion(config.minAppVersion);
       } catch {
-        // silently ignore
       }
     };
     fetchVersion();

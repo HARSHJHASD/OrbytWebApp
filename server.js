@@ -701,7 +701,7 @@ async function createIndexes() {
       for (const field of fields) {
         const index = {};
         index[field] = 1;
-        await collection.createIndex(index).catch(() => {}); // Ignore if exists
+        await collection.createIndex(index).catch(() => { }); // Ignore if exists
       }
     }
     console.log("Database indexes created successfully");
@@ -818,9 +818,9 @@ function getDistanceMeters(lat1, lng1, lat2, lng2) {
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(lat1 * rad) *
-      Math.cos(lat2 * rad) *
-      Math.sin(dLng / 2) *
-      Math.sin(dLng / 2);
+    Math.cos(lat2 * rad) *
+    Math.sin(dLng / 2) *
+    Math.sin(dLng / 2);
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -867,20 +867,20 @@ app.post("/api/profile/view", async (req, res) => {
     if (isNewDay) {
       const viewer = await profiles.findOne({ uid: viewerUid });
       const target = await profiles.findOne({ uid: targetUid });
-      
+
       if (viewer && target) {
         const vInterests = viewer.interests || [];
         const tInterests = target.interests || [];
-        
+
         let matchPct = 0;
         if (vInterests.length > 0 && tInterests.length > 0) {
           const overlap = vInterests.filter(i => tInterests.includes(i)).length;
           const total = new Set([...vInterests, ...tInterests]).size;
           matchPct = Math.round((overlap / (total || 1)) * 100);
-          
+
           // Boost logic for psychological impact
           if (overlap > 0 && matchPct < 75) {
-            matchPct = 75 + (overlap * 2); 
+            matchPct = 75 + (overlap * 2);
           }
         } else {
           // Stable fallback match percentage based on UIDs
@@ -892,10 +892,10 @@ app.post("/api/profile/view", async (req, res) => {
           }
           matchPct = 60 + (Math.abs(hash) % 30);
         }
-        
+
         if (matchPct > 99) matchPct = 99;
 
-        await createNotification("profile_view", viewerUid, targetUid, null, { 
+        await createNotification("profile_view", viewerUid, targetUid, null, {
           matchPct,
           message: `with ${matchPct}% matching interests opened your profile today.`
         });
@@ -903,13 +903,13 @@ app.post("/api/profile/view", async (req, res) => {
         // Quest: Small World (view someone crossed paths with)
         // Check if there was a crossed_paths between them in last 24h
         const pathMatch = await db.collection("notifications").findOne({
-           toUid: viewerUid,
-           fromUid: targetUid,
-           type: 'crossed_paths',
-           createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
+          toUid: viewerUid,
+          fromUid: targetUid,
+          type: 'crossed_paths',
+          createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
         });
         if (pathMatch) {
-            await updateQuestProgress(viewerUid, 'crossed_paths');
+          await updateQuestProgress(viewerUid, 'crossed_paths');
         }
 
         // Logic for Feature 2: Time-Limited Urgency
@@ -985,7 +985,7 @@ app.post("/api/cleanup", async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.3.6",
+  minAppVersion: "1.4.0",
   updateUrl:
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
@@ -1108,7 +1108,7 @@ async function ensureDailyQuest(user) {
       completed: false,
       generatedAt: now,
     };
-    
+
     await db.collection("profiles").updateOne(
       { uid: user.uid },
       { $set: { quests: [newQuest] } }
@@ -1121,27 +1121,27 @@ async function ensureDailyQuest(user) {
 async function updateQuestProgress(uid, questId, increment = 1) {
   const profile = await db.collection("profiles").findOne({ uid });
   if (!profile || !profile.quests || profile.quests.length === 0) return;
-  
+
   const quest = profile.quests[0];
   if (quest.id === questId && !quest.completed) {
     const newProgress = quest.progress + increment;
     const completed = newProgress >= quest.goal;
-    
+
     await db.collection("profiles").updateOne(
       { uid },
-      { 
-        $set: { 
+      {
+        $set: {
           "quests.0.progress": newProgress,
-          "quests.0.completed": completed 
-        } 
+          "quests.0.completed": completed
+        }
       }
     );
-    
+
     if (completed) {
       // Award reputation for first completion
       await db.collection("profiles").updateOne(
         { uid },
-        { 
+        {
           $addToSet: { reputation: "Eager Explorer" },
           $inc: { "stats.livesChanged": 5 }
         }
@@ -1250,10 +1250,10 @@ app.post("/api/profile/endorse", async (req, res) => {
     }
 
     const profiles = db.collection("profiles");
-    
+
     // Only allow endorsing friends or people you've met (for now keep it simple: any discoverable user)
     // In a real app, verify they actually met.
-    
+
     await profiles.updateOne(
       { uid: toUid },
       { $addToSet: { reputation: { $each: labels } } }
@@ -1417,9 +1417,9 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
 
       // STRICT RADIUS FILTER
       if (viewerLocation && distanceMeters !== null) {
-          if (distanceMeters > effectiveRadius * 1000) {
-              continue;
-          }
+        if (distanceMeters > effectiveRadius * 1000) {
+          continue;
+        }
       }
 
       const isFriend = viewerFriends.has(user.uid);
@@ -1872,7 +1872,7 @@ app.post("/api/posts", async (req, res) => {
               friendUid,
               postIdStr,
               extra,
-            ).catch(() => {});
+            ).catch(() => { });
           }
         }
         // For meetup posts: also notify all other discoverable users (new_event)
@@ -1892,7 +1892,7 @@ app.post("/api/posts", async (req, res) => {
               p.uid,
               postIdStr,
               extra,
-            ).catch(() => {});
+            ).catch(() => { });
           }
         }
       } catch (e) {
@@ -1927,14 +1927,14 @@ app.get("/api/posts", async (req, res) => {
 
     // Apply Radius Filter if coordinates and radius provided
     if (lat && lng && radiusInKm) {
-        const centerLat = parseFloat(lat);
-        const centerLng = parseFloat(lng);
-        // Approximation: 1 degree lat is ~111km
-        const latDelta = radiusInKm / 111.32;
-        const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
-        
-        filter["location.lat"] = { $gte: centerLat - latDelta, $lte: centerLat + latDelta };
-        filter["location.lng"] = { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta };
+      const centerLat = parseFloat(lat);
+      const centerLng = parseFloat(lng);
+      // Approximation: 1 degree lat is ~111km
+      const latDelta = radiusInKm / 111.32;
+      const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
+
+      filter["location.lat"] = { $gte: centerLat - latDelta, $lte: centerLat + latDelta };
+      filter["location.lng"] = { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta };
     }
 
     const allPosts = await posts
@@ -2082,7 +2082,7 @@ app.post("/api/posts/:id/comment", async (req, res) => {
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (post && post.uid !== uid)
       await createNotification("comment", uid, post.uid, postId);
-    
+
     await updateQuestProgress(uid, 'comment_post');
     res.json(newComment);
   } catch (error) {
@@ -2109,10 +2109,10 @@ app.post("/api/posts/:id/likeComment", async (req, res) => {
     const idx = comments.findIndex((c) => {
       try {
         if (c.id && c.id.toString() === commentId) return true;
-      } catch (e) {}
+      } catch (e) { }
       try {
         if (c._id && c._id.toString() === commentId) return true;
-      } catch (e) {}
+      } catch (e) { }
       // fallback to string id
       return c.id === commentId || c._id === commentId;
     });
@@ -2460,14 +2460,14 @@ async function sendPushNotification(
     const expoPushToken =
       (typeof receiver.expoPushToken === "string" && receiver.expoPushToken) ||
       (typeof receiver.pushSubscription === "string" &&
-      Expo.isExpoPushToken(receiver.pushSubscription)
+        Expo.isExpoPushToken(receiver.pushSubscription)
         ? receiver.pushSubscription
         : null);
 
     const webPushSubscription =
       receiver.webPushSubscription ||
       (receiver.pushSubscription &&
-      typeof receiver.pushSubscription === "object"
+        typeof receiver.pushSubscription === "object"
         ? receiver.pushSubscription
         : null);
 
@@ -2752,9 +2752,9 @@ app.post("/api/chat/send", async (req, res) => {
 
       const notifUrl = community
         ? {
-            expo: `/community/${community._id}`,
-            web: `/app/rooms/${community._id}`,
-          }
+          expo: `/community/${community._id}`,
+          web: `/app/rooms/${community._id}`,
+        }
         : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
 
       const expoPayload = {
@@ -2773,7 +2773,7 @@ app.post("/api/chat/send", async (req, res) => {
         sendToUser(uid, fullMessage);
         // Push only — no notification document, badge is driven client-side from the WS message
         if (uid !== fromUid)
-          sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => {});
+          sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => { });
       }
 
       return res.json(fullMessage);
@@ -2806,7 +2806,7 @@ app.post("/api/chat/send", async (req, res) => {
         const myInterests = sender.interests || [];
         const overlap = uInterests.filter(i => myInterests.includes(i)).length;
         if (overlap >= 2) { // 2+ shared interests is high enough for "High Match"
-           await updateQuestProgress(fromUid, 'greet_match');
+          await updateQuestProgress(fromUid, 'greet_match');
         }
       }
 
@@ -3133,9 +3133,9 @@ app.get("/api/stories", async (req, res) => {
         const a =
           Math.sin(dLat / 2) * Math.sin(dLat / 2) +
           Math.cos((myLocation.lat * Math.PI) / 180) *
-            Math.cos((story.location.lat * Math.PI) / 180) *
-            Math.sin(dLon / 2) *
-            Math.sin(dLon / 2);
+          Math.cos((story.location.lat * Math.PI) / 180) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         const dist = R * c;
         if (dist > radius) return acc;
@@ -3297,25 +3297,25 @@ app.get("/api/communities", async (req, res) => {
   try {
     const { lat, lng, radius } = req.query;
     const communities = db.collection("communities");
-    
+
     let filter = {};
     const radiusInKm = radius ? parseFloat(radius) : null;
 
     if (lat && lng && radiusInKm) {
-        const centerLat = parseFloat(lat);
-        const centerLng = parseFloat(lng);
-        const latDelta = radiusInKm / 111.32;
-        const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
-        
-        filter = {
-            $or: [
-                { location: null }, // Global rooms
-                {
-                    "location.lat": { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
-                    "location.lng": { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
-                }
-            ]
-        };
+      const centerLat = parseFloat(lat);
+      const centerLng = parseFloat(lng);
+      const latDelta = radiusInKm / 111.32;
+      const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
+
+      filter = {
+        $or: [
+          { location: null }, // Global rooms
+          {
+            "location.lat": { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+            "location.lng": { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+          }
+        ]
+      };
     }
 
     const list = await communities
@@ -3484,7 +3484,7 @@ app.delete("/api/communities/:id/messages/:msgId", async (req, res) => {
       roomWs.forEach((ws) => {
         try {
           ws.send(payload);
-        } catch {}
+        } catch { }
       });
     }
     res.json({ success: true });
@@ -3838,16 +3838,16 @@ app.get("/api/admin/reports", requireAdmin, async (req, res) => {
     const postDocs =
       postIds.length > 0
         ? await db
-            .collection("posts")
-            .find({ _id: { $in: postIds } })
-            .project({
-              _id: 1,
-              content: 1,
-              imageURL: 1,
-              type: 1,
-              meetupDetails: 1,
-            })
-            .toArray()
+          .collection("posts")
+          .find({ _id: { $in: postIds } })
+          .project({
+            _id: 1,
+            content: 1,
+            imageURL: 1,
+            type: 1,
+            meetupDetails: 1,
+          })
+          .toArray()
         : [];
     const postMap = {};
     postDocs.forEach((p) => {
@@ -3859,28 +3859,28 @@ app.get("/api/admin/reports", requireAdmin, async (req, res) => {
     const storyDocs =
       storyIds.length > 0
         ? await db
-            .collection("stories")
-            .find({
-              $or: [
-                {
-                  _id: {
-                    $in: storyIds
-                      .filter((id) => ObjectId.isValid(id))
-                      .map((id) => new ObjectId(id)),
-                  },
+          .collection("stories")
+          .find({
+            $or: [
+              {
+                _id: {
+                  $in: storyIds
+                    .filter((id) => ObjectId.isValid(id))
+                    .map((id) => new ObjectId(id)),
                 },
-                { _id: { $in: storyIds } },
-              ],
-            })
-            .project({
-              _id: 1,
-              uid: 1,
-              imageURL: 1,
-              videoURL: 1,
-              text: 1,
-              caption: 1,
-            })
-            .toArray()
+              },
+              { _id: { $in: storyIds } },
+            ],
+          })
+          .project({
+            _id: 1,
+            uid: 1,
+            imageURL: 1,
+            videoURL: 1,
+            text: 1,
+            caption: 1,
+          })
+          .toArray()
         : [];
     const storyMap = {};
     storyDocs.forEach((s) => {
@@ -3894,10 +3894,10 @@ app.get("/api/admin/reports", requireAdmin, async (req, res) => {
     const comDocs =
       comIds.length > 0
         ? await db
-            .collection("communities")
-            .find({ _id: { $in: comIds } })
-            .project({ _id: 1, name: 1, description: 1 })
-            .toArray()
+          .collection("communities")
+          .find({ _id: { $in: comIds } })
+          .project({ _id: 1, name: 1, description: 1 })
+          .toArray()
         : [];
     const comMap = {};
     comDocs.forEach((c) => {
@@ -4976,7 +4976,7 @@ app.get("/api/admin/events", requireAdmin, async (req, res) => {
       try {
         if (md.date && md.startTime)
           eventMs = new Date(`${md.date}T${md.startTime}`).getTime();
-      } catch (_) {}
+      } catch (_) { }
       return {
         _id: e._id.toString(),
         uid: e.uid,
