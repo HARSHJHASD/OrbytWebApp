@@ -3688,6 +3688,75 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
   }
 });
 
+// DELETE /api/admin/users/bulk-flagged — bulk delete users with >= minReports
+app.delete("/api/admin/users/bulk-flagged", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const minReports = parseInt(req.query.minReports) || 3;
+    const pendingReports = await db
+      .collection("reports")
+      .find({ status: "pending" })
+      .toArray();
+      
+    const countMap = {};
+    pendingReports.forEach((r) => {
+      if (r.targetUid) countMap[r.targetUid] = (countMap[r.targetUid] || 0) + 1;
+    });
+    
+    const uidsToDelete = Object.entries(countMap)
+      .filter(([, cnt]) => cnt >= minReports)
+      .map(([id]) => id);
+      
+    if (uidsToDelete.length === 0) return res.json({ success: true, deleted: 0 });
+
+    const collections = {
+      users: db.collection("users"),
+      profiles: db.collection("profiles"),
+      posts: db.collection("posts"),
+      stories: db.collection("stories"),
+      messages: db.collection("messages"),
+      notifications: db.collection("notifications"),
+      reports: db.collection("reports"),
+      profile_views: db.collection("profile_views"),
+      communities: db.collection("communities"),
+    };
+
+    let deletedCount = 0;
+    for (const uid of uidsToDelete) {
+      if (ObjectId.isValid(uid)) {
+        await collections.users.deleteOne({ _id: new ObjectId(uid) });
+      }
+      await collections.profiles.deleteOne({ uid });
+      await collections.posts.deleteMany({ uid });
+      await collections.stories.deleteMany({ uid });
+      await collections.messages.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+      await collections.notifications.deleteMany({ $or: [{ fromUid: uid }, { toUid: uid }] });
+      await collections.reports.deleteMany({ $or: [{ reporterUid: uid }, { targetUid: uid }] });
+      await collections.profile_views.deleteMany({ $or: [{ viewerUid: uid }, { targetUid: uid }] });
+      await collections.profiles.updateMany({}, {
+        $pull: { friends: uid, incomingRequests: uid, outgoingRequests: uid, blockedUsers: uid, passedUsers: uid }
+      });
+      await collections.communities.updateMany({}, { $pull: { members: uid } });
+      await collections.posts.updateMany({}, { $pull: { comments: { uid }, likedBy: uid } });
+      deletedCount++;
+    }
+    
+    const affectedPosts = await collections.posts
+      .find({ likedBy: { $exists: true } })
+      .toArray();
+    for (const post of affectedPosts) {
+      await collections.posts.updateOne(
+        { _id: post._id },
+        { $set: { likes: (post.likedBy || []).length } },
+      );
+    }
+
+    res.json({ success: true, deleted: deletedCount });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to bulk delete users" });
+  }
+});
+
 // DELETE /api/admin/users/:uid — permanently delete a user and ALL their data
 app.delete("/api/admin/users/:uid", requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
@@ -4128,6 +4197,37 @@ app.get("/api/admin/posts", requireAdmin, async (req, res) => {
   } catch (e) {
     console.error("Admin get posts error:", e);
     res.status(500).json({ error: "Failed to fetch posts" });
+  }
+});
+
+// DELETE /api/admin/posts/bulk-flagged — bulk delete posts with >= minReports
+app.delete("/api/admin/posts/bulk-flagged", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const minReports = parseInt(req.query.minReports) || 3;
+    const pendingReports = await db
+      .collection("reports")
+      .find({ status: "pending" })
+      .toArray();
+    const countMap = {};
+    pendingReports.forEach((r) => {
+      if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1;
+    });
+    const postIdsToDelete = Object.entries(countMap)
+      .filter(([, cnt]) => cnt >= minReports)
+      .map(([id]) => id);
+    if (postIdsToDelete.length === 0)
+      return res.json({ success: true, deleted: 0 });
+    const validIds = postIdsToDelete
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+    await db.collection("posts").deleteMany({ _id: { $in: validIds } });
+    await db
+      .collection("reports")
+      .deleteMany({ postId: { $in: postIdsToDelete } });
+    res.json({ success: true, deleted: validIds.length });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to bulk delete posts" });
   }
 });
 
@@ -4777,36 +4877,7 @@ app.post("/api/admin/settings", requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/admin/posts/bulk-flagged — bulk delete posts with >= minReports
-app.delete("/api/admin/posts/bulk-flagged", requireAdmin, async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Database not connected" });
-  try {
-    const minReports = parseInt(req.query.minReports) || 3;
-    const pendingReports = await db
-      .collection("reports")
-      .find({ status: "pending" })
-      .toArray();
-    const countMap = {};
-    pendingReports.forEach((r) => {
-      if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1;
-    });
-    const postIdsToDelete = Object.entries(countMap)
-      .filter(([, cnt]) => cnt >= minReports)
-      .map(([id]) => id);
-    if (postIdsToDelete.length === 0)
-      return res.json({ success: true, deleted: 0 });
-    const validIds = postIdsToDelete
-      .filter((id) => ObjectId.isValid(id))
-      .map((id) => new ObjectId(id));
-    await db.collection("posts").deleteMany({ _id: { $in: validIds } });
-    await db
-      .collection("reports")
-      .deleteMany({ postId: { $in: postIdsToDelete } });
-    res.json({ success: true, deleted: validIds.length });
-  } catch (e) {
-    res.status(500).json({ error: "Failed to bulk delete" });
-  }
-});
+
 
 // DELETE /api/admin/stories/all — delete every story
 app.delete("/api/admin/stories/all", requireAdmin, async (req, res) => {
