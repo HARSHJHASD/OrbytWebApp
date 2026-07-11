@@ -105,7 +105,7 @@ const AreaLineChart = React.memo(function AreaLineChart({ data, keys }: {
     return data.map((d, i) => {
       if (i === 0) return `M${scaleX(0).toFixed(1)},${scaleY(d[key] as number).toFixed(1)}`;
       const x0 = scaleX(i - 1); const y0 = scaleY(data[i - 1]![key] as number);
-      const x1 = scaleX(i);     const y1 = scaleY(d[key] as number);
+      const x1 = scaleX(i); const y1 = scaleY(d[key] as number);
       const cpx = (x0 + x1) / 2;
       return `C${cpx.toFixed(1)},${y0.toFixed(1)} ${cpx.toFixed(1)},${y1.toFixed(1)} ${x1.toFixed(1)},${y1.toFixed(1)}`;
     }).join(' ');
@@ -347,10 +347,10 @@ const ReportDetailModal = React.memo(function ReportDetailModal({ report, users,
   const targetUser = users.find(u => u.uid === report.targetUid);
 
   const TYPE_COLORS: Record<string, string> = {
-    user:      'bg-violet-950 text-violet-400 border-violet-900',
-    post:      'bg-blue-950 text-blue-400 border-blue-900',
-    story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
-    meetup:    'bg-orange-950 text-orange-400 border-orange-900',
+    user: 'bg-violet-950 text-violet-400 border-violet-900',
+    post: 'bg-blue-950 text-blue-400 border-blue-900',
+    story: 'bg-cyan-950 text-cyan-400 border-cyan-900',
+    meetup: 'bg-orange-950 text-orange-400 border-orange-900',
     community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
   };
   const reportType = report.type || 'post';
@@ -376,11 +376,10 @@ const ReportDetailModal = React.memo(function ReportDetailModal({ report, users,
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${typeColor}`}>{reportType.toUpperCase()}</span>
-            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${
-              report.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' :
-              report.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' :
-              'bg-slate-800 text-slate-400 border-slate-700'
-            }`}>{report.status.toUpperCase()}</span>
+            <span className={`text-xs font-bold px-2.5 py-1 rounded-full border ${report.status === 'pending' ? 'bg-red-950 text-red-400 border-red-900' :
+                report.status === 'resolved' ? 'bg-emerald-950 text-emerald-400 border-emerald-900' :
+                  'bg-slate-800 text-slate-400 border-slate-700'
+              }`}>{report.status.toUpperCase()}</span>
             <button onClick={onClose} className="text-slate-500 hover:text-slate-300 ml-2"><X className="w-5 h-5" /></button>
           </div>
         </div>
@@ -577,7 +576,7 @@ function CommunityPeekModal({ communityId, token, onClose, onViewMember }: {
     setPeekLoading(true);
     api.admin.peekCommunity(token, communityId)
       .then(d => setPeekData(d as PeekData))
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setPeekLoading(false));
   }, [communityId, token]);
 
@@ -946,7 +945,7 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (tab !== 'settings') return;
     setSettingsLoading(true);
-    api.admin.getSettings(token).then(d => setAutoSuspendThreshold(d.autoSuspendThreshold)).catch(() => {}).finally(() => setSettingsLoading(false));
+    api.admin.getSettings(token).then(d => setAutoSuspendThreshold(d.autoSuspendThreshold)).catch(() => { }).finally(() => setSettingsLoading(false));
   }, [tab, token]);
 
   const confirmDelete = async () => {
@@ -1180,7 +1179,7 @@ const AdminDashboard: React.FC = () => {
       setSelectedUserIds(new Set(filteredUsers.map(u => u.uid)));
     }
   }, [selectedUserIds, filteredUsers]);
-  
+
   const toggleUserSelection = useCallback((uid: string) => {
     setSelectedUserIds(prev => {
       const next = new Set(prev);
@@ -1239,7 +1238,7 @@ const AdminDashboard: React.FC = () => {
 
       {/* Backdrop for mobile menu drawer */}
       {mobileMenuOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/60 z-40 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
@@ -1275,11 +1274,10 @@ const AdminDashboard: React.FC = () => {
                   setTab(t.id);
                   setMobileMenuOpen(false);
                 }}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${
-                  isActive 
-                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/10' 
+                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-bold transition-all ${isActive
+                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-500/10'
                     : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <IconComponent className={`w-4.5 h-4.5 ${isActive ? 'text-white' : 'text-slate-500'}`} />
@@ -1309,8 +1307,8 @@ const AdminDashboard: React.FC = () => {
               <p className="text-white text-xs font-bold truncate">Super Admin</p>
               <p className="text-slate-500 text-[10px] truncate">Admin Console</p>
             </div>
-            <button 
-              onClick={logout} 
+            <button
+              onClick={logout}
               className="p-2 text-slate-400 hover:text-red-400 rounded-xl hover:bg-slate-800/80 transition-colors"
               title="Sign Out"
             >
@@ -1325,8 +1323,8 @@ const AdminDashboard: React.FC = () => {
         {/* Top Navbar */}
         <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-30 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setMobileMenuOpen(true)} 
+            <button
+              onClick={() => setMobileMenuOpen(true)}
               className="p-2 -ml-2 text-slate-400 hover:text-white md:hidden"
             >
               <Menu className="w-5 h-5" />
@@ -1339,16 +1337,16 @@ const AdminDashboard: React.FC = () => {
             </h1>
           </div>
           <div className="flex items-center gap-2">
-            <button 
-              onClick={() => setShowBroadcast(true)} 
+            <button
+              onClick={() => setShowBroadcast(true)}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold px-3 py-2 rounded-xl transition-colors"
             >
               <Megaphone className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Broadcast</span>
             </button>
-            <button 
-              onClick={fetchAll} 
-              disabled={loading} 
+            <button
+              onClick={fetchAll}
+              disabled={loading}
               className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
               title="Refresh Data"
             >
@@ -1607,9 +1605,9 @@ const AdminDashboard: React.FC = () => {
                               <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(post.createdAt)}</td>
                               <td className="px-5 py-4 text-right">
                                 <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all gap-2">
-                                  <button 
-                                    onClick={() => handlePinPost(post)} 
-                                    disabled={pinningPost === post._id} 
+                                  <button
+                                    onClick={() => handlePinPost(post)}
+                                    disabled={pinningPost === post._id}
                                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${post.isPinned ? 'text-amber-500 hover:text-amber-400 hover:bg-amber-950' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                                     title={post.isPinned ? "Unpin Post" : "Pin Post"}
                                   >
@@ -1620,9 +1618,9 @@ const AdminDashboard: React.FC = () => {
                                     )}
                                     <span>{post.isPinned ? 'Unpin' : 'Pin'}</span>
                                   </button>
-                                  <button 
-                                    onClick={() => handleDeletePost(post._id)} 
-                                    disabled={deletingPost === post._id} 
+                                  <button
+                                    onClick={() => handleDeletePost(post._id)}
+                                    disabled={deletingPost === post._id}
                                     className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
                                     title="Delete Post"
                                   >
@@ -1751,9 +1749,9 @@ const AdminDashboard: React.FC = () => {
                               <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(story.createdAt)}</td>
                               <td className="px-5 py-4 text-right">
                                 <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
-                                  <button 
-                                    onClick={() => handleDeleteStory(story._id)} 
-                                    disabled={deletingStory === story._id} 
+                                  <button
+                                    onClick={() => handleDeleteStory(story._id)}
+                                    disabled={deletingStory === story._id}
                                     className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
                                     title="Delete Story"
                                   >
@@ -1902,9 +1900,9 @@ const AdminDashboard: React.FC = () => {
                               </td>
                               <td className="px-5 py-4 text-right">
                                 <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
-                                  <button 
-                                    onClick={() => handleDeleteEvent(event._id)} 
-                                    disabled={deletingEvent === event._id} 
+                                  <button
+                                    onClick={() => handleDeleteEvent(event._id)}
+                                    disabled={deletingEvent === event._id}
                                     className="flex items-center gap-1.5 text-red-500 hover:text-red-400 hover:bg-red-950 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
                                     title="Delete Event"
                                   >
@@ -1981,10 +1979,10 @@ const AdminDashboard: React.FC = () => {
                         ) : filteredReports.map(r => {
                           const rType = r.type || 'post';
                           const TYPE_COLORS: Record<string, string> = {
-                            user:      'bg-violet-950 text-violet-400 border-violet-900',
-                            post:      'bg-blue-950 text-blue-400 border-blue-900',
-                            story:     'bg-cyan-950 text-cyan-400 border-cyan-900',
-                            meetup:    'bg-orange-950 text-orange-400 border-orange-900',
+                            user: 'bg-violet-950 text-violet-400 border-violet-900',
+                            post: 'bg-blue-950 text-blue-400 border-blue-900',
+                            story: 'bg-cyan-950 text-cyan-400 border-cyan-900',
+                            meetup: 'bg-orange-950 text-orange-400 border-orange-900',
                             community: 'bg-emerald-950 text-emerald-400 border-emerald-900',
                           };
                           const typeColor = TYPE_COLORS[rType] ?? 'bg-slate-800 text-slate-400 border-slate-700';
@@ -2273,19 +2271,19 @@ const AdminDashboard: React.FC = () => {
                     <AreaLineChart
                       data={analytics.chartData}
                       keys={[
-                        { key: 'signups',     color: '#8b5cf6', label: 'Signups' },
-                        { key: 'posts',       color: '#3b82f6', label: 'Posts' },
+                        { key: 'signups', color: '#8b5cf6', label: 'Signups' },
+                        { key: 'posts', color: '#3b82f6', label: 'Posts' },
                         { key: 'communities', color: '#10b981', label: 'Communities' },
-                        { key: 'reports',     color: '#ef4444', label: 'Reports' },
+                        { key: 'reports', color: '#ef4444', label: 'Reports' },
                       ]}
                     />
                     {/* 30d totals row */}
                     <div className="grid grid-cols-4 gap-3 mt-5">
                       {[
-                        { label: 'Signups (30d)',     key: 'signups',     color: 'text-violet-400' },
-                        { label: 'Posts (30d)',        key: 'posts',       color: 'text-blue-400' },
+                        { label: 'Signups (30d)', key: 'signups', color: 'text-violet-400' },
+                        { label: 'Posts (30d)', key: 'posts', color: 'text-blue-400' },
                         { label: 'Communities (30d)', key: 'communities', color: 'text-emerald-400' },
-                        { label: 'Reports (30d)',      key: 'reports',     color: 'text-red-400' },
+                        { label: 'Reports (30d)', key: 'reports', color: 'text-red-400' },
                       ].map(s => (
                         <div key={s.label} className="bg-slate-800/60 rounded-xl p-3 text-center">
                           <p className={`text-xl font-extrabold ${s.color}`}>
@@ -2343,20 +2341,20 @@ const AdminDashboard: React.FC = () => {
                       <h4 className="text-white font-bold text-sm mb-1">Report Status</h4>
                       <p className="text-slate-500 text-xs mb-4">Current state of all submitted reports</p>
                       <DonutChart segments={[
-                        { label: 'Pending Action', value: analytics.reportStatus?.pending || 0,   color: '#ef4444' },
-                        { label: 'Resolved',       value: analytics.reportStatus?.resolved || 0,  color: '#10b981' },
-                        { label: 'Dismissed',      value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
+                        { label: 'Pending Action', value: analytics.reportStatus?.pending || 0, color: '#ef4444' },
+                        { label: 'Resolved', value: analytics.reportStatus?.resolved || 0, color: '#10b981' },
+                        { label: 'Dismissed', value: analytics.reportStatus?.dismissed || 0, color: '#475569' },
                       ]} />
                     </div>
                     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                       <h4 className="text-white font-bold text-sm mb-1">Report Types</h4>
                       <p className="text-slate-500 text-xs mb-4">What content is being reported</p>
                       <DonutChart segments={[
-                        { label: 'User Profile', value: analytics.reportTypes?.user      || 0, color: '#8b5cf6' },
-                        { label: 'Post',         value: analytics.reportTypes?.post      || 0, color: '#3b82f6' },
-                        { label: 'Story',        value: analytics.reportTypes?.story     || 0, color: '#06b6d4' },
-                        { label: 'Meetup',       value: analytics.reportTypes?.meetup    || 0, color: '#f97316' },
-                        { label: 'Community',    value: analytics.reportTypes?.community || 0, color: '#10b981' },
+                        { label: 'User Profile', value: analytics.reportTypes?.user || 0, color: '#8b5cf6' },
+                        { label: 'Post', value: analytics.reportTypes?.post || 0, color: '#3b82f6' },
+                        { label: 'Story', value: analytics.reportTypes?.story || 0, color: '#06b6d4' },
+                        { label: 'Meetup', value: analytics.reportTypes?.meetup || 0, color: '#f97316' },
+                        { label: 'Community', value: analytics.reportTypes?.community || 0, color: '#10b981' },
                       ]} />
                     </div>
                   </div>
