@@ -1016,6 +1016,36 @@ const AdminDashboard: React.FC = () => {
     finally { setDeletingPost(null); }
   };
 
+  const handlePinPost = async (post: AdminPost) => {
+    if (!token) return;
+    setPinningPost(post._id);
+    try {
+      await api.admin.pinPost(token, post._id);
+      setPosts(posts.map(p => p._id === post._id ? { ...p, isPinned: !p.isPinned } : p));
+      showToast(post.isPinned ? 'Post unpinned' : 'Post pinned', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to pin post', 'error');
+    } finally {
+      setPinningPost(null);
+    }
+  };
+
+  const handleAssignBadge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!badgeTarget || !token) return;
+    setAssigningBadge(true);
+    try {
+      await api.admin.assignBadge(token, badgeTarget.uid, badgeInput.trim());
+      setUsers(users.map(u => u.uid === badgeTarget.uid ? { ...u, badgeTitle: badgeInput.trim() } : u));
+      setBadgeTarget(null);
+      showToast('Badge assigned successfully', 'success');
+    } catch (e: any) {
+      showToast(e.message || 'Failed to assign badge', 'error');
+    } finally {
+      setAssigningBadge(false);
+    }
+  };
+
   const handleDeleteStory = async (storyId: string) => {
     setDeletingStory(storyId);
     try {
@@ -1459,6 +1489,7 @@ const AdminDashboard: React.FC = () => {
                             </td>
                             <td className="px-4 py-4" onClick={e => e.stopPropagation()}>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+                                <button onClick={() => { setBadgeTarget(user); setBadgeInput(user.badgeTitle || ''); }} className="p-1.5 text-blue-400 hover:bg-blue-950 rounded-xl transition-all" title="Assign Badge"><Shield className="w-3.5 h-3.5" /></button>
                                 <button onClick={() => toggleSuspend(user)} disabled={suspending === user.uid} className={`p-1.5 rounded-xl transition-colors ${user.isSuspended ? 'text-emerald-400 hover:bg-emerald-950' : 'text-orange-400 hover:bg-orange-950'}`}>
                                   {user.isSuspended ? <UserCheck className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
                                 </button>
@@ -1575,7 +1606,20 @@ const AdminDashboard: React.FC = () => {
                               </td>
                               <td className="px-4 py-4 text-slate-500 text-xs">{timeAgo(post.createdAt)}</td>
                               <td className="px-5 py-4 text-right">
-                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all">
+                                <div className="opacity-0 group-hover:opacity-100 flex items-center justify-end transition-all gap-2">
+                                  <button 
+                                    onClick={() => handlePinPost(post)} 
+                                    disabled={pinningPost === post._id} 
+                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${post.isPinned ? 'text-amber-500 hover:text-amber-400 hover:bg-amber-950' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+                                    title={post.isPinned ? "Unpin Post" : "Pin Post"}
+                                  >
+                                    {pinningPost === post._id ? (
+                                      <div className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin" />
+                                    ) : (
+                                      <span>📌</span>
+                                    )}
+                                    <span>{post.isPinned ? 'Unpin' : 'Pin'}</span>
+                                  </button>
                                   <button 
                                     onClick={() => handleDeletePost(post._id)} 
                                     disabled={deletingPost === post._id} 
@@ -2571,6 +2615,47 @@ const AdminDashboard: React.FC = () => {
           onDelete={u => { setDeleteTarget(u); setSelectedUser(null); }}
           suspending={suspending === selectedUser.uid}
         />
+      )}
+      {badgeTarget && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-5">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                  <Shield className="w-5 h-5 text-blue-400" /> Assign Badge
+                </h3>
+                <button onClick={() => !assigningBadge && setBadgeTarget(null)} className="text-slate-500 hover:bg-slate-800 p-1 rounded-lg transition-colors"><X className="w-4 h-4" /></button>
+              </div>
+              <p className="text-slate-400 text-sm mb-4">
+                Assign a badge to <strong className="text-white">{badgeTarget.displayName}</strong>.
+              </p>
+              <form onSubmit={handleAssignBadge} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">Badge Title</label>
+                  <input
+                    type="text"
+                    value={badgeInput}
+                    onChange={(e) => setBadgeInput(e.target.value)}
+                    placeholder="e.g. Top Contributor, Verified"
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {["Verified", "Top Contributor", "Trendsetter", "Early Adopter"].map(b => (
+                      <button key={b} type="button" onClick={() => setBadgeInput(b)} className="text-[10px] px-2 py-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition-colors">{b}</button>
+                    ))}
+                    <button type="button" onClick={() => setBadgeInput('')} className="text-[10px] px-2 py-1 bg-red-950/30 text-red-400 rounded hover:bg-red-900/40 transition-colors">Clear</button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 pt-2">
+                  <button type="button" onClick={() => setBadgeTarget(null)} disabled={assigningBadge} className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-semibold text-sm transition-colors">Cancel</button>
+                  <button type="submit" disabled={assigningBadge} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors">
+                    {assigningBadge ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Shield className="w-4 h-4" />} Save
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       )}
       {peekTarget && (
         <CommunityPeekModal

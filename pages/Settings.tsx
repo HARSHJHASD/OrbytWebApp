@@ -298,7 +298,8 @@ const Settings: React.FC = () => {
               onChange={handleRadiusChange}
               onMouseUp={saveRadius}
               onTouchEnd={saveRadius}
-              className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-blue-500 hover:accent-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all duration-300"
+              style={{ transitionTimingFunction: 'cubic-bezier(0.4, 0, 0.2, 1)' }}
             />
           </div>
 
