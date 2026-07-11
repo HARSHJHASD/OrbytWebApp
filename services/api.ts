@@ -969,6 +969,17 @@ export const api = {
       return data as { success: boolean; deleted: number };
     },
 
+    bulkDeleteUsers: async (token: string, uids: string[]) => {
+      const response = await fetch(`${API_BASE}/admin/users/bulk`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify({ uids }),
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to delete users");
+      return data as { success: boolean; deleted: number };
+    },
+
     bulkDeleteFlaggedEvents: async (token: string, minReports = 3) => {
       const response = await fetch(`${API_BASE}/admin/events/bulk-flagged?minReports=${minReports}`, {
         method: "DELETE",

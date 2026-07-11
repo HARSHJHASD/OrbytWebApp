@@ -796,6 +796,9 @@ const AdminDashboard: React.FC = () => {
   const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false);
   const [bulkUsersThreshold, setBulkUsersThreshold] = useState(3);
   const [showBulkUsersConfirm, setShowBulkUsersConfirm] = useState(false);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [deletingSelectedUsers, setDeletingSelectedUsers] = useState(false);
+  const [showSelectedUsersConfirm, setShowSelectedUsersConfirm] = useState(false);
 
   const [reportFilter, setReportFilter] = useState<ReportFilter>('pending');
   const [selectedReport, setSelectedReport] = useState<AdminReport | null>(null);
@@ -1054,6 +1057,18 @@ const AdminDashboard: React.FC = () => {
     finally { setBulkDeletingUsers(false); }
   };
 
+  const handleDeleteSelectedUsers = async () => {
+    setDeletingSelectedUsers(true);
+    try {
+      const res = await api.admin.bulkDeleteUsers(token, Array.from(selectedUserIds));
+      showToast(`Deleted ${res.deleted} selected users.`, 'success');
+      setSelectedUserIds(new Set());
+      fetchAll();
+      setShowSelectedUsersConfirm(false);
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setDeletingSelectedUsers(false); }
+  };
+
   const handleBulkDelete = async () => {
     setBulkDeleting(true);
     try {
@@ -1122,6 +1137,23 @@ const AdminDashboard: React.FC = () => {
 
   const usersPageCount = useMemo(() => Math.max(1, Math.ceil(allFilteredUsers.length / usersPerPage)), [allFilteredUsers.length, usersPerPage]);
   const filteredUsers = useMemo(() => allFilteredUsers.slice((usersPage - 1) * usersPerPage, usersPage * usersPerPage), [allFilteredUsers, usersPage, usersPerPage]);
+
+  const toggleAllUsers = useCallback(() => {
+    if (selectedUserIds.size === filteredUsers.length && filteredUsers.length > 0) {
+      setSelectedUserIds(new Set());
+    } else {
+      setSelectedUserIds(new Set(filteredUsers.map(u => u.uid)));
+    }
+  }, [selectedUserIds, filteredUsers]);
+  
+  const toggleUserSelection = useCallback((uid: string) => {
+    setSelectedUserIds(prev => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  }, []);
 
   const filteredReports = useMemo(() => reports.filter(r => reportFilter === 'all' || r.status === reportFilter), [reports, reportFilter]);
 
@@ -1325,7 +1357,12 @@ const AdminDashboard: React.FC = () => {
                   <FilterPill label="Flagged" active={userFilter === 'flagged'} onClick={() => setUserFilter('flagged')} count={flaggedCount} />
                   <FilterPill label="Suspended" active={userFilter === 'suspended'} onClick={() => setUserFilter('suspended')} count={suspendedCount} />
                 </div>
-                <button onClick={() => setShowBulkUsersConfirm(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors ml-auto mr-2">
+                {selectedUserIds.size > 0 && (
+                  <button onClick={() => setShowSelectedUsersConfirm(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors ml-auto mr-2">
+                    <Trash2 className="w-3.5 h-3.5" /> Delete {selectedUserIds.size} Selected
+                  </button>
+                )}
+                <button onClick={() => setShowBulkUsersConfirm(true)} className={`flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-2 rounded-xl transition-colors ${selectedUserIds.size === 0 ? 'ml-auto mr-2' : 'mr-2'}`}>
                   <Trash2 className="w-3.5 h-3.5" /> Bulk Delete Flagged
                 </button>
                 <button onClick={exportCSV} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold px-3 py-2 rounded-xl transition-colors">
@@ -1349,6 +1386,20 @@ const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
               )}
+              {showSelectedUsersConfirm && (
+                <div className="bg-red-950 border border-red-800 rounded-2xl p-5 mb-4 flex items-center gap-4 flex-wrap">
+                  <div className="flex-1">
+                    <p className="text-red-300 font-semibold text-sm">Are you sure you want to delete the {selectedUserIds.size} selected users?</p>
+                    <p className="text-red-400 text-xs mt-1">This will permanently delete their accounts and all associated data.</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowSelectedUsersConfirm(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
+                    <button onClick={handleDeleteSelectedUsers} disabled={deletingSelectedUsers} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2">
+                      {deletingSelectedUsers ? <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3 h-3" />} Confirm Delete
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="text-slate-600 text-xs mb-3">{allFilteredUsers.length} of {users.length} users — click a row to view details</p>
               {/* per-page selector */}
               <div className="flex items-center gap-2 mb-3">
@@ -1363,6 +1414,9 @@ const AdminDashboard: React.FC = () => {
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase tracking-wider">
+                          <th className="px-4 py-4 w-12 text-center cursor-pointer hover:text-white" onClick={toggleAllUsers}>
+                            <input type="checkbox" className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-violet-600 focus:ring-violet-500 cursor-pointer" checked={filteredUsers.length > 0 && selectedUserIds.size === filteredUsers.length} readOnly />
+                          </th>
                           <th className="text-left px-5 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('displayName')}>User <SortIcon field="displayName" /></th>
                           <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('reportCount')}>Reports <SortIcon field="reportCount" /></th>
                           <th className="text-left px-4 py-4 font-semibold cursor-pointer hover:text-white" onClick={() => toggleSort('postCount')}>Posts <SortIcon field="postCount" /></th>
@@ -1374,8 +1428,11 @@ const AdminDashboard: React.FC = () => {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800/60">
-                        {filteredUsers.length === 0 ? <tr><td colSpan={8} className="text-center text-slate-500 py-16">No users found</td></tr> : filteredUsers.map(user => (
+                        {filteredUsers.length === 0 ? <tr><td colSpan={9} className="text-center text-slate-500 py-16">No users found</td></tr> : filteredUsers.map(user => (
                           <tr key={user.uid} onClick={() => setSelectedUser(user)} className={`hover:bg-slate-800/40 transition-colors group cursor-pointer ${user.isSuspended ? 'opacity-60' : ''}`}>
+                            <td className="px-4 py-4 text-center" onClick={e => { e.stopPropagation(); toggleUserSelection(user.uid); }}>
+                              <input type="checkbox" className="w-4 h-4 rounded bg-slate-800 border-slate-700 text-violet-600 focus:ring-violet-500 cursor-pointer" checked={selectedUserIds.has(user.uid)} readOnly />
+                            </td>
                             <td className="px-5 py-4">
                               <div className="flex items-center gap-3">
                                 <Avatar src={user.photoURL} name={user.displayName} size={38} />
