@@ -763,7 +763,7 @@ export const api = {
     },
 
     getUsers: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/users`, {
+      const response = await fetch(`${API_BASE}/admin/users?limit=100000`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -955,9 +955,20 @@ export const api = {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
-      if (!response?.ok) throw new Error(data?.error || "Failed to bulk delete");
+      if (!response?.ok) throw new Error(data?.error || "Failed to bulk delete posts");
       return data as { success: boolean; deleted: number };
     },
+
+    bulkDeleteFlaggedEvents: async (token: string, minReports = 3) => {
+      const response = await fetch(`${API_BASE}/admin/events/bulk-flagged?minReports=${minReports}`, {
+        method: "DELETE",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to bulk delete events");
+      return data as { success: boolean; deleted: number };
+    },
+
 
     flagCommunity: async (token: string, id: string) => {
       const response = await fetch(`${API_BASE}/admin/communities/${id}/flag`, {

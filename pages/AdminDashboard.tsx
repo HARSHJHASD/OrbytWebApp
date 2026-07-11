@@ -834,6 +834,9 @@ const AdminDashboard: React.FC = () => {
   const [eventsPages, setEventsPages] = useState(1);
   const [eventsSearch, setEventsSearch] = useState('');
   const [deletingEvent, setDeletingEvent] = useState<string | null>(null);
+  const [bulkDeletingEvents, setBulkDeletingEvents] = useState(false);
+  const [bulkEventsThreshold, setBulkEventsThreshold] = useState(3);
+  const [showBulkEventsConfirm, setShowBulkEventsConfirm] = useState(false);
 
   const [showBroadcast, setShowBroadcast] = useState(false);
   const [broadcasting, setBroadcasting] = useState(false);
@@ -1046,6 +1049,17 @@ const AdminDashboard: React.FC = () => {
       setShowBulkConfirm(false);
     } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
     finally { setBulkDeleting(false); }
+  };
+
+  const handleBulkDeleteEvents = async () => {
+    setBulkDeletingEvents(true);
+    try {
+      const res = await api.admin.bulkDeleteFlaggedEvents(token, bulkEventsThreshold);
+      showToast(`Bulk deleted ${res.deleted} flagged events.`, 'success');
+      fetchEvents(1, eventsSearch);
+      setShowBulkEventsConfirm(false);
+    } catch (e: any) { showToast(e?.message || 'Failed', 'error'); }
+    finally { setBulkDeletingEvents(false); }
   };
 
   const handleBroadcast = async (title: string, message: string, segment: string) => {
@@ -1662,8 +1676,28 @@ const AdminDashboard: React.FC = () => {
                   />
                   {eventsSearch && <button onClick={() => { setEventsSearch(''); fetchEvents(1, ''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>}
                 </div>
-                <p className="text-slate-600 text-xs">{eventsTotal.toLocaleString()} events total</p>
+                <div className="ml-auto flex items-center gap-2">
+                  <p className="text-slate-600 text-xs">{eventsTotal.toLocaleString()} events total</p>
+                  <button onClick={() => setShowBulkEventsConfirm(true)} className="flex items-center gap-1.5 bg-red-900/50 hover:bg-red-900 text-red-400 border border-red-800 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors"><Trash2 className="w-3.5 h-3.5" /> Bulk Delete Flagged</button>
+                </div>
               </div>
+              {showBulkEventsConfirm && (
+                <div className="bg-red-950 border border-red-800 rounded-2xl p-5 mb-4 flex items-center gap-4 flex-wrap">
+                  <div className="flex-1">
+                    <p className="text-red-300 font-semibold text-sm">Delete all events with ≥</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input type="number" min={1} max={20} value={bulkEventsThreshold} onChange={e => setBulkEventsThreshold(Number(e.target.value))} className="w-16 bg-slate-900 border border-red-800 text-white rounded-lg px-2 py-1 text-sm text-center" />
+                      <span className="text-red-400 text-sm">reports (pending)</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setShowBulkEventsConfirm(false)} className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold px-3 py-2 rounded-xl">Cancel</button>
+                    <button onClick={handleBulkDeleteEvents} disabled={bulkDeletingEvents} className="bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-3 py-2 rounded-xl flex items-center gap-2">
+                      {bulkDeletingEvents ? <div className="w-3 h-3 border border-white/30 border-t-white rounded-full animate-spin" /> : <Trash2 className="w-3 h-3" />} Confirm Delete
+                    </button>
+                  </div>
+                </div>
+              )}
               {eventsLoading ? (
                 <div className="flex items-center justify-center py-24"><div className="w-8 h-8 border-2 border-slate-700 border-t-orange-500 rounded-full animate-spin" /></div>
               ) : events.length === 0 ? (

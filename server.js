@@ -985,7 +985,7 @@ app.post("/api/cleanup", async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.4.0",
+  minAppVersion: "1.4.1",
   updateUrl:
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
@@ -3557,7 +3557,7 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const page = Math.max(1, parseInt(req.query.page) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 50));
+    const limit = Math.min(100000, Math.max(1, parseInt(req.query.limit) || 50));
     const search = (req.query.search || "").trim().toLowerCase();
     const filter = req.query.filter || "all"; // all|flagged|suspended
     const sortBy = req.query.sort || "reportCount"; // reportCount|postCount|displayName|createdAt|friendCount
@@ -4904,6 +4904,52 @@ app.delete("/api/admin/stories/:storyId", requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to delete story" });
+  }
+});
+
+// DELETE /api/admin/events/bulk-flagged — bulk delete events with >= minReports
+app.delete("/api/admin/events/bulk-flagged", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const minReports = parseInt(req.query.minReports) || 3;
+    const pendingReports = await db
+      .collection("reports")
+      .find({ status: "pending", type: "meetup" })
+      .toArray();
+      
+    const countMap = {};
+    pendingReports.forEach((r) => {
+      if (r.postId) countMap[r.postId] = (countMap[r.postId] || 0) + 1;
+    });
+    
+    const eventIdsToDelete = Object.entries(countMap)
+      .filter(([, cnt]) => cnt >= minReports)
+      .map(([id]) => id);
+      
+    if (eventIdsToDelete.length === 0)
+      return res.json({ success: true, deleted: 0 });
+      
+    const validIds = eventIdsToDelete
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => new ObjectId(id));
+      
+    if (validIds.length === 0)
+      return res.json({ success: true, deleted: 0 });
+
+    const result = await db.collection("posts").deleteMany({
+      _id: { $in: validIds },
+      type: "meetup"
+    });
+
+    // Also remove associated reports
+    await db.collection("reports").deleteMany({
+      postId: { $in: eventIdsToDelete }
+    });
+
+    res.json({ success: true, deleted: result.deletedCount });
+  } catch (error) {
+    console.error("Error bulk deleting events:", error);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
