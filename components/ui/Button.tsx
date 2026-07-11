@@ -30,12 +30,14 @@ const Button: React.FC<ButtonProps> = ({
 
   return (
     <button 
-      className={`${baseStyles} ${variants[variant]} ${sizes} ${width} ${className}`}
+      className={`${baseStyles} ${variants[variant]} ${sizes} ${width} ${className} relative`}
       disabled={disabled || isLoading}
       {...props}
     >
-      {isLoading && <Loader2 className="w-5 h-5 mr-2 animate-spin" />}
-      {children}
+      {isLoading && <Loader2 className="absolute w-5 h-5 animate-spin" />}
+      <span className={`flex items-center justify-center ${isLoading ? 'opacity-0' : 'opacity-100'}`}>
+        {children}
+      </span>
     </button>
   );
 };

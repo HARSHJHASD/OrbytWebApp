@@ -208,6 +208,13 @@ const PostItem: React.FC<any> = ({
     <div
       className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden relative transition-colors duration-300 ${isMeetup ? "border-primary-900/50" : "border-slate-200 dark:border-slate-800"}`}
     >
+      {/* Pinned Badge */}
+      {post?.isPinned && (
+        <div className="absolute top-0 left-4 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-b-xl z-10 uppercase tracking-wide flex items-center gap-1 shadow-sm">
+          📌 Pinned
+        </div>
+      )}
+
       {/* Meetup Badge */}
       {isMeetup && (
         <div className="absolute top-0 right-0 bg-primary-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10 uppercase tracking-wide flex items-center gap-1">
@@ -241,9 +248,16 @@ const PostItem: React.FC<any> = ({
             )}
           </div>
           <div>
-            <h3 className="font-bold text-sm text-slate-900 dark:text-slate-200 group-hover:text-primary-400 transition-colors">
-              {post?.authorName}
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-200 group-hover:text-primary-400 transition-colors">
+                {post?.authorName}
+              </h3>
+              {post?.authorBadgeTitle && (
+                <span className="bg-primary-500/10 text-primary-600 dark:text-primary-400 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border border-primary-500/20">
+                  {post.authorBadgeTitle}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
               <span>{new Date(post?.createdAt || 0).toLocaleDateString()}</span>
               {post?.location && (
@@ -504,12 +518,14 @@ const PostItem: React.FC<any> = ({
               {reaction ? (
                 <span className="text-xl leading-none">{reaction}</span>
               ) : (
-                <Heart className="w-5 h-5" />
+                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current text-primary-500' : 'text-slate-500'}`} />
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); openWhoLiked(); }}
-                className="text-sm font-medium hover:underline"
-              >{post?.likes}</button>
+                className={`text-sm font-medium hover:underline ${isLiked ? 'text-primary-500' : 'text-slate-500'}`}
+              >
+                {post?.likes || 0}
+              </button>
             </button>
             {showReactions && (
               <div className="absolute bottom-full left-0 mb-1 flex items-center gap-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full shadow-xl px-3 py-2 z-20">

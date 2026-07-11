@@ -810,7 +810,12 @@ const AdminDashboard: React.FC = () => {
   const [peekTarget, setPeekTarget] = useState<AdminCommunity | null>(null);
   const [flaggingCom, setFlaggingCom] = useState<string | null>(null);
 
+  const [badgeTarget, setBadgeTarget] = useState<AdminUser | null>(null);
+  const [assigningBadge, setAssigningBadge] = useState(false);
+  const [badgeInput, setBadgeInput] = useState('');
+
   const [posts, setPosts] = useState<AdminPost[]>([]);
+  const [pinningPost, setPinningPost] = useState<string | null>(null);
   const [postsLoading, setPostsLoading] = useState(false);
   const [postsPage, setPostsPage] = useState(1);
   const [postsTotal, setPostsTotal] = useState(0);

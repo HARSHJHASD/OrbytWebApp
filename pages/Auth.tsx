@@ -150,8 +150,8 @@ const AuthPage: React.FC = () => {
   /* ---------------- UI ---------------- */
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 relative overflow-hidden">
-      <div className="absolute top-0 inset-x-0 h-[40vh] bg-gradient-to-b from-slate-900 to-slate-950 -z-10" />
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 relative overflow-hidden transition-colors duration-300">
+      <div className="absolute top-0 inset-x-0 h-[40vh] bg-gradient-to-b from-slate-200 dark:from-slate-900 to-slate-50 dark:to-slate-950 -z-10" />
       <div className="absolute top-[-10%] right-[-10%] w-64 h-64 bg-primary-500/20 rounded-full blur-3xl opacity-50 -z-10 animate-pulse" />
       <div className="absolute top-[20%] left-[-10%] w-48 h-48 bg-purple-500/20 rounded-full blur-3xl opacity-50 -z-10" />
 
@@ -166,14 +166,14 @@ const AuthPage: React.FC = () => {
             />
           </div>
 
-          <p className="text-slate-400 text-lg max-w-[280px]">
+          <p className="text-slate-600 dark:text-slate-400 text-lg max-w-[280px]">
             {isLogin
               ? 'Welcome back! Your community is waiting.'
               : 'Create a profile and start connecting instantly.'}
           </p>
         </div>
 
-        <div className="w-full bg-slate-900/50 backdrop-blur-md p-6 rounded-3xl border border-slate-800 shadow-2xl">
+        <div className="w-full bg-white/70 dark:bg-slate-900/50 backdrop-blur-md p-6 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-xl dark:shadow-2xl">
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-4">
               <Input
@@ -210,11 +210,11 @@ const AuthPage: React.FC = () => {
               </Button>
 
               <div className="relative flex py-2 items-center">
-                <div className="flex-grow border-t border-slate-800"></div>
+                <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
                 <span className="mx-4 text-slate-500 text-sm">
                   Or continue with
                 </span>
-                <div className="flex-grow border-t border-slate-800"></div>
+                <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
               </div>
 
               <div

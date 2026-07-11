@@ -785,9 +785,9 @@ const Feed: React.FC = () => {
             <PostSkeleton />
           </div>
         ) : filteredPostsByTab.length === 0 ? (
-          <div className="text-center py-20 bg-slate-900/50 rounded-3xl border border-slate-800/50 border-dashed animate-fade-in">
-            <div className="w-16 h-16 bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-800">
-              <RefreshCw className="w-8 h-8 text-slate-700" />
+          <div className="text-center py-20 bg-slate-100/50 dark:bg-slate-900/50 rounded-3xl border border-slate-300/50 dark:border-slate-800/50 border-dashed animate-fade-in">
+            <div className="w-16 h-16 bg-slate-200 dark:bg-slate-900 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-300 dark:border-slate-800">
+              <RefreshCw className="w-8 h-8 text-slate-500 dark:text-slate-700" />
             </div>
             <p className="text-slate-500 font-medium px-6">
               No {activeTab === "regular" ? "posts" : "events"} found nearby. 

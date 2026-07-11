@@ -1939,7 +1939,7 @@ app.get("/api/posts", async (req, res) => {
 
     const allPosts = await posts
       .find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ isPinned: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
       .toArray();
@@ -3625,6 +3625,7 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
         authType: u.authType || "email",
         displayName: p.displayName || u.email?.split("@")[0] || "Unknown",
         photoURL: p.photoURL || "",
+        badgeTitle: p.badgeTitle || "",
         bio: p.bio || "",
         jobRole: p.jobRole || "",
         createdAt: u.createdAt,
@@ -4238,9 +4239,11 @@ app.get("/api/admin/posts", requireAdmin, async (req, res) => {
             : 0;
       return {
         _id: p._id.toString(),
+        isPinned: p.isPinned || false,
         uid: p.uid || "",
         authorName: profile.displayName || p.uid || "Unknown",
         authorPhoto: profile.photoURL || "",
+        authorBadgeTitle: p.authorBadgeTitle || profile.badgeTitle || "",
         content: p.content || "",
         imageURL: p.imageURL || null,
         likeCount: (p.likes || []).length,
@@ -4301,6 +4304,58 @@ app.delete("/api/admin/posts/:postId", requireAdmin, async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to delete post" });
+  }
+});
+
+// PUT /api/admin/posts/:postId/pin — admin pin/unpin a post
+app.put("/api/admin/posts/:postId/pin", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { postId } = req.params;
+    let _id;
+    try {
+      _id = new ObjectId(postId);
+    } catch {
+      _id = postId;
+    }
+    const post = await db.collection("posts").findOne({ _id });
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const newPinnedStatus = !post.isPinned;
+    await db.collection("posts").updateOne(
+      { _id },
+      { $set: { isPinned: newPinnedStatus } }
+    );
+    res.json({ success: true, isPinned: newPinnedStatus });
+  } catch (error) {
+    console.error("Admin pin post error:", error);
+    res.status(500).json({ error: "Failed to pin post" });
+  }
+});
+
+// PUT /api/admin/users/:uid/badge — admin assign badge to a user
+app.put("/api/admin/users/:uid/badge", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { uid } = req.params;
+    const { badgeTitle } = req.body;
+    
+    // Update profile
+    await db.collection("profiles").updateOne(
+      { uid },
+      { $set: { badgeTitle: badgeTitle || "" } }
+    );
+
+    // Update denormalized posts
+    await db.collection("posts").updateMany(
+      { uid },
+      { $set: { authorBadgeTitle: badgeTitle || "" } }
+    );
+
+    res.json({ success: true, badgeTitle });
+  } catch (error) {
+    console.error("Admin assign badge error:", error);
+    res.status(500).json({ error: "Failed to assign badge" });
   }
 });
 

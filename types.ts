@@ -25,6 +25,7 @@ export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string;
+  badgeTitle?: string;
   photoURL: string;
   jobRole?: string;
   liveStatusMode?: string; // e.g., "Open to Collab", "Heads Down"
@@ -62,9 +63,11 @@ export interface Comment {
 
 export interface Post {
   _id?: string;
+  isPinned?: boolean;
   uid: string;
   authorName: string;
   authorPhoto: string;
+  authorBadgeTitle?: string;
   content: string;
   imageURL?: string;
   likes: number;
@@ -203,6 +206,7 @@ export interface AdminUser {
   uid: string;
   email: string;
   authType: string;
+  badgeTitle?: string;
   displayName: string;
   photoURL: string;
   bio: string;
@@ -254,9 +258,11 @@ export interface AdminCommunity {
 
 export interface AdminPost {
   _id: string;
+  isPinned?: boolean;
   uid: string;
   authorName: string;
   authorPhoto: string;
+  authorBadgeTitle?: string;
   content: string;
   imageURL?: string | null;
   likeCount: number;

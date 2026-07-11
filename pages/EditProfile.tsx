@@ -388,14 +388,23 @@ const EditProfile: React.FC = () => {
                   <label key={i} className="relative aspect-[4/5] bg-slate-900 rounded-2xl border-2 border-slate-800 border-dashed flex flex-col items-center justify-center cursor-pointer hover:bg-slate-800 transition-colors overflow-hidden group">
                     {thatsMePhotos[i] ? (
                       <>
-                        <img src={thatsMePhotos[i]} alt={`That's me ${i + 1}`} className="w-full h-full object-cover" />
+                        <img src={thatsMePhotos[i]} alt={`That's me ${i + 1}`} className={`w-full h-full object-cover ${loading ? 'opacity-50' : ''}`} />
                         <div className="absolute top-2 right-2 p-1 bg-primary-500 rounded-full">
                           <CheckCircle className="w-3 h-3 text-white" />
                         </div>
+                        {loading && (
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="w-8 h-8 text-white animate-spin" />
+                          </div>
+                        )}
                       </>
                     ) : (
                       <>
-                        <Camera className="w-8 h-8 text-slate-600 mb-2 group-hover:text-primary-500 transition-colors" />
+                        {loading ? (
+                           <Loader2 className="w-8 h-8 text-slate-500 animate-spin mb-2" />
+                        ) : (
+                           <Camera className="w-8 h-8 text-slate-600 mb-2 group-hover:text-primary-500 transition-colors" />
+                        )}
                         <span className="text-[10px] font-bold text-slate-500 uppercase">Photo {i + 1}</span>
                       </>
                     )}

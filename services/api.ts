@@ -848,6 +848,27 @@ export const api = {
       return data;
     },
 
+    pinPost: async (token: string, postId: string) => {
+      const response = await fetch(`${API_BASE}/admin/posts/${postId}/pin`, {
+        method: "PUT",
+        headers: { "x-admin-secret": token },
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to pin post");
+      return data;
+    },
+
+    assignBadge: async (token: string, uid: string, badgeTitle: string) => {
+      const response = await fetch(`${API_BASE}/admin/users/${uid}/badge`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify({ badgeTitle })
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to assign badge");
+      return data;
+    },
+
     getStories: async (token: string, page = 1, search = '') => {
       const url = `${API_BASE}/admin/stories?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
       const response = await fetch(url, { headers: { "x-admin-secret": token } });
