@@ -748,6 +748,14 @@ export const api = {
   },
 
   admin: {
+    getComprehensiveUserDetails: async (token: string, uid: string) => {
+      const response = await fetch(`${API_BASE}/admin/users/${uid}/comprehensive`, {
+        headers: { "x-admin-secret": token }
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch comprehensive user details");
+      return data;
+    },
     login: async (secret: string) => {
       const response = await fetch(`${API_BASE}/admin/login`, {
         method: "POST",

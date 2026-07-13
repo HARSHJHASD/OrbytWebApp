@@ -38,6 +38,7 @@ import Communities from './pages/Communities';
 import CommunityRoom from './pages/CommunityRoom';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import AdminUserDetails from './pages/AdminUserDetails';
 
 
 // Guard component to protect routes and check profile existence
@@ -112,6 +113,7 @@ const AppRoutes = () => {
           {/* Admin — completely isolated, no auth provider dependency */}
           <Route path="/admin" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          <Route path="/admin/users/:uid" element={<AdminUserDetails />} />
 
           {/* Public landing — always root */}
           <Route path="/" element={<DesktopLanding />} />

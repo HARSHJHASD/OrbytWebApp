@@ -10,6 +10,7 @@ interface ConfigContextType {
     badgePresets: string[];
     reportReasons: string[];
     communityReportReasons: string[];
+    professions: string[];
   } | null;
   loading: boolean;
   error: string | null;
@@ -40,7 +41,8 @@ export const ConfigProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         meetupCategories: [],
         badgePresets: [],
         reportReasons: [],
-        communityReportReasons: []
+        communityReportReasons: [],
+        professions: []
       });
     } finally {
       setLoading(false);

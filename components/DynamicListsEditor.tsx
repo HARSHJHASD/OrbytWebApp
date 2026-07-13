@@ -132,7 +132,7 @@ const DynamicListsEditor: React.FC<{ token: string }> = ({ token }) => {
 
   return (
     <div className="space-y-6 pb-24">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-10 bg-slate-950/80 backdrop-blur-md py-4 border-b border-slate-800 -mx-6 px-6 mb-6">
         <div>
           <h2 className="text-2xl font-black text-white">Dynamic Lists</h2>
           <p className="text-slate-400 text-sm mt-1">Configure the static options available throughout the app.</p>
@@ -177,6 +177,8 @@ const DynamicListsEditor: React.FC<{ token: string }> = ({ token }) => {
         {renderStringList("Post Report Reasons", "reportReasons", "Reason")}
         
         {renderStringList("Community Report Reasons", "communityReportReasons", "Reason")}
+        
+        {renderStringList("Professions", "professions", "Profession (e.g. Software Engineer)")}
       </div>
     </div>
   );

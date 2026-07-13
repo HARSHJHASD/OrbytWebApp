@@ -753,7 +753,121 @@ async function run() {
         ],
         badgePresets: ["Verified", "Top Contributor", "Trendsetter", "Early Adopter"],
         reportReasons: ['Spam','Harassment','Hate speech','Inappropriate content','Scam / Fraud','Other'],
-        communityReportReasons: ['Spam', 'Harassment', 'Hate speech', 'Inappropriate content', 'Scam / Fraud', 'Other']
+        communityReportReasons: ['Spam', 'Harassment', 'Hate speech', 'Inappropriate content', 'Scam / Fraud', 'Other'],
+        professions: [
+  "Accountant",
+  "Actor",
+  "Actuary",
+  "Architect",
+  "Artist",
+  "Auditor",
+  "Author",
+  "Baker",
+  "Banker",
+  "Barber",
+  "Barista",
+  "Bartender",
+  "Biologist",
+  "Biomedical Engineer",
+  "Blockchain Developer",
+  "Business Analyst",
+  "Chemist",
+  "Chef",
+  "Chiropractor",
+  "Civil Engineer",
+  "Coach",
+  "Comedian",
+  "Consultant",
+  "Content Creator",
+  "Copywriter",
+  "Cybersecurity Analyst",
+  "Data Analyst",
+  "Data Scientist",
+  "Dentist",
+  "Designer",
+  "Developer",
+  "Dietitian",
+  "Director",
+  "DJ",
+  "Doctor",
+  "Driver",
+  "Economist",
+  "Editor",
+  "Electrician",
+  "Engineer",
+  "Entrepreneur",
+  "Event Planner",
+  "Farmer",
+  "Fashion Designer",
+  "Filmmaker",
+  "Financial Advisor",
+  "Firefighter",
+  "Fitness Trainer",
+  "Flight Attendant",
+  "Florist",
+  "Founder",
+  "Freelancer",
+  "Game Developer",
+  "Graphic Designer",
+  "Hairdresser",
+  "Historian",
+  "HR Manager",
+  "Illustrator",
+  "Influencer",
+  "Interior Designer",
+  "Investment Banker",
+  "Journalist",
+  "Lawyer",
+  "Librarian",
+  "Makeup Artist",
+  "Marketing Manager",
+  "Massage Therapist",
+  "Mechanic",
+  "Mechanical Engineer",
+  "Model",
+  "Musician",
+  "Nurse",
+  "Nutritionist",
+  "Paramedic",
+  "Pharmacist",
+  "Photographer",
+  "Physician",
+  "Physiotherapist",
+  "Pilot",
+  "Plumber",
+  "Podcaster",
+  "Police Officer",
+  "Product Manager",
+  "Professor",
+  "Programmer",
+  "Psychiatrist",
+  "Psychologist",
+  "Real Estate Agent",
+  "Receptionist",
+  "Recruiter",
+  "Researcher",
+  "Sales Representative",
+  "Scientist",
+  "SEO Specialist",
+  "Social Media Manager",
+  "Software Developer",
+  "Software Engineer",
+  "Student",
+  "Surgeon",
+  "Teacher",
+  "Technician",
+  "Therapist",
+  "Tour Guide",
+  "Translator",
+  "UX/UI Designer",
+  "Veterinarian",
+  "Video Editor",
+  "Videographer",
+  "Waiter",
+  "Writer",
+  "Yoga Instructor"
+]
+
       });
     }
 
@@ -3728,6 +3842,57 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/admin/users/:uid/comprehensive - comprehensive user details
+app.get("/api/admin/users/:uid/comprehensive", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { uid } = req.params;
+    
+    let auth = null;
+    try {
+      auth = await db.collection("users").findOne({ _id: new ObjectId(uid) }, { projection: { password: 0 } });
+    } catch(e) {}
+    
+    const profile = await db.collection("profiles").findOne({ uid });
+    const posts = await db.collection("posts").find({ uid }).sort({ createdAt: -1 }).toArray();
+    
+    const commentedPosts = await db.collection("posts").find({ "comments.uid": uid }).toArray();
+    const comments = [];
+    commentedPosts.forEach(post => {
+      post.comments?.forEach(comment => {
+        if (comment.uid === uid) {
+          comments.push({ ...comment, postId: post._id });
+        }
+      });
+    });
+    
+    const stories = await db.collection("stories").find({ uid }).toArray();
+    const communities = await db.collection("communities").find({
+      $or: [{ creatorUid: uid }, { members: uid }]
+    }).toArray();
+    const chats = await db.collection("messages").find({
+      $or: [{ senderId: uid }, { receiverId: uid }]
+    }).sort({ timestamp: -1 }).toArray();
+    const reports = await db.collection("reports").find({
+      $or: [{ reportedUid: uid }, { reporterUid: uid }]
+    }).sort({ createdAt: -1 }).toArray();
+    
+    res.json({
+      auth,
+      profile,
+      posts,
+      comments,
+      communities,
+      chats,
+      reports,
+      stories
+    });
+  } catch (error) {
+    console.error("Comprehensive user fetch error:", error);
+    res.status(500).json({ error: "Failed to fetch comprehensive user details" });
+  }
+});
+
 // DELETE /api/admin/users/bulk — bulk delete specific users by UID
 app.delete("/api/admin/users/bulk", requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
@@ -5413,3 +5578,4 @@ app.get("/api/highlights", async (req, res) => {
 server.listen(port, "0.0.0.0", () => {
   console.log(`Server + WebSocket running on port ${port}`);
 });
+
