@@ -156,7 +156,7 @@ export const api = {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uid, targetUid }),
         });
-      } catch (e) {}
+      } catch (e) { }
     },
     getViewers: async (uid: string) => {
       try {
@@ -536,7 +536,7 @@ export const api = {
         if (viewerUid) url.searchParams.append('viewerUid', viewerUid);
         url.searchParams.append('page', page.toString());
         url.searchParams.append('limit', limit.toString());
-        
+
         const response = await fetch(url.toString());
         if (!response?.ok) return [];
         return await response.json();
@@ -658,6 +658,12 @@ export const api = {
     },
   },
   config: {
+    getLists: async () => {
+      const response = await fetch(`${API_BASE}/config/lists`);
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to fetch config");
+      return data;
+    },
     getVersion: async () => {
       const response = await fetch(`${API_BASE}/config/version`);
       if (!response?.ok) throw new Error("Failed to fetch version config");
@@ -866,6 +872,17 @@ export const api = {
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to assign badge");
+      return data;
+    },
+
+    updateLists: async (token: string, lists: any) => {
+      const response = await fetch(`${API_BASE}/admin/config/lists`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "x-admin-secret": token },
+        body: JSON.stringify(lists)
+      });
+      const data = await response.json();
+      if (!response?.ok) throw new Error(data?.error || "Failed to update lists");
       return data;
     },
 

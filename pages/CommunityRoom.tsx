@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { Community, Message, UserProfile } from '../types';
+import { Message, Community, UserProfile } from '../types';
+import { useConfig } from '../context/ConfigContext';
 import {
   ArrowLeft, Flag, Hash, Users, Send, Loader2, Image as ImageIcon, X, Crown,
   Copy, Trash2, Reply, Pin, AtSign
@@ -82,7 +83,8 @@ const CommunityRoom: React.FC = () => {
   const [sending, setSending] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
   const [reportStep, setReportStep] = useState<null | 'pick' | 'done'>(null);
-  const REPORT_REASONS = ['Spam','Harassment','Hate speech','Inappropriate content','Scam / Fraud','Other'];
+  const { lists } = useConfig();
+  const REPORT_REASONS = lists?.reportReasons || [];
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [mentionQuery, setMentionQuery] = useState('');

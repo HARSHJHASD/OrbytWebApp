@@ -718,6 +718,45 @@ async function run() {
     // Create indexes for performance
     await createIndexes();
 
+    // Initialize default static lists
+    const configCollection = db.collection("app_config");
+    const existingConfig = await configCollection.findOne({ _id: "static_lists" });
+    if (!existingConfig) {
+      await configCollection.insertOne({
+        _id: "static_lists",
+        roomTags: [
+          { id: 'fitness', label: 'Fitness', emoji: '🏃' },
+          { id: 'food', label: 'Food', emoji: '🍽️' },
+          { id: 'music', label: 'Music', emoji: '🎵' },
+          { id: 'tech', label: 'Tech', emoji: '💻' },
+          { id: 'outdoors', label: 'Outdoors', emoji: '🌍' },
+          { id: 'books', label: 'Books', emoji: '📚' },
+          { id: 'gaming', label: 'Gaming', emoji: '🎮' },
+          { id: 'art', label: 'Art', emoji: '🎨' },
+          { id: 'wellness', label: 'Wellness', emoji: '🌿' },
+          { id: 'travel', label: 'Travel', emoji: '✈️' },
+          { id: 'parenting', label: 'Parenting', emoji: '👶' },
+          { id: 'social', label: 'Social', emoji: '🎉' },
+          { id: 'movies', label: 'Movies', emoji: '🍿' },
+          { id: 'coding', label: 'Coding', emoji: '⌨️' }
+        ],
+        moods: ['😄','🎉','😤','🥲','😍','🤔','😴','🔥','❤️','💪'],
+        popularTags: ['#local','#vibes','#meetup','#explore','#foodie','#fitness','#travel','#art','#music','#tech'],
+        meetupCategories: [
+          { id: 'active', label: 'Active', emoji: '🏃' },
+          { id: 'food', label: 'Food & Drink', emoji: '🍽️' },
+          { id: 'music', label: 'Music & Arts', emoji: '🎵' },
+          { id: 'tech', label: 'Tech', emoji: '💻' },
+          { id: 'wellness', label: 'Wellness', emoji: '🌿' },
+          { id: 'social', label: 'Social', emoji: '🎉' },
+          { id: 'creative', label: 'Creative', emoji: '🎨' }
+        ],
+        badgePresets: ["Verified", "Top Contributor", "Trendsetter", "Early Adopter"],
+        reportReasons: ['Spam','Harassment','Hate speech','Inappropriate content','Scam / Fraud','Other'],
+        communityReportReasons: ['Spam', 'Harassment', 'Hate speech', 'Inappropriate content', 'Scam / Fraud', 'Other']
+      });
+    }
+
     // Run cleanup on startup to sync state
     await cleanupOrphanedData();
   } catch (e) {
@@ -4664,6 +4703,39 @@ app.post("/api/report-community", async (req, res) => {
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to submit report" });
+  }
+});
+
+// GET /api/config/lists — Fetch all dynamic static lists
+app.get("/api/config/lists", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const config = await db.collection("app_config").findOne({ _id: "static_lists" });
+    if (!config) return res.status(404).json({ error: "Config not found" });
+    res.json(config);
+  } catch (e) {
+    console.error("Config fetch error:", e);
+    res.status(500).json({ error: "Failed to fetch config" });
+  }
+});
+
+// PUT /api/admin/config/lists — Admin update lists
+app.put("/api/admin/config/lists", requireAdmin, async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const updates = req.body;
+    // Remove _id from updates if present
+    delete updates._id;
+
+    await db.collection("app_config").updateOne(
+      { _id: "static_lists" },
+      { $set: updates },
+      { upsert: true }
+    );
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Config update error:", e);
+    res.status(500).json({ error: "Failed to update config" });
   }
 });
 

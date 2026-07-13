@@ -7,6 +7,8 @@ import {
   TrendingUp, UserCheck, Users, Wifi, X, XCircle, Zap
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useConfig } from '../context/ConfigContext';
+import DynamicListsEditor from '../components/DynamicListsEditor';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { AdminCommunity, AdminEvent, AdminPost, AdminReport, AdminStory, AdminUser } from '../types';
@@ -764,7 +766,7 @@ const UserDrawer = React.memo(function UserDrawer({ user, onClose, onSuspend, on
   );
 });
 
-type Tab = 'users' | 'posts' | 'stories' | 'events' | 'reports' | 'communities' | 'analytics' | 'audit' | 'settings';
+type Tab = 'users' | 'posts' | 'stories' | 'events' | 'reports' | 'communities' | 'analytics' | 'audit' | 'lists' | 'settings';
 type SortField = 'createdAt' | 'reportCount' | 'postCount' | 'displayName';
 type UserFilter = 'all' | 'flagged' | 'suspended';
 type ReportFilter = 'all' | 'pending' | 'resolved' | 'dismissed';
@@ -1225,6 +1227,7 @@ const AdminDashboard: React.FC = () => {
     { id: 'communities', label: 'Communities', icon: Globe },
     { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'audit', label: 'Audit Log', icon: FileText },
+    { id: 'lists', label: 'Dynamic Lists', icon: FileText },
     { id: 'settings', label: 'Settings', icon: Shield },
   ], [pendingCount]);
 
@@ -2525,6 +2528,11 @@ const AdminDashboard: React.FC = () => {
             </>
           )}
 
+          {/* ── DYNAMIC LISTS TAB ── */}
+          {tab === 'lists' && token && (
+            <DynamicListsEditor token={token} />
+          )}
+
           {/* ── SETTINGS TAB ── */}
           {tab === 'settings' && (
             <div className="max-w-xl space-y-6">
@@ -2637,10 +2645,23 @@ const AdminDashboard: React.FC = () => {
                     placeholder="e.g. Top Contributor, Verified"
                     className="w-full bg-slate-950 border border-slate-800 text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
                   />
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {(() => {
+                      const { lists } = useConfig();
+                      const presets = lists?.badgePresets || ["Verified", "Top Contributor", "Trendsetter", "Early Adopter"];
+                      return presets.map(b => (
+                        <button
+                          key={b}
+                          type="button"
+                          onClick={() => setBadgeInput(b)}
+                          className="px-2.5 py-1 text-xs font-medium rounded-full bg-slate-800 text-slate-300 hover:bg-slate-700 transition-colors border border-slate-700 hover:border-slate-500"
+                        >
+                          {b}
+                        </button>
+                      ));
+                    })()}
+                  </div>
                   <div className="flex gap-2 mt-2 flex-wrap">
-                    {["Verified", "Top Contributor", "Trendsetter", "Early Adopter"].map(b => (
-                      <button key={b} type="button" onClick={() => setBadgeInput(b)} className="text-[10px] px-2 py-1 bg-slate-800 text-slate-300 rounded hover:bg-slate-700 transition-colors">{b}</button>
-                    ))}
                     <button type="button" onClick={() => setBadgeInput('')} className="text-[10px] px-2 py-1 bg-red-950/30 text-red-400 rounded hover:bg-red-900/40 transition-colors">Clear</button>
                   </div>
                 </div>

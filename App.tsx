@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { ConfigProvider } from './context/ConfigContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { api } from './services/api';
 import AuthPage from './pages/Auth';
@@ -212,9 +213,11 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <AuthProvider>
         <ThemeProvider>
-          <Router>
-            <AppRoutes />
-          </Router>
+          <ConfigProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </ConfigProvider>
         </ThemeProvider>
       </AuthProvider>
     </ErrorBoundary>

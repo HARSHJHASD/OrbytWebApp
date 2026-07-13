@@ -31,20 +31,10 @@ import Input from "../components/ui/Input";
 import { compressImage } from "../util/ImageCompression";
 import ImageCropperModal from "../components/ImageCropperModal";
 
-const MOODS = ['😄','🎉','😤','🥲','😍','🤔','😴','🔥','❤️','💪'];
-const POPULAR_TAGS = ['#local','#vibes','#meetup','#explore','#foodie','#fitness','#travel','#art','#music','#tech'];
+import { useConfig } from '../context/ConfigContext';
+
 const DRAFT_KEY = 'create_post_draft';
 const MEETUP_DRAFT_KEY = 'create_meetup_draft';
-const MEETUP_CATEGORIES = [
-  { id: 'active', label: 'Active', emoji: '🏃' },
-  { id: 'food', label: 'Food & Drink', emoji: '🍽️' },
-  { id: 'music', label: 'Music & Arts', emoji: '🎵' },
-  { id: 'tech', label: 'Tech', emoji: '💻' },
-  { id: 'wellness', label: 'Wellness', emoji: '🌿' },
-  { id: 'social', label: 'Social', emoji: '🎉' },
-  { id: 'creative', label: 'Creative', emoji: '🎨' },
-  { id: 'outdoors', label: 'Outdoors', emoji: '🌍' },
-];
 const REPEAT_OPTIONS = [
   { id: 'once', label: 'Once' },
   { id: 'weekly', label: 'Weekly' },
@@ -53,6 +43,11 @@ const REPEAT_OPTIONS = [
 ] as const;
 
 const CreatePost: React.FC = () => {
+  const { lists } = useConfig();
+  const MOODS = lists?.moods || [];
+  const POPULAR_TAGS = lists?.popularTags || [];
+  const MEETUP_CATEGORIES = lists?.meetupCategories || [];
+
   const { user } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();

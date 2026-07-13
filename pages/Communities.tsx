@@ -8,33 +8,7 @@ import {
   Loader2, Search, X, Crown, MessageCircle, Globe, Lock, Tag, Flag
 } from 'lucide-react';
 
-const ROOM_TAGS = [
-  { id: 'fitness', label: 'Fitness', emoji: '🏃' },
-  { id: 'food', label: 'Food', emoji: '🍽️' },
-  { id: 'music', label: 'Music', emoji: '🎵' },
-  { id: 'tech', label: 'Tech', emoji: '💻' },
-  { id: 'outdoors', label: 'Outdoors', emoji: '🌍' },
-  { id: 'books', label: 'Books', emoji: '📚' },
-  { id: 'gaming', label: 'Gaming', emoji: '🎮' },
-  { id: 'art', label: 'Art', emoji: '🎨' },
-  { id: 'wellness', label: 'Wellness', emoji: '🌿' },
-  { id: 'travel', label: 'Travel', emoji: '✈️' },
-  { id: 'parenting', label: 'Parenting', emoji: '👶' },
-  { id: 'social', label: 'Social', emoji: '🎉' },
-  { id: 'movies', label: 'Movies', emoji: '🍿' },
-  { id: 'coding', label: 'Coding', emoji: '⌨️' },
-  { id: 'finance', label: 'Finance', emoji: '📈' },
-  { id: 'sports', label: 'Sports', emoji: '⚽' },
-  { id: 'photography', label: 'Photography', emoji: '📸' },
-  { id: 'diy', label: 'DIY', emoji: '🔨' },
-  { id: 'science', label: 'Science', emoji: '🔬' },
-  { id: 'pets', label: 'Pets', emoji: '🐾' },
-  { id: 'fashion', label: 'Fashion', emoji: '👗' },
-  { id: 'business', label: 'Business', emoji: '💼' },
-  { id: 'cars', label: 'Cars', emoji: '🚗' },
-  { id: 'history', label: 'History', emoji: '🏛️' },
-  { id: 'languages', label: 'Languages', emoji: '🗣️' },
-];
+import { useConfig } from '../context/ConfigContext';
 
 // ─── Create / Edit Modal ────────────────────────────────────────────────────
 interface RoomModalProps {
@@ -44,6 +18,9 @@ interface RoomModalProps {
 }
 
 const RoomModal: React.FC<RoomModalProps> = ({ initial, onClose, onSave }) => {
+  const { lists } = useConfig();
+  const ROOM_TAGS = lists?.roomTags || [];
+
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [tags, setTags] = useState<string[]>(initial?.tags ?? []);
@@ -207,7 +184,9 @@ const Communities: React.FC = () => {
   const [reportTarget, setReportTarget] = useState<Community | null>(null);
   const [reportDone, setReportDone] = useState(false);
 
-  const COMMUNITY_REPORT_REASONS = ['Spam', 'Harassment', 'Hate speech', 'Inappropriate content', 'Scam / Fraud', 'Other'];
+  const { lists } = useConfig();
+  const COMMUNITY_REPORT_REASONS = lists?.communityReportReasons || [];
+  const ROOM_TAGS = lists?.roomTags || [];
 
   const fetchRooms = useCallback(async () => {
     try {
