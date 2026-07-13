@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Avatar from '../components/ui/Avatar';
 import { api } from '../services/api';
-import { timeAgo } from '../utils/formatTime';
+import { timeAgo } from '../util/formatTime';
 
 interface ComprehensiveData {
   user: any;
