@@ -3700,7 +3700,7 @@ app.put("/api/communities/:id/pin", async (req, res) => {
 // SUPER_ADMIN_SECRET in the environment.
 // ============================================================
 const SUPER_ADMIN_SECRET =
-  process.env.SUPER_ADMIN_SECRET || "orbyt_super_admin_secret_change_me";
+  process.env.SUPER_ADMIN_SECRET || "orbyt_super_sssssadmin_secret_change_me";
 
 function requireAdmin(req, res, next) {
   const provided = req.headers["x-admin-secret"];
