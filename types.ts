@@ -50,6 +50,7 @@ export interface UserProfile {
   relation?: 'self' | 'friend' | 'public';
   distanceBand?: string;
   locationAccuracyMeters?: number;
+  onboardingStep?: number;
 }
 
 export interface Comment {

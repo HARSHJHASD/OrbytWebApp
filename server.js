@@ -1138,7 +1138,7 @@ app.post("/api/cleanup", async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.4.3",
+  minAppVersion: "1.4.4",
   updateUrl:
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
@@ -1994,6 +1994,11 @@ app.post("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postData = req.body;
+    
+    if (!postData.location || typeof postData.location.lat !== 'number' || typeof postData.location.lng !== 'number') {
+      return res.status(400).json({ error: "Location is required to create a post. Please enable location services." });
+    }
+
     const posts = db.collection("posts");
 
     const result = await posts.insertOne({
@@ -2086,8 +2091,19 @@ app.get("/api/posts", async (req, res) => {
       const latDelta = radiusInKm / 111.32;
       const lngDelta = radiusInKm / (111.32 * Math.cos(centerLat * Math.PI / 180));
 
-      filter["location.lat"] = { $gte: centerLat - latDelta, $lte: centerLat + latDelta };
-      filter["location.lng"] = { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta };
+      const locFilter = {
+        "location.lat": { $gte: centerLat - latDelta, $lte: centerLat + latDelta },
+        "location.lng": { $gte: centerLng - lngDelta, $lte: centerLng + lngDelta }
+      };
+
+      filter = {
+        ...filter,
+        $or: [
+          { isPinned: true },
+          { location: { $exists: false } },
+          locFilter
+        ]
+      };
     }
 
     const allPosts = await posts

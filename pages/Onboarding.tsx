@@ -14,7 +14,7 @@ import { compressImage } from '../util/ImageCompression';
 const STEPS = ['Legal', 'Basic Info', "That's Me", 'Socials', 'Interests'];
 
 const Onboarding: React.FC = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +39,38 @@ const Onboarding: React.FC = () => {
     if (user?.email && !displayName) {
       setDisplayName(user.email.split('@')[0] ?? '');
     }
+
+    const fetchProfile = async () => {
+      if (user?.uid) {
+        try {
+          const profile = await api.profile.get(user.uid);
+          if (profile) {
+            if (profile.onboardingStep !== undefined && profile.onboardingStep > 0) {
+              setCurrentStep(profile.onboardingStep);
+            }
+            if (profile.displayName) setDisplayName(profile.displayName);
+            if (profile.photoURL) setPhotoURL(profile.photoURL);
+            if (profile.dob) setDob(profile.dob);
+            if (profile.jobRole) setJobRole(profile.jobRole);
+            if (profile.instagramHandle) setInstagram(profile.instagramHandle);
+            if (profile.bio) setBio(profile.bio);
+            if (profile.interests) setSelectedInterests(profile.interests);
+            if (profile.thatsMePhotos) setThatsMePhotos(profile.thatsMePhotos);
+            if (profile.gender) setGender(profile.gender);
+            if (profile.createdAt) {
+              // Assume legal agreed if already saved
+              setAgreedTerms(true);
+              setAgreedLocation(true);
+              setAgreedAge(true);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to fetch profile", err);
+        }
+      }
+    };
+    
+    fetchProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
@@ -123,7 +155,7 @@ const Onboarding: React.FC = () => {
     return age;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setError(null);
 
     // Step 0: Legal & Privacy
@@ -192,7 +224,36 @@ const Onboarding: React.FC = () => {
       }
     }
 
-    setCurrentStep(prev => prev + 1);
+    // Save partial progress
+    if (user) {
+      setLoading(true);
+      try {
+        const partialData: Partial<UserProfile> = {
+          uid: user.uid,
+          email: user.email,
+          onboardingStep: currentStep + 1,
+          createdAt: Date.now(),
+        };
+        if (displayName) partialData.displayName = displayName;
+        if (photoURL) partialData.photoURL = photoURL;
+        if (dob) partialData.dob = dob;
+        if (jobRole) partialData.jobRole = jobRole.trim();
+        if (instagram) partialData.instagramHandle = instagram;
+        if (bio) partialData.bio = bio.trim();
+        if (selectedInterests.length > 0) partialData.interests = selectedInterests;
+        if (thatsMePhotos.length > 0) partialData.thatsMePhotos = thatsMePhotos;
+        if (gender) partialData.gender = gender as UserProfile['gender'];
+
+        await api.profile.createOrUpdate(user.uid, partialData);
+        setCurrentStep(prev => prev + 1);
+      } catch (err: any) {
+        setError("Failed to save progress. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      setCurrentStep(prev => prev + 1);
+    }
   };
 
   const handleBack = () => {
@@ -217,6 +278,7 @@ const Onboarding: React.FC = () => {
         interests: selectedInterests,
         thatsMePhotos: thatsMePhotos,
         gender: gender as UserProfile['gender'],
+        onboardingStep: STEPS.length, // marks fully complete
         createdAt: Date.now(),
       };
 
@@ -520,7 +582,9 @@ const Onboarding: React.FC = () => {
               <div className="w-10" />
             )}
             <span className="font-bold text-white text-lg">Step {currentStep + 1} of {STEPS.length}</span>
-            <div className="w-10" />
+            <button onClick={logout} className="text-red-500 font-semibold text-sm hover:text-red-400 transition-colors">
+              Logout
+            </button>
           </div>
           <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
             <div

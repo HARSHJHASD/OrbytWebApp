@@ -210,7 +210,7 @@ const PostItem: React.FC<any> = ({
     >
       {/* Pinned Badge */}
       {post?.isPinned && (
-        <div className="absolute top-0 left-4 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-b-xl z-10 uppercase tracking-wide flex items-center gap-1 shadow-sm">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-b-xl z-10 uppercase tracking-wide flex items-center gap-1 shadow-sm">
           📌 Pinned
         </div>
       )}
@@ -228,22 +228,34 @@ const PostItem: React.FC<any> = ({
           className="flex items-center gap-3 group"
         >
           <div
-            className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden ring-2 ring-transparent group-hover:ring-primary-500/50 transition-all cursor-pointer"
+            className="relative w-10 h-10 rounded-full ring-2 ring-transparent group-hover:ring-primary-500/50 transition-all cursor-pointer"
             onMouseDown={handleAvatarMouseDown}
             onMouseUp={handleAvatarMouseUp}
             onMouseLeave={handleAvatarMouseUp}
             onTouchStart={handleAvatarMouseDown}
             onTouchEnd={handleAvatarMouseUp}
           >
-            {post?.authorPhoto ? (
-              <img
-                src={post?.authorPhoto}
-                alt={post?.authorName}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-primary-500 font-bold">
-                {post?.authorName?.[0] || "U"}
+            <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+              {post?.authorPhoto ? (
+                <img
+                  src={post?.authorPhoto}
+                  alt={post?.authorName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-primary-500 font-bold">
+                  {post?.authorName?.[0] || "U"}
+                </div>
+              )}
+            </div>
+            {post?.authorBadgeTitle && (
+              <div 
+                className="absolute -bottom-0.5 -right-0.5 bg-blue-500 rounded-full border-[1.5px] border-white dark:border-slate-900 flex items-center justify-center w-3.5 h-3.5 shadow-sm"
+                title={post.authorBadgeTitle}
+              >
+                <svg className="text-white w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
               </div>
             )}
           </div>

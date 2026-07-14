@@ -231,6 +231,13 @@ const CreatePost: React.FC = () => {
   const handleSubmit = async () => {
     if (!user) return;
 
+    if (!gpsLocation) {
+      const msg = "Location is required to post. Please ensure location is enabled.";
+      setError(msg);
+      showToast(msg);
+      return;
+    }
+
     // Validation
     if (postType === "regular") {
       const trimmed = content.trim();

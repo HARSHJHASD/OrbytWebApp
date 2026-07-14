@@ -696,6 +696,17 @@ export default function Profile() {
               </div>
               {/* Online Indicator */}
               <div className="absolute bottom-1 right-1 bg-green-500 w-5 h-5 rounded-full border-4 border-white dark:border-slate-900"></div>
+              {/* Badge Tick */}
+              {profile?.badgeTitle && (
+                <div 
+                  className="absolute bottom-5 -right-2 bg-blue-500 rounded-full border-[3px] border-white dark:border-slate-900 flex items-center justify-center w-8 h-8 shadow-md"
+                  title={profile.badgeTitle}
+                >
+                  <svg className="text-white w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={4}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
             </div>
 
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
