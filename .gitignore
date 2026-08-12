@@ -7,11 +7,14 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
+node_modules/
 # dist
 dist
 dist-ssr
 *.local
+.expo/
+.expo-shared/
+coverage/
 
 # Environment variables
 .env
@@ -19,13 +22,25 @@ dist-ssr
 .env.*.local
 
 *.apk
+*.aab
+*.apks
+*.keystore
+*.jks
 dist/download/
+
+# Build and local tooling output
+.gradle/
+android/.cxx/
+android/build/
+android/app/build/
+android/local.properties
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
 .DS_Store
+Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
