@@ -7,9 +7,13 @@ import { Location } from '../types';
 
 interface LocationContextType {
   location: Location | null;
+  refreshLocation: () => Promise<Location | null>;
 }
 
-export const LocationContext = createContext<LocationContextType>({ location: null });
+export const LocationContext = createContext<LocationContextType>({ 
+  location: null, 
+  refreshLocation: async () => null 
+});
 export const useUserLocation = () => useContext(LocationContext);
 
 interface LocationGuardProps {
@@ -22,10 +26,10 @@ const LocationGuard: React.FC<LocationGuardProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
 
-  const updateLocation = async () => {
-    if (!navigator.geolocation) return;
+  const updateLocation = async (): Promise<Location | null> => {
+    if (!navigator.geolocation) return null;
 
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<Location | null>((resolve, reject) => {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           let lat = position.coords.latitude;
@@ -59,7 +63,7 @@ const LocationGuard: React.FC<LocationGuardProps> = ({ children }) => {
               console.error("Failed to sync location to profile", e);
             }
           }
-          resolve();
+          resolve(loc);
         },
         (error) => {
           console.error("Location error:", error);
@@ -74,7 +78,11 @@ const LocationGuard: React.FC<LocationGuardProps> = ({ children }) => {
   useEffect(() => {
     navigator.permissions.query({ name: 'geolocation' }).then((result) => {
       if (result.state === 'granted') {
-        updateLocation();
+        updateLocation().catch(() => {
+          // If updateLocation fails for any reason, still allow the component to render
+          // The user can trigger location update manually
+          setLoading(false);
+        });
       } else {
         setLoading(false);
       }
@@ -130,7 +138,7 @@ const LocationGuard: React.FC<LocationGuardProps> = ({ children }) => {
   }
 
   return (
-    <LocationContext.Provider value={{ location: currentLocation }}>
+    <LocationContext.Provider value={{ location: currentLocation, refreshLocation: updateLocation }}>
       {children}
     </LocationContext.Provider>
   );

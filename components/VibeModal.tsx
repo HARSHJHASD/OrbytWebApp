@@ -15,15 +15,25 @@ const VibeModal: React.FC<VibeModalProps> = ({ visible, onClose, userId }) => {
   const [selectedRadius, setSelectedRadius] = useState(5);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
-  const { location } = useUserLocation();
+  const { location, refreshLocation } = useUserLocation();
 
   if (!visible) return null;
 
   const handleSend = async () => {
-    if (!location) return;
+    let currentLocation = location;
+    
+    if (!currentLocation) {
+      try {
+        currentLocation = await refreshLocation();
+      } catch (err) {
+        console.error("Failed to refresh location", err);
+      }
+    }
+
+    if (!currentLocation) return;
     setSending(true);
     try {
-      await api.notifications.sendVibe(userId, selectedRadius, location.lat, location.lng);
+      await api.notifications.sendVibe(userId, selectedRadius, currentLocation.lat, currentLocation.lng);
       setSent(true);
       setTimeout(() => {
         setSent(false);

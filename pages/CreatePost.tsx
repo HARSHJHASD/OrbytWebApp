@@ -51,7 +51,7 @@ const CreatePost: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useNotifications();
   const navigate = useNavigate();
-  const { location: gpsLocation } = useUserLocation();
+  const { location: gpsLocation, refreshLocation } = useUserLocation();
   const [postType, setPostType] = useState<"regular" | "meetup">("regular");
   const [content, setContent] = useState("");
   const [image, setImage] = useState<string | null>(null);
@@ -231,11 +231,28 @@ const CreatePost: React.FC = () => {
   const handleSubmit = async () => {
     if (!user) return;
 
-    if (!gpsLocation) {
-      const msg = "Location is required to post. Please ensure location is enabled.";
-      setError(msg);
-      showToast(msg);
-      return;
+    let location = gpsLocation;
+    
+    if (!location) {
+      // Try to refresh location once if missing
+      try {
+        setLoading(true);
+        setError(null);
+        location = await refreshLocation();
+        if (!location) {
+          const msg = "Location is required to post. Please ensure location is enabled.";
+          setError(msg);
+          showToast(msg);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        const msg = "Location is required to post. Please ensure location is enabled.";
+        setError(msg);
+        showToast(msg);
+        setLoading(false);
+        return;
+      }
     }
 
     // Validation
@@ -296,10 +313,10 @@ const CreatePost: React.FC = () => {
         content: postType === "regular" ? (content + (selectedMood ? ` — feeling ${selectedMood}` : '')) : content || meetupTitle, // Fallback content for legacy
         imageURL: image || undefined,
         location:
-          gpsLocation
+          location
             ? {
-              lat: parseFloat(gpsLocation.lat.toFixed(3)),
-              lng: parseFloat(gpsLocation.lng.toFixed(3)),
+              lat: parseFloat(location.lat.toFixed(3)),
+              lng: parseFloat(location.lng.toFixed(3)),
               name: locationName,
             }
             : undefined,
