@@ -45,9 +45,7 @@ const Onboarding: React.FC = () => {
         try {
           const profile = await api.profile.get(user.uid);
           if (profile) {
-            if (profile.onboardingStep !== undefined && profile.onboardingStep > 0) {
-              setCurrentStep(profile.onboardingStep);
-            }
+            // Incomplete profiles must restart onboarding from the beginning.
             if (profile.displayName) setDisplayName(profile.displayName);
             if (profile.photoURL) setPhotoURL(profile.photoURL);
             if (profile.dob) setDob(profile.dob);

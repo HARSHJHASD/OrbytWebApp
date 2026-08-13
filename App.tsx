@@ -53,8 +53,7 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
       if (user) {
         try {
           const profile = await api.profile.get(user.uid);
-          // A profile is considered "complete" (onboarded) if it exists AND has interests selected.
-          const isOnboarded = !!profile && Array.isArray(profile.interests) && profile.interests.length > 0;
+          const isOnboarded = !!profile && !!profile.displayName && !!profile.photoURL && !!profile.dob && !!profile.gender && Array.isArray(profile.interests) && profile.interests.length > 0 && Array.isArray(profile.thatsMePhotos) && profile.thatsMePhotos.filter(Boolean).length >= 3;
           setHasProfile(isOnboarded);
         } catch (e) {
           console.error("Error checking profile", e);
