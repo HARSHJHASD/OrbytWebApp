@@ -682,6 +682,97 @@ async function cleanupOrphanedData() {
   }
 }
 
+async function purgeUserCompletely(uid) {
+  if (!uid || !db) return;
+
+  const collections = {
+    users: db.collection("users"),
+    profiles: db.collection("profiles"),
+    posts: db.collection("posts"),
+    stories: db.collection("stories"),
+    messages: db.collection("messages"),
+    notifications: db.collection("notifications"),
+    reports: db.collection("reports"),
+    profile_views: db.collection("profile_views"),
+    communities: db.collection("communities"),
+  };
+
+  if (ObjectId.isValid(uid)) {
+    await collections.users.deleteOne({ _id: new ObjectId(uid) });
+  }
+
+  await collections.profiles.deleteOne({ uid });
+  await collections.posts.deleteMany({ uid });
+  await collections.stories.deleteMany({ uid });
+  await collections.messages.deleteMany({
+    $or: [
+      { fromUid: uid },
+      { toUid: uid },
+      { senderId: uid },
+      { receiverId: uid },
+      { uid },
+    ],
+  });
+  await collections.notifications.deleteMany({
+    $or: [
+      { fromUid: uid },
+      { toUid: uid },
+      { senderUid: uid },
+      { recipientUid: uid },
+      { uid },
+    ],
+  });
+  await collections.reports.deleteMany({
+    $or: [{ reporterUid: uid }, { targetUid: uid }, { uid }],
+  });
+  await collections.profile_views.deleteMany({
+    $or: [{ viewerUid: uid }, { targetUid: uid }, { uid }],
+  });
+
+  await collections.profiles.updateMany(
+    {},
+    {
+      $pull: {
+        friends: uid,
+        incomingRequests: uid,
+        outgoingRequests: uid,
+        blockedUsers: uid,
+        passedUsers: uid,
+        likedBy: uid,
+      },
+    },
+  );
+
+  await collections.communities.updateMany(
+    {},
+    {
+      $pull: { members: uid },
+    },
+  );
+
+  await collections.posts.updateMany(
+    {},
+    {
+      $pull: {
+        comments: { uid },
+        likedBy: uid,
+        attendees: uid,
+        pendingRequests: uid,
+      },
+    },
+  );
+
+  const affectedPosts = await collections.posts
+    .find({ likedBy: { $exists: true } })
+    .toArray();
+  for (const post of affectedPosts) {
+    await collections.posts.updateOne(
+      { _id: post._id },
+      { $set: { likes: (post.likedBy || []).length } },
+    );
+  }
+}
+
 async function createIndexes() {
   if (!db) return;
   try {
@@ -1473,30 +1564,9 @@ app.delete("/api/profile/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
 
-    await db.collection("profiles").deleteOne({ uid });
-    if (ObjectId.isValid(uid)) {
-      await db.collection("users").deleteOne({ _id: new ObjectId(uid) });
-    }
-    await db.collection("posts").deleteMany({ authorId: uid });
-    await db
-      .collection("messages")
-      .deleteMany({ $or: [{ senderId: uid }, { receiverId: uid }] });
-    await db
-      .collection("notifications")
-      .deleteMany({ $or: [{ recipientUid: uid }, { senderUid: uid }] });
-
-    await db.collection("profiles").updateMany(
-      {},
-      {
-        $pull: {
-          friends: uid,
-          incomingRequests: uid,
-          outgoingRequests: uid,
-          blockedUsers: uid,
-        },
-      },
-    );
+    await purgeUserCompletely(uid);
 
     res.json({ success: true, message: "Account deleted successfully" });
   } catch (error) {
@@ -4043,93 +4113,8 @@ app.delete("/api/admin/users/:uid", requireAdmin, async (req, res) => {
     const { uid } = req.params;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
 
-    const collections = {
-      users: db.collection("users"),
-      profiles: db.collection("profiles"),
-      posts: db.collection("posts"),
-      stories: db.collection("stories"),
-      messages: db.collection("messages"),
-      notifications: db.collection("notifications"),
-      reports: db.collection("reports"),
-      profile_views: db.collection("profile_views"),
-      communities: db.collection("communities"),
-    };
+    await purgeUserCompletely(uid);
 
-    // 1. Delete user auth record
-    if (ObjectId.isValid(uid)) {
-      await collections.users.deleteOne({ _id: new ObjectId(uid) });
-    }
-
-    // 2. Delete profile
-    await collections.profiles.deleteOne({ uid });
-
-    // 3. Delete all posts
-    await collections.posts.deleteMany({ uid });
-
-    // 4. Delete all stories
-    await collections.stories.deleteMany({ uid });
-
-    // 5. Delete all messages sent or received
-    await collections.messages.deleteMany({
-      $or: [{ fromUid: uid }, { toUid: uid }],
-    });
-
-    // 6. Delete all notifications involving this user
-    await collections.notifications.deleteMany({
-      $or: [{ fromUid: uid }, { toUid: uid }],
-    });
-
-    // 7. Delete all reports by or against this user
-    await collections.reports.deleteMany({
-      $or: [{ reporterUid: uid }, { targetUid: uid }],
-    });
-
-    // 8. Delete profile views
-    await collections.profile_views.deleteMany({
-      $or: [{ viewerUid: uid }, { targetUid: uid }],
-    });
-
-    // 9. Remove this user from all friend/block lists
-    await collections.profiles.updateMany(
-      {},
-      {
-        $pull: {
-          friends: uid,
-          incomingRequests: uid,
-          outgoingRequests: uid,
-          blockedUsers: uid,
-          passedUsers: uid,
-        },
-      },
-    );
-
-    // 10. Remove from community member lists
-    await collections.communities.updateMany(
-      {},
-      {
-        $pull: { members: uid },
-      },
-    );
-
-    // 11. Remove comments & likes left by this user on posts
-    await collections.posts.updateMany(
-      {},
-      {
-        $pull: { comments: { uid }, likedBy: uid },
-      },
-    );
-    // Re-calculate like counts
-    const affectedPosts = await collections.posts
-      .find({ likedBy: { $exists: true } })
-      .toArray();
-    for (const post of affectedPosts) {
-      await collections.posts.updateOne(
-        { _id: post._id },
-        { $set: { likes: (post.likedBy || []).length } },
-      );
-    }
-
-    // Log admin action
     auditLogs.push({
       timestamp: new Date().toISOString(),
       action: "admin_delete_user",
