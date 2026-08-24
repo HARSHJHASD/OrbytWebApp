@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import cors from "cors";
+import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { Expo } from "expo-server-sdk";
 import express from "express";
@@ -23,12 +24,39 @@ const app = express();
 // --- Web Push Configuration ---
 const publicVapidKey = process.env.VITE_VAPID_PUBLIC_KEY;
 const privateVapidKey = process.env.VAPID_PRIVATE_KEY;
-const vapidEmail = process.env.VAPID_EMAIL || "orbytapp@gmail.com";
-webpush.setVapidDetails(vapidEmail, publicVapidKey, privateVapidKey);
+const rawVapidEmail = process.env.VAPID_EMAIL || "orbytapp@gmail.com";
+// web-push requires the subject to be a mailto: or https: URL and throws otherwise,
+// so normalize a bare email address into a mailto: URL.
+const vapidEmail = /^(mailto:|https:)/.test(rawVapidEmail)
+  ? rawVapidEmail
+  : `mailto:${rawVapidEmail}`;
+// Push is optional. setVapidDetails throws on missing/malformed keys, and because
+// this runs at module load an uncaught throw here took down the whole API — not just
+// notifications. Configure only when both keys are present, and fail soft.
+let webPushConfigured = false;
+if (publicVapidKey && privateVapidKey) {
+  try {
+    webpush.setVapidDetails(vapidEmail, publicVapidKey, privateVapidKey);
+    webPushConfigured = true;
+  } catch (err) {
+    console.error(
+      "[PUSH] Invalid VAPID configuration — web push disabled:",
+      err?.message || err,
+    );
+  }
+} else {
+  console.warn(
+    "[PUSH] VAPID keys not set — browser push notifications are disabled.",
+  );
+}
 //this is for hosting frontend in render
 app.use(express.static(path.join(__dirname, "dist")));
-// SPA catch-all: serve index.html for any non-API route so React Router (HashRouter) handles it
-app.get(/^\/(?!api\/).*/, (req, res) => {
+// SPA catch-all: serve index.html for any non-API route so React Router (HashRouter) handles it.
+// NOTE: Express matches routes in registration order, and this pattern is greedy, so it
+// SHADOWS any server-rendered page route declared below it. Every such path must be added
+// to the negative lookahead here, or its handler becomes dead code (this is what happened
+// to the /post/:id deep-link page). API routes are excluded the same way.
+app.get(/^\/(?!api\/|post\/).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
@@ -2299,6 +2327,10 @@ app.post("/api/posts/:id/comment", async (req, res) => {
     const { uid, text } = req.body;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid Post ID" });
+    if (!uid || typeof text !== "string" || text.trim().length === 0)
+      return res
+        .status(400)
+        .json({ error: "uid and non-empty text are required" });
     const profiles = db.collection("profiles");
     const userProfile = await profiles.findOne({ uid });
     const newComment = {
@@ -2306,12 +2338,10 @@ app.post("/api/posts/:id/comment", async (req, res) => {
       uid,
       authorName: userProfile?.displayName || "User",
       authorPhoto: userProfile?.photoURL || "",
-      text,
+      text: text.trim().slice(0, 2000),
       createdAt: Date.now(),
       likedBy: [],
       likes: 0,
-
-      likedBy: [],
     };
     const posts = db.collection("posts");
     await posts.updateOne(
@@ -2388,8 +2418,8 @@ app.post("/api/posts/:id/likeComment", async (req, res) => {
   }
 });
 
-// Like/unlike a comment on a post
-app.post("/api/posts/:id/likeComment", async (req, res) => {
+// Delete a comment — only the comment author or the post owner may delete it
+app.post("/api/posts/:id/deleteComment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
@@ -2404,55 +2434,29 @@ app.post("/api/posts/:id/likeComment", async (req, res) => {
     if (!post) return res.status(404).json({ error: "Post not found" });
 
     const comments = post.comments || [];
+    const commentIdStr = String(commentId);
+    const matches = (c) => {
+      const cId = c.id ?? c._id;
+      return cId != null && cId.toString() === commentIdStr;
+    };
 
-    // Normalize incoming commentId to string (support ObjectId-like payloads)
-    let commentIdStr = "";
-    if (typeof commentId === "string") commentIdStr = commentId;
-    else if (commentId && commentId.$oid) commentIdStr = commentId.$oid;
-    else if (commentId && typeof commentId.toString === "function")
-      commentIdStr = commentId.toString();
-    else commentIdStr = String(commentId);
+    const target = comments.find(matches);
+    if (!target) return res.status(404).json({ error: "Comment not found" });
 
-    let found = false;
-    for (let i = 0; i < comments.length; i++) {
-      const c = comments[i];
-      const cId = c._id || c.id;
-      const cIdStr =
-        cId && typeof cId.toString === "function"
-          ? cId.toString()
-          : String(cId);
-      if (cIdStr === commentIdStr) {
-        found = true;
-        c.likedBy = c.likedBy || [];
-        const isLiked = c.likedBy.includes(uid);
-        if (isLiked) {
-          c.likedBy = c.likedBy.filter((x) => x !== uid);
-          c.likes = Math.max(0, (c.likes || 0) - 1);
-        } else {
-          c.likedBy.push(uid);
-          c.likes = (c.likes || 0) + 1;
-        }
-        // persist full comments array back to DB
-        await posts.updateOne(
-          { _id: new ObjectId(postId) },
-          { $set: { comments } },
-        );
-
-        // send notification to comment owner
-        if (!isLiked && c.uid && c.uid !== uid) {
-          await createNotification("like", uid, c.uid, postId, {
-            commentId: commentIdStr,
-          });
-        }
-
-        return res.json({ success: true, comment: c });
-      }
+    if (target.uid !== uid && post.uid !== uid) {
+      return res.status(403).json({ error: "Unauthorized" });
     }
 
-    if (!found) return res.status(404).json({ error: "Comment not found" });
+    const remaining = comments.filter((c) => !matches(c));
+    await posts.updateOne(
+      { _id: new ObjectId(postId) },
+      { $set: { comments: remaining } },
+    );
+
+    res.json({ success: true, comments: remaining });
   } catch (error) {
-    console.error("Like comment error:", error);
-    res.status(500).json({ error: "Failed to like comment" });
+    console.error("Delete comment error:", error);
+    res.status(500).json({ error: "Failed to delete comment" });
   }
 });
 
@@ -2834,7 +2838,7 @@ async function sendPushNotification(
       }
     }
 
-    if (webPushSubscription) {
+    if (webPushSubscription && webPushConfigured) {
       try {
         await webpush.sendNotification(webPushSubscription, payloadStr);
         webSuccess = true;
@@ -2954,13 +2958,6 @@ app.post("/api/chat/send", async (req, res) => {
           { $set: { lastActivity: Date.now() } }
         );
         await updateQuestProgress(fromUid, 'visit_room');
-        // Keep lastActivity fresh
-        await db
-          .collection("communities")
-          .updateOne(
-            { _id: community._id },
-            { $set: { lastActivity: Date.now() } },
-          );
       } else {
         // --- 2. Fall back to meetup posts ---
         const posts = db.collection("posts");
@@ -3260,7 +3257,9 @@ app.delete("/api/chat/message/:messageId", async (req, res) => {
     if (!fromUid) return res.status(400).json({ error: "fromUid required" });
 
     const messages = db.collection("messages");
-    const { ObjectId } = require("mongodb");
+    // ObjectId is imported at the top of this file. A local require() here threw
+    // "require is not defined" — this file is ESM ("type": "module") — which made
+    // every message-delete request fail with a 500.
     let query;
     try {
       query = { _id: new ObjectId(messageId), fromUid };
@@ -3713,16 +3712,23 @@ app.delete("/api/communities/:id/messages/:msgId", async (req, res) => {
       { _id: new ObjectId(msgId) },
       { $set: { deleted: true, text: "", mediaUrl: null } },
     );
-    // Broadcast deletion to room subscribers
-    const roomWs = rooms?.get(id);
-    if (roomWs) {
-      const payload = JSON.stringify({
-        type: "message_deleted",
-        messageId: msgId,
-      });
-      roomWs.forEach((ws) => {
+    // Broadcast deletion to room subscribers.
+    // Previously referenced an undeclared `rooms` map — note that `rooms?.get(id)`
+    // does NOT guard an undeclared identifier (optional chaining only guards
+    // null/undefined values), so this threw ReferenceError and returned a 500 even
+    // though the message had already been deleted. There is no room registry; the
+    // only socket registry is `clients` (uid -> Set<WebSocket>), so notify members.
+    const payload = JSON.stringify({
+      type: "message_deleted",
+      messageId: msgId,
+      groupId: id,
+    });
+    for (const memberUid of community?.members || []) {
+      const sockets = clients.get(memberUid);
+      if (!sockets) continue;
+      sockets.forEach((ws) => {
         try {
-          ws.send(payload);
+          if (ws.readyState === 1) ws.send(payload);
         } catch { }
       });
     }
@@ -3769,12 +3775,29 @@ app.put("/api/communities/:id/pin", async (req, res) => {
 // All routes require the X-Admin-Secret header to match
 // SUPER_ADMIN_SECRET in the environment.
 // ============================================================
-const SUPER_ADMIN_SECRET =
-  process.env.SUPER_ADMIN_SECRET || "orbyt_super_sssssadmin_secret_change_me";
+// SECURITY: never fall back to a hardcoded, source-committed secret. A literal
+// like "orbyt_super_sssssadmin_secret_change_me" in the repo would let anyone who
+// reads the code assume full admin (delete users, broadcast, edit config). If the
+// env var is not set, admin auth fails closed: every check below returns Forbidden.
+const SUPER_ADMIN_SECRET = process.env.SUPER_ADMIN_SECRET || "";
+if (!SUPER_ADMIN_SECRET) {
+  console.warn(
+    "[SECURITY] SUPER_ADMIN_SECRET is not set — all admin routes are disabled until it is configured.",
+  );
+}
+
+// Constant-time comparison to avoid leaking the secret via response timing.
+function safeSecretEquals(provided) {
+  if (!SUPER_ADMIN_SECRET || typeof provided !== "string") return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(SUPER_ADMIN_SECRET);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 function requireAdmin(req, res, next) {
   const provided = req.headers["x-admin-secret"];
-  if (!provided || provided !== SUPER_ADMIN_SECRET) {
+  if (!safeSecretEquals(provided)) {
     return res.status(403).json({ error: "Forbidden" });
   }
   next();
@@ -3783,7 +3806,7 @@ function requireAdmin(req, res, next) {
 // Admin login — just validates the secret and returns a session token
 app.post("/api/admin/login", authLimiter, (req, res) => {
   const { secret } = req.body;
-  if (!secret || secret !== SUPER_ADMIN_SECRET) {
+  if (!safeSecretEquals(secret)) {
     return res.status(403).json({ error: "Invalid admin credentials" });
   }
   // Return the secret itself as the "token" — the client stores it

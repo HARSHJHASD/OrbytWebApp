@@ -1,4 +1,4 @@
-import { API_CONFIG } from "../constants/config";
+import { API_CONFIG, TIMEOUT_CONFIG } from "../constants/config";
 import { AdminCommunity, AdminEvent, AdminPost, AdminReport, AdminStory, AdminUser, Community, Message, Notification, Post, UserProfile } from "../types";
 
 /**
@@ -411,7 +411,7 @@ export const api = {
             if (socket?.readyState === WebSocket?.OPEN) {
               socket.send(JSON.stringify({ type: "ping" }));
             }
-          }, API_CONFIG.PORT === 5000 ? 30000 : 30000);
+          }, TIMEOUT_CONFIG.WEBSOCKET_KEEPALIVE_MS);
         };
 
         socket.onmessage = (event): void => {
