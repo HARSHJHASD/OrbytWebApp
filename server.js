@@ -1606,12 +1606,13 @@ app.delete("/api/profile/:uid", async (req, res) => {
 app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid, radius } = req.query;
+    let { viewerUid, radius, global } = req.query;
     // Fix: Handle 'undefined' or 'null' passed as strings
     if (viewerUid === "undefined" || viewerUid === "null")
       viewerUid = undefined;
 
     const radiusInKm = radius ? parseFloat(radius) : null;
+    const isGlobalDiscovery = global === "true";
 
     const profiles = db.collection("profiles");
     const viewerProfile = viewerUid
@@ -1667,7 +1668,7 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
         : null;
 
       // STRICT RADIUS FILTER
-      if (viewerLocation && distanceMeters !== null) {
+      if (!isGlobalDiscovery && viewerLocation && distanceMeters !== null) {
         if (distanceMeters > effectiveRadius * 1000) {
           continue;
         }

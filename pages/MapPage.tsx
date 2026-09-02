@@ -116,7 +116,7 @@ const MapPage: React.FC = () => {
     if (!currentUser?.uid) return;
     try {
       const [data, profile] = await Promise.all([
-        api.profile.getAllWithLocation(currentUser.uid),
+        api.profile.getAllWithLocation(currentUser.uid, undefined, true),
         api.profile.get(currentUser.uid),
       ]);
       setUsers(data);
@@ -410,7 +410,7 @@ const MapPage: React.FC = () => {
       )}
 
       {/* FLOATING NEARBY BUTTON */}
-      {!isListOpen && !selectedUser && nearbyUsers?.length > 0 && (
+      {!isListOpen && !selectedUser && (
         <button
           onClick={() => setIsListOpen(true)}
           className="absolute bottom-[20%] left-4 z-[1001] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl shadow-xl p-2 pr-4 flex items-center gap-3 border border-slate-200 dark:border-slate-800"

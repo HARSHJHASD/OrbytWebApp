@@ -102,12 +102,15 @@ export const api = {
       }
     },
 
-    getAllWithLocation: async (viewerUid?: string) => {
+    getAllWithLocation: async (viewerUid?: string, radius?: number, global = false) => {
       try {
         // Pass viewerUid to filter out blocked users from the map/list
-        const url = viewerUid
-          ? `${API_BASE}/profiles?viewerUid=${viewerUid}`
-          : `${API_BASE}/profiles`;
+        const params = new URLSearchParams();
+        if (viewerUid) params.set("viewerUid", viewerUid);
+        if (radius) params.set("radius", String(radius));
+        if (global) params.set("global", "true");
+        const query = params.toString();
+        const url = `${API_BASE}/profiles${query ? `?${query}` : ""}`;
 
         const response = await fetch(url);
         if (!response?.ok) return [];

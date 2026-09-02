@@ -164,13 +164,9 @@ export default function Discover() {
             if (!user) return;
             try {
                 const [allUsers, myProf] = await Promise.all([
-                    api.profile.getAllWithLocation(user?.uid),
+                    api.profile.getAllWithLocation(user?.uid, undefined, true),
                     api.profile.get(user?.uid)
                 ]);
-
-                const maxDistanceMeters = (myProf?.discoveryRadius || 10) * 1000;
-
-
 
                 const excluded = new Set<string>([
                     user?.uid,
@@ -191,7 +187,18 @@ export default function Discover() {
                     const { lat: lat2, lng: lng2 } = u?.lastLocation;
                     const a = Math.sin((lat2 - lat1) * rad / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin((lng2 - lng1) * rad / 2) ** 2;
                     const distMeters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                    return distMeters <= maxDistanceMeters;
+                    return true;
+                }).sort((a: any, b: any) => {
+                    const distance = (u: any) => {
+                        if (!u.lastLocation) return Infinity;
+                        const R = 6371e3;
+                        const rad = Math.PI / 180;
+                        const dLat = (u.lastLocation.lat - myLocation.lat) * rad;
+                        const dLng = (u.lastLocation.lng - myLocation.lng) * rad;
+                        const value = Math.sin(dLat / 2) ** 2 + Math.cos(myLocation.lat * rad) * Math.cos(u.lastLocation.lat * rad) * Math.sin(dLng / 2) ** 2;
+                        return R * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+                    };
+                    return distance(a) - distance(b);
                 });
 
                 setProfiles(filtered);
