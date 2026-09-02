@@ -21,20 +21,26 @@ interface SwipeableCardProps {
 const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwipe, onNavigate, isTop }) => {
     const cardRef = useRef<HTMLDivElement>(null);
     const startX = useRef(0);
+    const startY = useRef(0);
     const currentX = useRef(0);
     const isDragging = useRef(false);
     const [transform, setTransform] = useState({ x: 0, rot: 0, opacity: 1 });
 
     const onPointerDown = useCallback((e: React.PointerEvent) => {
         if (!isTop) return;
-        isDragging.current = true;
         startX.current = e.clientX;
-        cardRef.current?.setPointerCapture(e.pointerId);
+        startY.current = e.clientY;
+        isDragging.current = false;
     }, [isTop]);
 
     const onPointerMove = useCallback((e: React.PointerEvent) => {
-        if (!isDragging.current) return;
         const dx = e.clientX - startX.current;
+        const dy = e.clientY - startY.current;
+        if (!isDragging.current) {
+            if (Math.abs(dx) < 10 || Math.abs(dx) <= Math.abs(dy) * 1.5) return;
+            isDragging.current = true;
+            cardRef.current?.setPointerCapture(e.pointerId);
+        }
         currentX.current = dx;
         const rot = dx / 20;
         setTransform({ x: dx, rot, opacity: 1 });
@@ -64,7 +70,7 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
     return (
         <div
             ref={cardRef}
-            className="absolute inset-0 touch-none select-none"
+            className="absolute inset-0 touch-pan-y select-none"
             style={{
                 transform: `translateX(${transform.x}px) rotate(${transform.rot}deg)`,
                 opacity: transform.opacity,
@@ -78,7 +84,7 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
         >
-            <div className={`w-full h-full bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col transition-colors duration-300`}>
+            <div className={`w-full h-full bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-y-auto flex flex-col transition-colors duration-300`}>
                 {/* Swipe Hint Overlays */}
                 {transform.x > 40 && (
                     <div className="absolute top-6 left-6 z-20 border-4 border-green-500 text-green-500 font-black text-2xl px-4 py-2 rounded-xl rotate-[-20deg]">LIKE 💚</div>
@@ -88,7 +94,7 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
                 )}
 
                 {/* Photo */}
-                <div className="h-3/5 bg-slate-100 dark:bg-slate-800 relative group" onClick={onNavigate}>
+                <div className="h-3/5 min-h-[260px] shrink-0 bg-slate-100 dark:bg-slate-800 relative group" onClick={onNavigate}>
                     {profile?.photoURL ? (
                         <img src={profile?.photoURL} alt={profile?.displayName} draggable={false} className="w-full h-full object-cover pointer-events-none transition-transform duration-500 group-hover:scale-110" />
                     ) : (
@@ -100,7 +106,7 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
                 </div>
 
                 {/* Info */}
-                <div className="p-6 flex-1 flex flex-col justify-center">
+                <div className="p-6 flex-1 flex flex-col justify-start">
                     <div className="flex items-baseline gap-2 mb-1">
                         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{profile?.displayName}</h2>
                         {profile?.dob && (
@@ -124,14 +130,14 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
                     </div>
 
                     {profile?.bio && (
-                        <p className="text-sm text-slate-600 dark:text-slate-400 line-clamp-2 mb-4 leading-relaxed italic">
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 leading-relaxed italic">
                             "{profile?.bio}"
                         </p>
                     )}
 
                     {profile?.interests && profile?.interests?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-auto">
-                            {profile?.interests?.slice(0, 4).map(id => {
+                            {profile?.interests?.map(id => {
                                 const tag = POPULAR_INTERESTS.find(i => i.id === id);
                                 return (
                                     <span key={id} className="text-[10px] font-bold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">

@@ -1295,6 +1295,10 @@ export default function Profile() {
                             <div
                               key={friend?.uid}
                               className="flex items-center gap-3 p-3 rounded-2xl bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 opacity-75"
+                              onClick={() => {
+                                setIsFriendsModalOpen(false);
+                                navigate(`/app/profile/${friend?.uid}`);
+                              }}
                             >
                               <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden shrink-0">
                                 {friend?.photoURL ? (
@@ -1316,7 +1320,10 @@ export default function Profile() {
                                 Sent
                               </span>
                               <button
-                                onClick={() => handleWithdrawRequest(friend?.uid)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleWithdrawRequest(friend?.uid);
+                                }}
                                 disabled={actionLoading}
                                 className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl hover:bg-red-500/20 hover:text-red-400 transition-colors border border-slate-200 dark:border-slate-700"
                               >
