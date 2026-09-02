@@ -700,6 +700,13 @@ const MapPage: React.FC = () => {
                 </div>
               ))}
 
+              {nearbyUsers.length === 0 && (
+                <div className="py-10 text-center">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">No one is nearby right now.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Try widening the map radius to see more people.</p>
+                </div>
+              )}
+
               {/* Bottom Spacer for safe area */}
               <div className="h-6" />
             </div>

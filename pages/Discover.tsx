@@ -253,8 +253,8 @@ export default function Discover() {
         return (
             <div className="flex-1 flex flex-col justify-center items-center min-h-[60vh] text-center px-6">
                 <SearchX className="w-16 h-16 text-slate-300 dark:text-slate-700 mb-4" />
-                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-200 mb-2">No one nearby.</h2>
-                <p className="text-slate-500 dark:text-slate-400 text-sm">Try expanding your discovery radius in Settings.</p>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-200 mb-2">No discoverable people yet.</h2>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">There are no profiles available to show right now.</p>
             </div>
         );
     }
