@@ -180,22 +180,16 @@ export default function Discover() {
                 const filtered = allUsers.filter((u: any) => {
                     if (excluded.has(u?.uid)) return false;
                     if (u?.isDiscoverable === false) return false;
-                    if (!u?.lastLocation || !myLocation) return false;
-                    const R = 6371e3;
-                    const rad = Math.PI / 180;
-                    const { lat: lat1, lng: lng1 } = myLocation;
-                    const { lat: lat2, lng: lng2 } = u?.lastLocation;
-                    const a = Math.sin((lat2 - lat1) * rad / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin((lng2 - lng1) * rad / 2) ** 2;
-                    const distMeters = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
                     return true;
                 }).sort((a: any, b: any) => {
+                    const location = myLocation;
                     const distance = (u: any) => {
-                        if (!u.lastLocation) return Infinity;
+                        if (!location || !u.lastLocation) return Infinity;
                         const R = 6371e3;
                         const rad = Math.PI / 180;
-                        const dLat = (u.lastLocation.lat - myLocation.lat) * rad;
-                        const dLng = (u.lastLocation.lng - myLocation.lng) * rad;
-                        const value = Math.sin(dLat / 2) ** 2 + Math.cos(myLocation.lat * rad) * Math.cos(u.lastLocation.lat * rad) * Math.sin(dLng / 2) ** 2;
+                        const dLat = (u.lastLocation.lat - location!.lat) * rad;
+                        const dLng = (u.lastLocation.lng - location!.lng) * rad;
+                        const value = Math.sin(dLat / 2) ** 2 + Math.cos(location!.lat * rad) * Math.cos(u.lastLocation.lat * rad) * Math.sin(dLng / 2) ** 2;
                         return R * 2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
                     };
                     return distance(a) - distance(b);

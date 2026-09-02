@@ -1626,7 +1626,7 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
     const effectiveRadius = radiusInKm || viewerProfile?.discoveryRadius || 50;
 
     let filter = {
-      lastLocation: { $exists: true, $ne: null },
+      ...(isGlobalDiscovery ? {} : { lastLocation: { $exists: true, $ne: null } }),
       isDiscoverable: { $ne: false }, // Only show discoverable users
     };
     if (viewerUid) {
@@ -1661,7 +1661,24 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
 
       const lat = user?.lastLocation?.lat;
       const lng = user?.lastLocation?.lng;
-      if (typeof lat !== "number" || typeof lng !== "number") continue;
+      if (typeof lat !== "number" || typeof lng !== "number") {
+        if (isGlobalDiscovery) {
+          safeUsers.push({
+            uid: user.uid,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+            interests: user.interests || [],
+            bio: user.bio,
+            instagramHandle: user.instagramHandle,
+            gender: user.gender,
+            relation: viewerFriends.has(user.uid) ? "friend" : "public",
+            distanceBand: "Location unavailable",
+            locationAccuracyMeters: null,
+            isDiscoverable: user.isDiscoverable !== false,
+          });
+        }
+        continue;
+      }
 
       const distanceMeters = viewerLocation
         ? getDistanceMeters(viewerLocation.lat, viewerLocation.lng, lat, lng)
