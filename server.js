@@ -1650,6 +1650,10 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
         bio: 1,
         instagramHandle: 1,
         gender: 1,
+        badgeTitle: 1,
+        jobRole: 1,
+        liveStatusMode: 1,
+        thatsMePhotos: 1,
         isDiscoverable: 1,
       })
       .limit(500)
@@ -1671,6 +1675,10 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
             bio: user.bio,
             instagramHandle: user.instagramHandle,
             gender: user.gender,
+            badgeTitle: user.badgeTitle,
+            jobRole: user.jobRole,
+            liveStatusMode: user.liveStatusMode,
+            thatsMePhotos: user.thatsMePhotos || [],
             relation: viewerFriends.has(user.uid) ? "friend" : "public",
             distanceBand: "Location unavailable",
             locationAccuracyMeters: null,
@@ -1723,6 +1731,10 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
         bio: user.bio,
         instagramHandle: user.instagramHandle,
         gender: user.gender,
+        badgeTitle: user.badgeTitle,
+        jobRole: user.jobRole,
+        liveStatusMode: user.liveStatusMode,
+        thatsMePhotos: user.thatsMePhotos || [],
         relation,
         distanceBand: toDistanceBand(distanceMeters),
         locationAccuracyMeters: isFriend ? 250 : 1500,
@@ -1941,6 +1953,22 @@ app.post("/api/user/pass", async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to pass user" });
+  }
+});
+
+app.post("/api/user/unpass", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const { uid, targetUid } = req.body;
+    if (!uid || !targetUid)
+      return res.status(400).json({ error: "Missing uid or targetUid" });
+    await db.collection("profiles").updateOne(
+      { uid },
+      { $pull: { passedUsers: targetUid } },
+    );
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to undo pass" });
   }
 });
 

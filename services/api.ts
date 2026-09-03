@@ -161,6 +161,15 @@ export const api = {
         });
       } catch (e) { }
     },
+    unpass: async (uid: string, targetUid: string) => {
+      try {
+        await fetch(`${API_BASE}/user/unpass`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ uid, targetUid }),
+        });
+      } catch (e) { }
+    },
     getViewers: async (uid: string) => {
       try {
         const response = await fetch(`${API_BASE}/profile/views/${uid}`);
