@@ -22,6 +22,7 @@ const NEARBY_INITIAL_DELAY_MS = 15 * 1000;            // 15 seconds after mount
 const KNOWN_NOTIFICATION_TYPES = [
     'friend_request', 'friend_accept', 'like', 'comment',
     'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event', 'announcement',
+    'profile_view', 'meetup_reminder', 'crossed_paths',
     'vibe_wave', 'vibe_check', 'orbit_collision',
 ] as const;
 
