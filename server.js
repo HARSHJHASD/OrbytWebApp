@@ -578,6 +578,9 @@ async function createNotification(
     const expoPayload = {
       title,
       body,
+      sound: "default",
+      badge: 1,
+      channelId: "default",
       data: { url: notifUrl },
     };
 
@@ -3042,6 +3045,9 @@ app.post("/api/chat/send", async (req, res) => {
       const expoPayload = {
         title: `💬 ${groupTitle}`,
         body: `${authorName}: ${displayBody}`,
+        sound: "default",
+        badge: 1,
+        channelId: "default",
         data: { url: notifUrl.expo },
       };
       const webPayloadStr = JSON.stringify({
@@ -3071,6 +3077,9 @@ app.post("/api/chat/send", async (req, res) => {
       const expoPayload = {
         title: authorName,
         body: displayBody,
+        sound: "default",
+        badge: 1,
+        channelId: "default",
         data: { url: `/chat/${fromUid}` },
       };
       const webPayloadStr = JSON.stringify({
