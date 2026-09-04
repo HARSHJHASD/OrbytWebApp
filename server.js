@@ -442,6 +442,44 @@ function sendToUser(uid, data) {
   }
 }
 
+// A push payload is consumed by two clients with different route structures.  Keep
+// route selection in one place so every notification type opens the same thing as
+// its in-app notification card, rather than falling back to a profile or a post.
+function notificationUrls(type, fromUid, postId, groupId) {
+  const profile = {
+    expo: `/profile/${fromUid}`,
+    web: `/app/profile/${fromUid}`,
+  };
+  const post = postId
+    ? { expo: `/post/${postId}`, web: `/app/post/${postId}` }
+    : { expo: "/notifications", web: "/app/notifications" };
+
+  switch (type) {
+    case "like":
+    case "comment":
+    case "meetup_request":
+    case "friend_event":
+    case "meetup_reminder":
+      return post;
+    case "meetup_accept":
+      return postId
+        ? { expo: `/chat/group/${postId}`, web: `/app/chat/group/${postId}` }
+        : { expo: "/notifications", web: "/app/notifications" };
+    case "friend_post":
+      return { expo: "/(tabs)/", web: "/app" };
+    case "new_event":
+      return { expo: "/(tabs)/?tab=meetup", web: "/app?tab=meetup" };
+    case "announcement":
+      return { expo: "/notifications", web: "/app/notifications" };
+    case "room_message":
+      return groupId
+        ? { expo: `/community/${groupId}`, web: `/app/rooms/${groupId}` }
+        : { expo: "/notifications", web: "/app/notifications" };
+    default:
+      return profile;
+  }
+}
+
 async function createNotification(
   type,
   fromUid,
@@ -562,17 +600,13 @@ async function createNotification(
         break;
     }
 
-    const notifUrl = extra.groupId
-      ? `/communities/${extra.groupId}`
-      : postId
-        ? `/post/${postId}`
-        : `/profile/${fromUid}`;
+    const notifUrl = notificationUrls(type, fromUid, postId, extra.groupId);
 
     const payload = JSON.stringify({
       title,
       body,
       icon: sender.photoURL || "/pwa-192x192.png",
-      data: { url: notifUrl },
+      data: { url: notifUrl.web, notificationId: notifResult.insertedId.toString(), notificationType: type },
     });
 
     const expoPayload = {
@@ -581,7 +615,7 @@ async function createNotification(
       sound: "default",
       badge: 1,
       channelId: "default",
-      data: { url: notifUrl },
+      data: { url: notifUrl.expo, notificationId: notifResult.insertedId.toString(), notificationType: type },
     };
 
     await sendPushNotification(toUid, payload, expoPayload);

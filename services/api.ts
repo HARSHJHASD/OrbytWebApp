@@ -414,11 +414,15 @@ export const api = {
 
       let socket: WebSocket | null = null;
       let keepAliveInterval: NodeJS.Timeout | null = null;
+      let reconnectTimeout: NodeJS.Timeout | null = null;
+      let closedByClient = false;
+      let reconnectDelay = 1000;
 
       const connect = (): void => {
         socket = new WebSocket(wsUrl);
 
         socket.onopen = (): void => {
+          reconnectDelay = 1000;
           keepAliveInterval = setInterval((): void => {
             if (socket?.readyState === WebSocket?.OPEN) {
               socket.send(JSON.stringify({ type: "ping" }));
@@ -438,12 +442,23 @@ export const api = {
 
         socket.onclose = (): void => {
           if (keepAliveInterval) clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+          // Browsers routinely close idle/mobile sockets. Reconnect with a capped
+          // backoff so real-time chat and notifications resume without a refresh.
+          if (!closedByClient) {
+            reconnectTimeout = setTimeout(connect, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, 10000);
+          }
         };
+
+        socket.onerror = (): void => socket?.close();
       };
 
       connect();
 
       return (): void => {
+        closedByClient = true;
+        if (reconnectTimeout) clearTimeout(reconnectTimeout);
         if (socket) socket.close();
         if (keepAliveInterval) clearInterval(keepAliveInterval);
       };
