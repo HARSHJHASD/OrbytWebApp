@@ -63,6 +63,11 @@ app.get(/^\/(?!api\/|post\/).*/, (req, res) => {
 // Smart deep-link page: tries to open native app, falls back to store download
 app.get("/post/:id", (req, res) => {
   const postId = req.params.id;
+  // The id is interpolated into HTML and an inline <script>; only accept real
+  // ObjectIds so a crafted URL can't inject markup/script (reflected XSS).
+  if (!/^[a-f0-9]{24}$/i.test(postId)) {
+    return res.status(404).send("Post not found");
+  }
   const deepLink = `orbyt://post/${postId}`;
   const playStoreUrl =
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
@@ -276,23 +281,39 @@ app.use(
   }),
 );
 
-// Rate Limiting - Prevent brute force attacks
+// Behind a reverse proxy (Render / Nginx / Cloudflare) every request arrives from the
+// proxy's IP unless Express trusts X-Forwarded-For. Without this, all users shared ONE
+// rate-limit bucket: 5 logins per 15 min and 20 map loads per minute for the whole app.
+// Set TRUST_PROXY=0 if the server is ever exposed directly to the internet.
+app.set("trust proxy", Number(process.env.TRUST_PROXY ?? 1));
+
+// Rate Limiting - Prevent brute force attacks.
+// Messages are JSON objects so clients that call response.json() don't crash on a 429.
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // 5 requests per window
-  message: "Too many authentication attempts, please try again later",
+  max: 10, // per IP
+  skipSuccessfulRequests: true, // only failed attempts count toward the lockout
+  message: { error: "Too many authentication attempts, please try again later" },
 });
 
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 100, // 100 requests per minute
-  message: "Too many requests, please try again later",
+  message: { error: "Too many requests, please try again later" },
 });
 
 const mapProfilesLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 20, // map refresh abuse guard
-  message: "Too many map refresh requests, please try again shortly",
+  message: { error: "Too many map refresh requests, please try again shortly" },
+});
+
+const vibeLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  max: 3,
+  keyGenerator: (req) => req.authUid || req.ip,
+  validate: { keyGeneratorIpFallback: false },
+  message: { error: "You've sent a lot of vibes. Try again in a few minutes." },
 });
 
 app.use("/api/", apiLimiter);
@@ -361,6 +382,215 @@ const loginSchema = z.object({
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+// ============================================================
+// --- USER AUTHENTICATION (signed session tokens) ---
+// ============================================================
+// Every user-facing route used to trust whatever uid the client put in the body,
+// query or URL, so anyone could act as anyone. Login/signup/google now return a
+// signed token; clients send it as `Authorization: Bearer <token>` (and as
+// `?token=` on the WebSocket). The middleware below derives the caller's uid from
+// the token and rejects requests whose identity fields name a different user.
+//
+// AUTH_TOKEN_SECRET must be set in production. Without it a random secret is used,
+// which means every token is invalidated whenever the server restarts.
+//
+// ALLOW_LEGACY_AUTH=true keeps old app builds (which send no token) working during
+// the rollout: requests without a token fall back to the old trust-the-uid
+// behaviour. Turn it off once the new app version is live and minAppVersion is
+// bumped — until then the API is still impersonable.
+const AUTH_TOKEN_SECRET =
+  process.env.AUTH_TOKEN_SECRET || crypto.randomBytes(32).toString("hex");
+if (!process.env.AUTH_TOKEN_SECRET) {
+  console.warn(
+    "[SECURITY] AUTH_TOKEN_SECRET is not set — using a random secret. All sessions will be logged out on restart.",
+  );
+}
+const ALLOW_LEGACY_AUTH = process.env.ALLOW_LEGACY_AUTH === "true";
+if (ALLOW_LEGACY_AUTH) {
+  console.warn(
+    "[SECURITY] ALLOW_LEGACY_AUTH=true — requests without a token are still trusted. Disable after the client rollout.",
+  );
+}
+const TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
+// Google OAuth client IDs whose ID tokens we accept (web + native use the web client id as audience).
+const GOOGLE_CLIENT_IDS = (
+  process.env.GOOGLE_CLIENT_IDS ||
+  "793742543220-aggmdtptgpbns7vrem2ftpelnv73g4e4.apps.googleusercontent.com,793742543220-bnrhm15pgnjs5b1evvadu2tpjjk6pv6m.apps.googleusercontent.com"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function b64url(input) {
+  return Buffer.from(input).toString("base64url");
+}
+
+function signAuthToken(uid) {
+  const payload = b64url(
+    JSON.stringify({ uid, iat: Date.now(), exp: Date.now() + TOKEN_TTL_MS }),
+  );
+  const sig = crypto
+    .createHmac("sha256", AUTH_TOKEN_SECRET)
+    .update(payload)
+    .digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+function verifyAuthToken(token) {
+  if (typeof token !== "string") return null;
+  const [payload, sig] = token.split(".");
+  if (!payload || !sig) return null;
+  const expected = crypto
+    .createHmac("sha256", AUTH_TOKEN_SECRET)
+    .update(payload)
+    .digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    if (!data?.uid || typeof data.exp !== "number" || data.exp < Date.now())
+      return null;
+    return data.uid;
+  } catch {
+    return null;
+  }
+}
+
+function getBearerToken(req) {
+  const header = req.headers?.authorization || "";
+  if (header.startsWith("Bearer ")) return header.slice(7).trim();
+  return null;
+}
+
+const UID_RE = /^[a-f0-9]{24}$/i;
+const isUid = (v) => typeof v === "string" && UID_RE.test(v);
+
+// Body/query fields that always name the *caller*. If present they must match the token.
+const IDENTITY_FIELDS = [
+  "uid",
+  "fromUid",
+  "viewerUid",
+  "userUid",
+  "hostUid",
+  "reporterUid",
+  "myUid",
+  "uid1",
+];
+
+// Routes under /api that do not need a user session.
+function isPublicApiPath(path) {
+  return (
+    path.startsWith("/auth/") ||
+    path.startsWith("/admin/") ||
+    path === "/config/version" ||
+    path === "/config/lists"
+  );
+}
+
+app.use("/api", (req, res, next) => {
+  if (isPublicApiPath(req.path)) return next();
+
+  const token = getBearerToken(req);
+  const tokenUid = token ? verifyAuthToken(token) : null;
+
+  if (token && !tokenUid) {
+    return res
+      .status(401)
+      .json({ error: "Session expired. Please log in again.", code: "AUTH_INVALID" });
+  }
+
+  if (tokenUid) {
+    req.authUid = tokenUid;
+  } else if (ALLOW_LEGACY_AUTH) {
+    // Legacy client: fall back to the identity it claims (old, insecure behaviour).
+    const claimed = IDENTITY_FIELDS.map(
+      (f) => req.body?.[f] ?? req.query?.[f],
+    ).find((v) => typeof v === "string" && v && v !== "undefined");
+    req.authUid = claimed || null;
+    req.legacyAuth = true;
+    return next();
+  } else {
+    return res
+      .status(401)
+      .json({ error: "Please log in again.", code: "AUTH_REQUIRED" });
+  }
+
+  // Every identity field the client sent must be the caller.
+  for (const field of IDENTITY_FIELDS) {
+    for (const source of [req.body, req.query]) {
+      const v = source?.[field];
+      if (v === undefined || v === null || v === "" || v === "undefined" || v === "null") continue;
+      if (v !== req.authUid) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+    }
+  }
+  next();
+});
+
+// Route-level guard: the named URL param must be the caller (e.g. /api/notifications/:uid).
+function selfParam(param = "uid") {
+  return (req, res, next) => {
+    if (req.legacyAuth) return next();
+    if (req.params[param] !== req.authUid) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+    next();
+  };
+}
+
+// Blocks writes from suspended accounts. Admin suspension used to be cosmetic only.
+const suspensionCache = new Map(); // uid -> { suspended, at }
+async function isUserSuspended(uid) {
+  if (!db || !uid) return false;
+  const cached = suspensionCache.get(uid);
+  if (cached && Date.now() - cached.at < 60 * 1000) return cached.suspended;
+  const p = await db
+    .collection("profiles")
+    .findOne({ uid }, { projection: { isSuspended: 1 } });
+  const suspended = !!p?.isSuspended;
+  suspensionCache.set(uid, { suspended, at: Date.now() });
+  return suspended;
+}
+app.use("/api", async (req, res, next) => {
+  if (req.method === "GET" || isPublicApiPath(req.path) || !req.authUid) return next();
+  try {
+    if (await isUserSuspended(req.authUid)) {
+      return res
+        .status(403)
+        .json({ error: "Your account has been suspended.", code: "SUSPENDED" });
+    }
+  } catch (_) {
+    /* fail open on DB errors */
+  }
+  next();
+});
+
+async function verifyGoogleIdToken(idToken) {
+  if (typeof idToken !== "string" || !idToken) return null;
+  const resp = await fetch(
+    `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+  );
+  if (!resp.ok) return null;
+  const info = await resp.json();
+  if (!GOOGLE_CLIENT_IDS.includes(info.aud)) return null;
+  if (!["accounts.google.com", "https://accounts.google.com"].includes(info.iss))
+    return null;
+  if (info.email_verified !== true && info.email_verified !== "true") return null;
+  if (Number(info.exp) * 1000 < Date.now()) return null;
+  return { email: String(info.email).toLowerCase(), name: info.name, picture: info.picture };
+}
+
+const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
+// Case-insensitive lookup so accounts created before emails were normalised still match.
+const EMAIL_COLLATION = { locale: "en", strength: 2 };
+
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const uri = process.env.MONGO_URI;
 
 const client = new MongoClient(uri, {
@@ -380,8 +610,20 @@ const BCRYPT_ROUNDS = 10;
 
 // --- WebSocket Logic ---
 wss.on("connection", (ws, req) => {
-  const urlParams = new URLSearchParams(req.url.split("?")[1]);
-  const uid = urlParams.get("uid");
+  const urlParams = new URLSearchParams(req.url.split("?")[1] || "");
+  // The socket used to be bound to whatever ?uid= the client claimed, so anyone could
+  // receive another user's live DMs. It now requires a valid session token.
+  const tokenUid = verifyAuthToken(urlParams.get("token"));
+  const legacyUid =
+    !tokenUid && ALLOW_LEGACY_AUTH && !urlParams.get("token")
+      ? urlParams.get("uid")
+      : null;
+  const uid = tokenUid || legacyUid;
+
+  if (!uid) {
+    ws.close(4401, "Unauthorized");
+    return;
+  }
 
   if (uid) {
     if (!clients.has(uid)) {
@@ -577,6 +819,12 @@ async function createNotification(
         body = `Someone with ${matchPct}% matching interests opened your profile today.`;
         break;
       case "meetup_reminder":
+        if (!extra.eventTitle && extra.message) {
+          // Profile-view "high match" nudge: no event attached, the text is in `message`.
+          title = "✨ A strong match checked you out";
+          body = `Someone ${extra.message}`;
+          break;
+        }
         const timeLeft = extra.timeLeft || "soon";
         const spotsLeft = extra.spotsLeft !== undefined ? `${extra.spotsLeft} spots left` : "last few spots";
         title = `⏰ ${extra.eventTitle || "Event"} starting soon!`;
@@ -613,7 +861,6 @@ async function createNotification(
       title,
       body,
       sound: "default",
-      badge: 1,
       channelId: "default",
       data: { url: notifUrl.expo, notificationId: notifResult.insertedId.toString(), notificationType: type },
     };
@@ -625,12 +872,11 @@ async function createNotification(
 }
 
 // --- AUTHENTICATION MIDDLEWARE ---
+// The /api middleware above authenticates every request; this just insists on a caller.
 function requireAuth(req, res, next) {
-  const uid = req.body?.uid || req.query?.uid || req.params?.uid;
-  if (!uid) {
+  if (!req.authUid) {
     return res.status(401).json({ error: "Unauthorized" });
   }
-  // In a real app, verify JWT token here
   next();
 }
 
@@ -658,15 +904,18 @@ async function cleanupOrphanedData() {
     // 4. Delete Orphaned Messages (Invalid sender OR invalid recipient)
     const msgRes = await messages.deleteMany({
       $or: [
-        { fromUid: { $nin: validUidArray } },
+        { fromUid: { $exists: true, $nin: [...validUidArray, "system"] } },
         { toUid: { $exists: true, $nin: validUidArray } },
       ],
     });
 
-    // 5. Delete Orphaned Notifications
+    // 5. Delete Orphaned Notifications.
+    // `$nin` also matches documents where the field is MISSING, and admin
+    // announcements have no fromUid — so this used to wipe every broadcast on each
+    // server start. Only treat a notification as orphaned if the field exists.
     const notifRes = await notifications.deleteMany({
       $or: [
-        { fromUid: { $nin: validUidArray } },
+        { fromUid: { $exists: true, $ne: null, $nin: validUidArray } },
         { toUid: { $nin: validUidArray } },
       ],
     });
@@ -1154,8 +1403,9 @@ function getPublicCellKey(lat, lng) {
 app.post("/api/profile/view", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { viewerUid, targetUid } = req.body;
-    if (!viewerUid || !targetUid || viewerUid === targetUid) {
+    const { targetUid } = req.body;
+    const viewerUid = req.authUid;
+    if (!viewerUid || !isUid(targetUid) || viewerUid === targetUid) {
       return res.status(400).json({ error: "Invalid uids" });
     }
 
@@ -1245,7 +1495,7 @@ app.post("/api/profile/view", async (req, res) => {
   }
 });
 
-app.get("/api/profile/views/:uid", async (req, res) => {
+app.get("/api/profile/views/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
@@ -1286,7 +1536,7 @@ app.get("/", (req, res) => {
 });
 
 // Manual Cleanup Trigger
-app.post("/api/cleanup", async (req, res) => {
+app.post("/api/cleanup", requireAdmin, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   await cleanupOrphanedData();
   res.json({ success: true, message: "Database cleanup completed" });
@@ -1306,7 +1556,8 @@ app.get("/api/config/version", (req, res) => {
 app.post("/api/push/subscribe", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, subscription, platform } = req.body;
+    const { subscription, platform } = req.body;
+    const uid = req.authUid;
     if (!uid || !subscription) {
       return res.status(400).json({ error: "Missing uid or subscription" });
     }
@@ -1329,6 +1580,21 @@ app.post("/api/push/subscribe", async (req, res) => {
 
     await profiles.updateOne({ uid }, update);
 
+    // A device token belongs to one account at a time. If this phone/browser was
+    // previously logged in as someone else, detach it from that profile so the
+    // old account's notifications stop arriving here.
+    if (resolvedPlatform === "expo") {
+      await profiles.updateMany(
+        { uid: { $ne: uid }, $or: [{ expoPushToken: subscription }, { pushSubscription: subscription }] },
+        { $unset: { expoPushToken: "" }, $set: { pushSubscription: null } },
+      );
+    } else if (subscription?.endpoint) {
+      await profiles.updateMany(
+        { uid: { $ne: uid }, "webPushSubscription.endpoint": subscription.endpoint },
+        { $unset: { webPushSubscription: "" } },
+      );
+    }
+
     // Keep backwards compatibility while migrating old clients.
     if (resolvedPlatform === "expo") {
       await profiles.updateOne(
@@ -1347,17 +1613,78 @@ app.post("/api/push/subscribe", async (req, res) => {
   }
 });
 
+// Diagnostic: send a test push to the caller and report exactly what happened.
+// Used by the "Send test notification" button in the app's settings.
+app.post("/api/push/test", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const uid = req.authUid;
+    const profile = await db.collection("profiles").findOne(
+      { uid },
+      { projection: { expoPushToken: 1, pushSubscription: 1, webPushSubscription: 1 } },
+    );
+    const result = await sendPushNotification(
+      uid,
+      JSON.stringify({
+        title: "🔔 Test notification",
+        body: "Push notifications are working.",
+        icon: "/pwa-192x192.png",
+        data: { url: "/app/notifications" },
+      }),
+      {
+        title: "🔔 Test notification",
+        body: "Push notifications are working.",
+        data: { url: "/notifications", notificationType: "test" },
+      },
+      0,
+      0, // no retries for a diagnostic
+    );
+    const token = profile?.expoPushToken || (typeof profile?.pushSubscription === "string" ? profile.pushSubscription : null);
+    res.json({
+      registeredExpoToken: token ? `${token.slice(0, 22)}…` : null,
+      validExpoToken: token ? Expo.isExpoPushToken(token) : false,
+      hasWebSubscription: !!profile?.webPushSubscription,
+      ...result,
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Test push failed", detail: error?.message });
+  }
+});
+
+// Called on logout so this device stops receiving the account's pushes.
+app.post("/api/push/unsubscribe", async (req, res) => {
+  if (!db) return res.status(503).json({ error: "Database not connected" });
+  try {
+    const uid = req.authUid;
+    const { platform } = req.body || {};
+    const unset =
+      platform === "web"
+        ? { webPushSubscription: "" }
+        : { expoPushToken: "", pushSubscription: "" };
+    await db.collection("profiles").updateOne({ uid }, { $unset: unset });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to remove push subscription" });
+  }
+});
+
 app.post("/api/auth/signup", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     // Validate input
-    const validated = signupSchema.parse(req.body);
+    const validated = signupSchema.parse({
+      ...req.body,
+      email: normalizeEmail(req.body?.email),
+    });
     const { email, password } = validated;
 
     const users = db.collection("users");
     const profiles = db.collection("profiles");
 
-    const existing = await users.findOne({ email });
+    const existing = await users.findOne(
+      { email },
+      { collation: EMAIL_COLLATION },
+    );
     if (existing)
       return res.status(400).json({ error: "Email already in use" });
 
@@ -1387,10 +1714,12 @@ app.post("/api/auth/signup", authLimiter, async (req, res) => {
       createdAt: Date.now(),
     });
 
-    res.json({ user: { uid, email } });
+    res.json({ user: { uid, email }, token: signAuthToken(uid) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      // Zod v4 exposes `issues`; `errors` no longer exists (that turned every
+      // validation failure into a 500 "Signup failed").
+      return res.status(400).json({ error: error.issues?.[0]?.message || "Invalid input" });
     }
     console.error("Signup error:", error);
     res.status(500).json({ error: "Signup failed" });
@@ -1464,12 +1793,15 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     // Validate input
-    const validated = loginSchema.parse(req.body);
+    const validated = loginSchema.parse({
+      ...req.body,
+      email: normalizeEmail(req.body?.email),
+    });
     const { email, password } = validated;
 
     const users = db.collection("users");
-    const user = await users.findOne({ email });
-    if (!user)
+    const user = await users.findOne({ email }, { collation: EMAIL_COLLATION });
+    if (!user || !user.password)
       return res.status(401).json({ error: "Invalid email or password" });
 
     // Compare password with hashed password using bcrypt
@@ -1479,28 +1811,51 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
 
     const uid = user._id.toString();
     const profile = await db.collection("profiles").findOne({ uid });
+    if (profile?.isSuspended) {
+      return res
+        .status(403)
+        .json({ error: "Your account has been suspended.", code: "SUSPENDED" });
+    }
     if (profile) {
       await ensureDailyQuest(profile);
     }
 
-    res.json({ user: { uid, email } });
+    res.json({ user: { uid, email: user.email }, token: signAuthToken(uid) });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.errors[0].message });
+      return res.status(400).json({ error: error.issues?.[0]?.message || "Invalid input" });
     }
     console.error("Login error:", error);
     res.status(500).json({ error: "Login failed" });
   }
 });
 
-app.post("/api/auth/google", async (req, res) => {
+app.post("/api/auth/google", authLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { email, displayName, photoURL } = req.body;
+    // The email must come from a Google ID token we verified ourselves. Previously
+    // the server trusted the email in the request body, so anyone could log in as
+    // any account by posting its email address.
+    const { idToken } = req.body || {};
+    let email, displayName, photoURL;
+    const verified = idToken ? await verifyGoogleIdToken(idToken) : null;
+    if (verified) {
+      email = verified.email;
+      displayName = req.body?.displayName || verified.name;
+      photoURL = req.body?.photoURL || verified.picture || "";
+    } else if (!idToken && ALLOW_LEGACY_AUTH && req.body?.email) {
+      // Old app builds send no idToken. Only tolerated during the rollout window.
+      email = normalizeEmail(req.body.email);
+      displayName = req.body.displayName;
+      photoURL = req.body.photoURL;
+    } else {
+      return res.status(401).json({ error: "Google sign-in could not be verified" });
+    }
+
     const users = db.collection("users");
     const profiles = db.collection("profiles");
 
-    let user = await users.findOne({ email });
+    let user = await users.findOne({ email }, { collation: EMAIL_COLLATION });
     let uid;
 
     if (!user) {
@@ -1533,6 +1888,11 @@ app.post("/api/auth/google", async (req, res) => {
       // This ensures a custom profile picture or display name set via Edit Profile
       // is NEVER overwritten by the Google account data on subsequent logins.
       const existingProfile = await profiles.findOne({ uid });
+      if (existingProfile?.isSuspended) {
+        return res
+          .status(403)
+          .json({ error: "Your account has been suspended.", code: "SUSPENDED" });
+      }
       const updateFields = {};
       if (!existingProfile?.photoURL && photoURL) {
         updateFields.photoURL = photoURL;
@@ -1544,8 +1904,9 @@ app.post("/api/auth/google", async (req, res) => {
         await profiles.updateOne({ uid }, { $set: updateFields });
       }
     }
-    res.json({ user: { uid, email } });
+    res.json({ user: { uid, email }, token: signAuthToken(uid) });
   } catch (error) {
+    console.error("Google login error:", error);
     res.status(500).json({ error: "Google login failed" });
   }
 });
@@ -1553,19 +1914,30 @@ app.post("/api/auth/google", async (req, res) => {
 app.post("/api/profile/endorse", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, labels } = req.body;
-    if (!fromUid || !toUid || !labels || !Array.isArray(labels)) {
+    const { toUid, labels } = req.body;
+    const fromUid = req.authUid;
+    if (!fromUid || !isUid(toUid) || fromUid === toUid || !Array.isArray(labels)) {
       return res.status(400).json({ error: "Invalid parameters" });
     }
 
     const profiles = db.collection("profiles");
-
-    // Only allow endorsing friends or people you've met (for now keep it simple: any discoverable user)
-    // In a real app, verify they actually met.
+    const endorser = await profiles.findOne(
+      { uid: fromUid },
+      { projection: { friends: 1 } },
+    );
+    // Only connections can endorse each other (anyone could spam any label before).
+    if (!(endorser?.friends || []).includes(toUid)) {
+      return res.status(403).json({ error: "You can only endorse your connections" });
+    }
+    const cleanLabels = labels
+      .filter((l) => typeof l === "string" && l.trim())
+      .slice(0, 5)
+      .map((l) => l.trim().slice(0, 30));
+    if (cleanLabels.length === 0) return res.json({ success: true });
 
     await profiles.updateOne(
       { uid: toUid },
-      { $addToSet: { reputation: { $each: labels } } }
+      { $addToSet: { reputation: { $each: cleanLabels } } }
     );
 
     res.json({ success: true });
@@ -1574,23 +1946,43 @@ app.post("/api/profile/endorse", async (req, res) => {
   }
 });
 
+// Fields that never leave the server for anyone but the owner.
+const PRIVATE_PROFILE_FIELDS = [
+  "email",
+  "expoPushToken",
+  "webPushSubscription",
+  "pushSubscription",
+  "quests",
+  "isFuzzed",
+  "isSuspended",
+];
+
 app.get("/api/profile/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid } = req.query;
-    if (viewerUid === "undefined" || viewerUid === "null")
-      viewerUid = undefined;
+    const viewerUid = req.authUid;
 
     const profiles = db.collection("profiles");
     const profile = await profiles.findOne({ uid: req.params.uid });
     if (!profile) return res.json(null);
 
-    // Hide precise coordinates unless this is the owner's own profile request.
-    if (profile?.lastLocation) {
-      const isSelf = !!viewerUid && viewerUid === profile.uid;
-      let isFriend = false;
+    const isSelf = !!viewerUid && viewerUid === profile.uid;
+    if (!isSelf) {
+      for (const f of PRIVATE_PROFILE_FIELDS) delete profile[f];
+      // Other users' block/pass lists are private. Clients only need to know whether
+      // *they* are blocked, so expose just that.
+      profile.blockedUsers = (profile.blockedUsers || []).includes(viewerUid)
+        ? [viewerUid]
+        : [];
+      profile.passedUsers = [];
+      const myMsg = profile.friendRequestMessages?.[viewerUid];
+      profile.friendRequestMessages = myMsg ? { [viewerUid]: myMsg } : {};
+    }
 
-      if (!isSelf && viewerUid) {
+    // Hide precise coordinates unless this is the owner's own profile request.
+    if (profile?.lastLocation && !isSelf) {
+      let isFriend = false;
+      if (viewerUid) {
         const viewerProfile = await profiles.findOne(
           { uid: viewerUid },
           { projection: { friends: 1 } },
@@ -1598,19 +1990,19 @@ app.get("/api/profile/:uid", async (req, res) => {
         isFriend = (viewerProfile?.friends || []).includes(profile.uid);
       }
 
-      if (isSelf) {
-        // keep as-is
-      } else if (isFriend) {
+      if (isFriend && typeof profile.lastLocation.lat === "number") {
+        // Same treatment as the map: rounded AND jittered, never raw coordinates.
+        const bucket = Math.floor(Date.now() / LOCATION_PRIVACY.JITTER_ROTATION_MS);
+        const jittered = addCoordinateJitter(
+          roundCoord(profile.lastLocation.lat, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
+          roundCoord(profile.lastLocation.lng, LOCATION_PRIVACY.FRIEND_COORD_DECIMALS),
+          LOCATION_PRIVACY.FRIEND_JITTER_METERS,
+          `${viewerUid}:${profile.uid}:${bucket}:friend`,
+        );
         profile.lastLocation = {
-          ...profile.lastLocation,
-          lat: roundCoord(
-            profile.lastLocation.lat,
-            LOCATION_PRIVACY.FRIEND_COORD_DECIMALS,
-          ),
-          lng: roundCoord(
-            profile.lastLocation.lng,
-            LOCATION_PRIVACY.FRIEND_COORD_DECIMALS,
-          ),
+          name: profile.lastLocation.name,
+          lat: jittered.lat,
+          lng: jittered.lng,
         };
       } else {
         profile.lastLocation = {
@@ -1625,7 +2017,7 @@ app.get("/api/profile/:uid", async (req, res) => {
   }
 });
 
-app.delete("/api/profile/:uid", async (req, res) => {
+app.delete("/api/profile/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
@@ -1643,12 +2035,10 @@ app.delete("/api/profile/:uid", async (req, res) => {
 app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid, radius, global } = req.query;
-    // Fix: Handle 'undefined' or 'null' passed as strings
-    if (viewerUid === "undefined" || viewerUid === "null")
-      viewerUid = undefined;
+    let { radius, global } = req.query;
+    const viewerUid = req.authUid || undefined;
 
-    const radiusInKm = radius ? parseFloat(radius) : null;
+    const radiusInKm = radius ? Math.min(parseFloat(radius) || 0, 20000) || null : null;
     const isGlobalDiscovery = global === "true";
 
     const profiles = db.collection("profiles");
@@ -1700,8 +2090,17 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
     for (const user of rawUsers) {
       if (viewerUid && user.uid === viewerUid) continue;
 
-      const lat = user?.lastLocation?.lat;
-      const lng = user?.lastLocation?.lng;
+      let lat = user?.lastLocation?.lat;
+      let lng = user?.lastLocation?.lng;
+      // Stale locations (no update in MAX_LOCATION_AGE_MS) are not shown to non-friends —
+      // the constant existed but was never applied, so old positions stayed on the map forever.
+      if (
+        !viewerFriends.has(user.uid) &&
+        now - getLocationTimestamp(user) > LOCATION_PRIVACY.MAX_LOCATION_AGE_MS
+      ) {
+        lat = undefined;
+        lng = undefined;
+      }
       if (typeof lat !== "number" || typeof lng !== "number") {
         if (isGlobalDiscovery) {
           safeUsers.push({
@@ -1797,7 +2196,7 @@ app.post("/api/profiles/batch", async (req, res) => {
     if (!Array.isArray(uids) || uids.length === 0) return res.json([]);
     const profiles = db.collection("profiles");
     const users = await profiles
-      .find({ uid: { $in: uids } })
+      .find({ uid: { $in: uids.filter((u) => typeof u === "string").slice(0, 200) } })
       .project({
         uid: 1,
         displayName: 1,
@@ -1811,12 +2210,54 @@ app.post("/api/profiles/batch", async (req, res) => {
   }
 });
 
-app.post("/api/profile/:uid", async (req, res) => {
+// Only these fields may be written by the profile owner. Everything else (badges,
+// suspension, friends, reputation, push tokens, email...) is server-controlled —
+// previously the whole request body was $set, so users could grant themselves a
+// "Verified" badge, lift their own suspension or edit their friend list.
+const EDITABLE_PROFILE_FIELDS = {
+  displayName: (v) => typeof v === "string" && v.trim().length > 0 && v.length <= 60,
+  photoURL: (v) => typeof v === "string",
+  jobRole: (v) => typeof v === "string" && v.length <= 80,
+  liveStatusMode: (v) => typeof v === "string" && v.length <= 60,
+  isFuzzed: (v) => typeof v === "boolean",
+  instagramHandle: (v) => typeof v === "string" && v.length <= 60,
+  interests: (v) => Array.isArray(v) && v.length <= 50 && v.every((i) => typeof i === "string"),
+  bio: (v) => typeof v === "string" && v.length <= 1000,
+  lastLocation: (v) =>
+    v && typeof v === "object" && typeof v.lat === "number" && typeof v.lng === "number" &&
+    Math.abs(v.lat) <= 90 && Math.abs(v.lng) <= 180,
+  dob: (v) => typeof v === "string" && !Number.isNaN(new Date(v).getTime()),
+  isDiscoverable: (v) => typeof v === "boolean",
+  discoveryRadius: (v) => typeof v === "number" && v > 0 && v <= 20000,
+  thatsMePhotos: (v) => Array.isArray(v) && v.length <= 6 && v.every((i) => typeof i === "string"),
+  gender: (v) => ["male", "female", "other", "prefer_not_to_say"].includes(v),
+  onboardingStep: (v) => typeof v === "number",
+};
+
+app.post("/api/profile/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
-    const data = req.body;
+    const body = req.body || {};
     const profiles = db.collection("profiles");
+
+    const data = {};
+    for (const [field, isValid] of Object.entries(EDITABLE_PROFILE_FIELDS)) {
+      if (body[field] === undefined) continue;
+      // Invalid values are skipped rather than failing the whole save (clients send
+      // partial/empty values during onboarding, e.g. gender: "").
+      if (!isValid(body[field])) continue;
+      data[field] = body[field];
+    }
+    if (data.lastLocation) {
+      data.lastLocation = {
+        lat: data.lastLocation.lat,
+        lng: data.lastLocation.lng,
+        ...(typeof body.lastLocation.name === "string"
+          ? { name: body.lastLocation.name.slice(0, 120) }
+          : {}),
+      };
+    }
 
     // Server-side 18+ validation
     if (data.dob) {
@@ -1829,23 +2270,30 @@ app.post("/api/profile/:uid", async (req, res) => {
     }
 
     // 1. Update Profile
-    const updateFields = { ...data, uid, updatedAt: new Date() };
-    if (
-      typeof data?.lastLocation?.lat === "number" &&
-      typeof data?.lastLocation?.lng === "number"
-    ) {
+    const updateFields = { ...data, updatedAt: new Date() };
+    if (data.lastLocation) {
       updateFields.locationUpdatedAt = Date.now();
     }
-    const updateDoc = { $set: updateFields };
+    const updateDoc = {
+      $set: updateFields,
+      // createdAt is only ever set once (onboarding used to reset it on every step).
+      $setOnInsert: { uid, createdAt: Date.now() },
+    };
 
     await profiles.updateOne({ uid }, updateDoc, { upsert: true });
 
     // 3. Crossed Paths Logic (Feature 4)
-    if (data.lastLocation?.lat && data.lastLocation?.lng) {
+    if (data.lastLocation) {
       setImmediate(async () => {
         try {
-          const myInterests = data.interests || [];
-          if (myInterests.length === 0) return;
+          // Location updates only carry lastLocation, so read interests from the stored
+          // profile (this used to read data.interests, which was never sent → never fired).
+          const me = await profiles.findOne(
+            { uid },
+            { projection: { interests: 1, isDiscoverable: 1 } },
+          );
+          const myInterests = data.interests || me?.interests || [];
+          if (myInterests.length === 0 || me?.isDiscoverable === false) return;
 
           // Find others who were within 200m in the last 30 mins
           const nearby = await profiles.find({
@@ -1859,6 +2307,13 @@ app.post("/api/profile/:uid", async (req, res) => {
 
           if (nearby.length > 0) {
             const other = nearby[0];
+            const alreadyNotified = await db.collection("notifications").findOne({
+              type: "crossed_paths",
+              fromUid: other.uid,
+              toUid: uid,
+              createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 },
+            });
+            if (alreadyNotified) return;
             const sharedInterests = myInterests.filter(i => (other.interests || []).includes(i));
             if (sharedInterests.length > 0) {
               const interestLabel = sharedInterests[0];
@@ -1931,7 +2386,10 @@ app.post("/api/profile/:uid", async (req, res) => {
 app.post("/api/user/block", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, targetUid } = req.body;
+    const { targetUid } = req.body;
+    const uid = req.authUid;
+    if (!uid || !isUid(targetUid) || uid === targetUid)
+      return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
     await profiles.updateOne(
       { uid: uid },
@@ -1964,7 +2422,8 @@ app.post("/api/user/block", async (req, res) => {
 app.post("/api/user/unblock", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, targetUid } = req.body;
+    const { targetUid } = req.body;
+    const uid = req.authUid;
     const profiles = db.collection("profiles");
     await profiles.updateOne(
       { uid: uid },
@@ -1979,7 +2438,8 @@ app.post("/api/user/unblock", async (req, res) => {
 app.post("/api/user/pass", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, targetUid } = req.body;
+    const { targetUid } = req.body;
+    const uid = req.authUid;
     if (!uid || !targetUid)
       return res.status(400).json({ error: "Missing uid or targetUid" });
     const profiles = db.collection("profiles");
@@ -1996,7 +2456,8 @@ app.post("/api/user/pass", async (req, res) => {
 app.post("/api/user/unpass", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, targetUid } = req.body;
+    const { targetUid } = req.body;
+    const uid = req.authUid;
     if (!uid || !targetUid)
       return res.status(400).json({ error: "Missing uid or targetUid" });
     await db.collection("profiles").updateOne(
@@ -2021,14 +2482,16 @@ app.post("/api/report", async (req, res) => {
       communityId,
       type,
     } = req.body;
-    if (!reporterUid || !reason)
+    if (!reporterUid || typeof reason !== "string" || !reason.trim())
       return res
         .status(400)
         .json({ error: "reporterUid and reason are required" });
+    if (targetUid && targetUid === reporterUid)
+      return res.status(400).json({ error: "You can't report yourself" });
 
     // Infer type from provided IDs if not given explicitly
     let resolvedType = type;
-    if (!resolvedType) {
+    if (!["user", "post", "story", "meetup", "community"].includes(resolvedType)) {
       if (storyId) resolvedType = "story";
       else if (communityId) resolvedType = "community";
       else if (postId) resolvedType = "post";
@@ -2036,17 +2499,24 @@ app.post("/api/report", async (req, res) => {
     }
 
     const reports = db.collection("reports");
-    await reports.insertOne({
+    const key = {
       type: resolvedType,
       reporterUid,
       targetUid: targetUid || null,
-      reason,
       postId: postId || null,
       storyId: storyId || null,
-      communityId: communityId || null,
-      createdAt: Date.now(),
-      status: "pending",
-    });
+      communityId: communityId ? String(communityId) : null,
+    };
+    // One pending report per reporter per target — repeat taps update the reason
+    // instead of stacking up (one user could previously auto-suspend anyone).
+    await reports.updateOne(
+      { ...key, status: "pending" },
+      {
+        $set: { reason: reason.trim().slice(0, 500) },
+        $setOnInsert: { createdAt: Date.now() },
+      },
+      { upsert: true },
+    );
 
     // Auto-suspend if threshold met (user-level reports only)
     if (
@@ -2062,18 +2532,16 @@ app.post("/api/report", async (req, res) => {
           .findOne({ _id: "global" });
         const threshold = settings?.autoSuspendThreshold || 0;
         if (threshold > 0) {
-          const reportCount = await reports.countDocuments({
+          // Count distinct reporters, not raw report documents.
+          const distinctReporters = await reports.distinct("reporterUid", {
             targetUid,
             status: "pending",
           });
-          if (reportCount >= threshold) {
+          if (distinctReporters.length >= threshold) {
             await db
               .collection("profiles")
-              .updateOne(
-                { uid: targetUid },
-                { $set: { isSuspended: true } },
-                { upsert: true },
-              );
+              .updateOne({ uid: targetUid }, { $set: { isSuspended: true } });
+            suspensionCache.delete(targetUid);
           }
         }
       } catch (_) {
@@ -2091,45 +2559,88 @@ app.post("/api/friends/request", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { fromUid, toUid, message } = req.body;
+    if (!fromUid || !isUid(toUid) || fromUid === toUid)
+      return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
-    await profiles.updateOne(
+    const [me, target] = await Promise.all([
+      profiles.findOne({ uid: fromUid }),
+      profiles.findOne({ uid: toUid }),
+    ]);
+    if (!target) return res.status(404).json({ error: "User not found" });
+    if (
+      (me?.blockedUsers || []).includes(toUid) ||
+      (target.blockedUsers || []).includes(fromUid)
+    ) {
+      return res.status(403).json({ error: "You can't connect with this user" });
+    }
+    if ((me?.friends || []).includes(toUid)) return res.json({ success: true, status: "friends" });
+
+    // They already asked us → this is a match, accept instead of creating a second request.
+    if ((me?.incomingRequests || []).includes(toUid)) {
+      await acceptFriendship(fromUid, toUid);
+      return res.json({ success: true, status: "friends" });
+    }
+
+    const result = await profiles.updateOne(
       { uid: fromUid },
       { $addToSet: { outgoingRequests: toUid } },
     );
     const updateDoc = { $addToSet: { incomingRequests: fromUid } };
-    if (message)
-      updateDoc.$set = { [`friendRequestMessages.${fromUid}`]: message };
+    if (typeof message === "string" && message.trim())
+      updateDoc.$set = { [`friendRequestMessages.${fromUid}`]: message.trim().slice(0, 300) };
     await profiles.updateOne({ uid: toUid }, updateDoc);
-    await createNotification("friend_request", fromUid, toUid);
-    res.json({ success: true });
+    // Don't re-notify on repeat taps.
+    if (result.modifiedCount > 0) {
+      await createNotification("friend_request", fromUid, toUid);
+    }
+    res.json({ success: true, status: "sent" });
   } catch (error) {
     res.status(500).json({ error: "Failed to send request" });
   }
 });
 
+async function acceptFriendship(userUid, requesterUid) {
+  const profiles = db.collection("profiles");
+  await profiles.updateOne(
+    { uid: userUid },
+    {
+      $pull: { incomingRequests: requesterUid, outgoingRequests: requesterUid },
+      $addToSet: { friends: requesterUid },
+      $unset: { [`friendRequestMessages.${requesterUid}`]: "" },
+      $inc: { "stats.connectionsCreated": 1 }
+    },
+  );
+  await profiles.updateOne(
+    { uid: requesterUid },
+    {
+      $pull: { outgoingRequests: userUid, incomingRequests: userUid },
+      $addToSet: { friends: userUid },
+      $unset: { [`friendRequestMessages.${userUid}`]: "" },
+      $inc: { "stats.connectionsCreated": 1 }
+    },
+  );
+  await createNotification("friend_accept", userUid, requesterUid);
+}
+
 app.post("/api/friends/accept", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { userUid, requesterUid } = req.body;
+    if (!userUid || !isUid(requesterUid))
+      return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
-    await profiles.updateOne(
+    // You can only accept a request that was actually sent to you. Previously anyone
+    // could "accept" a request that never existed and force a friendship (which also
+    // unlocked friend-level location precision).
+    const me = await profiles.findOne(
       { uid: userUid },
-      {
-        $pull: { incomingRequests: requesterUid },
-        $addToSet: { friends: requesterUid },
-        $unset: { [`friendRequestMessages.${requesterUid}`]: "" },
-        $inc: { "stats.connectionsCreated": 1 }
-      },
+      { projection: { incomingRequests: 1, friends: 1 } },
     );
-    await profiles.updateOne(
-      { uid: requesterUid },
-      {
-        $pull: { outgoingRequests: userUid },
-        $addToSet: { friends: userUid },
-        $inc: { "stats.connectionsCreated": 1 }
-      },
-    );
-    await createNotification("friend_accept", userUid, requesterUid);
+    if ((me?.friends || []).includes(requesterUid)) return res.json({ success: true });
+    if (!(me?.incomingRequests || []).includes(requesterUid)) {
+      return res.status(400).json({ error: "No pending request from this user" });
+    }
+    await acceptFriendship(userUid, requesterUid);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to accept request" });
@@ -2140,6 +2651,8 @@ app.post("/api/friends/reject", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { userUid, requesterUid } = req.body;
+    if (!userUid || !isUid(requesterUid))
+      return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
     await profiles.updateOne(
       { uid: userUid },
@@ -2162,6 +2675,7 @@ app.post("/api/friends/remove", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid1, uid2 } = req.body;
+    if (!uid1 || !isUid(uid2)) return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
     await profiles.updateOne({ uid: uid1 }, { $pull: { friends: uid2 } });
     await profiles.updateOne({ uid: uid2 }, { $pull: { friends: uid1 } });
@@ -2171,13 +2685,41 @@ app.post("/api/friends/remove", async (req, res) => {
   }
 });
 
+// Fields a client may never set on a post (pinning is admin-only, counters are server-owned).
+const SERVER_OWNED_POST_FIELDS = [
+  "_id",
+  "isPinned",
+  "likes",
+  "likedBy",
+  "comments",
+  "attendees",
+  "pendingRequests",
+  "createdAt",
+  "updatedAt",
+  "authorBadgeTitle",
+];
+
 app.post("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const postData = req.body;
-    
+    const postData = { ...(req.body || {}) };
+    for (const f of SERVER_OWNED_POST_FIELDS) delete postData[f];
+    postData.uid = req.authUid;
+
     if (!postData.location || typeof postData.location.lat !== 'number' || typeof postData.location.lng !== 'number') {
       return res.status(400).json({ error: "Location is required to create a post. Please enable location services." });
+    }
+    if (typeof postData.content === "string" && postData.content.length > 5000) {
+      return res.status(400).json({ error: "Post is too long" });
+    }
+    if (postData.type !== "meetup") delete postData.meetupDetails;
+
+    // Author info comes from the stored profile, not the request (it was spoofable).
+    const poster = await db.collection("profiles").findOne({ uid: postData.uid });
+    if (poster) {
+      postData.authorName = poster.displayName || postData.authorName || "User";
+      postData.authorPhoto = poster.photoURL || "";
+      if (poster.badgeTitle) postData.authorBadgeTitle = poster.badgeTitle;
     }
 
     const posts = db.collection("posts");
@@ -2200,9 +2742,6 @@ app.post("/api/posts", async (req, res) => {
     // Notify all friends about the new post/event (fire-and-forget)
     setImmediate(async () => {
       try {
-        const poster = await db
-          .collection("profiles")
-          .findOne({ uid: postData.uid });
         if (poster?.friends?.length) {
           for (const friendUid of poster.friends) {
             await createNotification(
@@ -2214,17 +2753,27 @@ app.post("/api/posts", async (req, res) => {
             ).catch(() => { });
           }
         }
-        // For meetup posts: also notify all other discoverable users (new_event)
+        // For meetup posts: also notify discoverable users who are actually NEAR the
+        // event (the push says "near you"; it used to go to the same arbitrary 80 users
+        // every time regardless of where they were).
         if (isMeetup) {
-          const allProfiles = await db
+          const { lat, lng } = postData.location;
+          const radiusKm = 25;
+          const latDelta = radiusKm / 111.32;
+          const lngDelta = radiusKm / (111.32 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+          const nearbyProfiles = await db
             .collection("profiles")
             .find({
               uid: { $ne: postData.uid, $nin: poster?.friends || [] },
               isDiscoverable: true,
+              "lastLocation.lat": { $gte: lat - latDelta, $lte: lat + latDelta },
+              "lastLocation.lng": { $gte: lng - lngDelta, $lte: lng + lngDelta },
+              locationUpdatedAt: { $gt: Date.now() - LOCATION_PRIVACY.MAX_LOCATION_AGE_MS },
             })
+            .project({ uid: 1 })
             .limit(80)
             .toArray();
-          for (const p of allProfiles) {
+          for (const p of nearbyProfiles) {
             await createNotification(
               "new_event",
               postData.uid,
@@ -2248,14 +2797,12 @@ app.post("/api/posts", async (req, res) => {
 app.get("/api/posts", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    let { viewerUid, page = 1, limit = 10, lat, lng, radius } = req.query;
-    page = parseInt(page);
-    limit = parseInt(limit);
+    let { page = 1, limit = 10, lat, lng, radius } = req.query;
+    const viewerUid = req.authUid;
+    // Clamp paging: limit=0 used to mean "no limit" and dumped every post.
+    page = Math.max(1, parseInt(page) || 1);
+    limit = Math.min(50, Math.max(1, parseInt(limit) || 10));
     const radiusInKm = parseFloat(radius);
-
-    // Fix: Handle 'undefined' or 'null' passed as strings
-    if (viewerUid === "undefined" || viewerUid === "null")
-      viewerUid = undefined;
 
     const posts = db.collection("posts");
     let filter = {};
@@ -2303,10 +2850,13 @@ app.get("/api/posts", async (req, res) => {
 app.get("/api/posts/user/:uid", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
+    const blocked = await getMutualBlockedUids(req.authUid);
+    if (blocked.includes(req.params.uid)) return res.json([]);
     const posts = db.collection("posts");
     const userPosts = await posts
       .find({ uid: req.params.uid })
       .sort({ createdAt: -1 })
+      .limit(200)
       .toArray();
     res.json(userPosts);
   } catch (error) {
@@ -2341,9 +2891,12 @@ app.put("/api/posts/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { uid, content, imageURL } = req.body;
+    const { content, imageURL } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid ID" });
+    if (typeof content === "string" && content.length > 5000)
+      return res.status(400).json({ error: "Post is too long" });
     const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -2363,7 +2916,7 @@ app.delete("/api/posts/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid ID" });
     const posts = db.collection("posts");
@@ -2382,21 +2935,34 @@ app.post("/api/posts/:id/like", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid Post ID" });
+    if (!uid) return res.status(400).json({ error: "Missing uid" });
     const posts = db.collection("posts");
-    const post = await posts.findOne({ _id: new ObjectId(postId) });
-    if (!post) return res.status(404).json({ error: "Post not found" });
-    const likedBy = post.likedBy || [];
-    const isLiked = likedBy.includes(uid);
-    let update = isLiked
-      ? { $pull: { likedBy: uid }, $inc: { likes: -1 } }
-      : { $addToSet: { likedBy: uid }, $inc: { likes: 1 } };
-    await posts.updateOne({ _id: new ObjectId(postId) }, update);
-    const updatedPost = await posts.findOne({ _id: new ObjectId(postId) });
-    if (!isLiked && post.uid !== uid)
-      await createNotification("like", uid, post.uid, postId);
+    const _id = new ObjectId(postId);
+    // Atomic toggle. The old read-then-write let two quick taps both see "not liked"
+    // and double-increment the counter (or drive it negative on unlike).
+    const liked = await posts.updateOne(
+      { _id, likedBy: { $ne: uid } },
+      { $push: { likedBy: uid }, $inc: { likes: 1 } },
+    );
+    let isNowLiked = liked.modifiedCount === 1;
+    if (!isNowLiked) {
+      const unliked = await posts.updateOne(
+        { _id, likedBy: uid },
+        { $pull: { likedBy: uid }, $inc: { likes: -1 } },
+      );
+      if (unliked.matchedCount === 0)
+        return res.status(404).json({ error: "Post not found" });
+    }
+    const updatedPost = await posts.findOne(
+      { _id },
+      { projection: { likes: 1, likedBy: 1, uid: 1 } },
+    );
+    if (!updatedPost) return res.status(404).json({ error: "Post not found" });
+    if (isNowLiked && updatedPost.uid !== uid)
+      await createNotification("like", uid, updatedPost.uid, postId);
     res.json({ likes: updatedPost.likes, likedBy: updatedPost.likedBy || [] });
   } catch (error) {
     res.status(500).json({ error: "Failed to toggle like" });
@@ -2407,13 +2973,25 @@ app.post("/api/posts/:id/comment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { uid, text } = req.body;
+    const { text } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid Post ID" });
     if (!uid || typeof text !== "string" || text.trim().length === 0)
       return res
         .status(400)
         .json({ error: "uid and non-empty text are required" });
+    const posts = db.collection("posts");
+    const post = await posts.findOne(
+      { _id: new ObjectId(postId) },
+      { projection: { uid: 1 } },
+    );
+    if (!post) return res.status(404).json({ error: "Post not found" });
+    // Blocked users can't comment on each other's posts.
+    const blocked = await getMutualBlockedUids(uid);
+    if (blocked.includes(post.uid))
+      return res.status(403).json({ error: "You can't comment on this post" });
+
     const profiles = db.collection("profiles");
     const userProfile = await profiles.findOne({ uid });
     const newComment = {
@@ -2426,13 +3004,11 @@ app.post("/api/posts/:id/comment", async (req, res) => {
       likedBy: [],
       likes: 0,
     };
-    const posts = db.collection("posts");
     await posts.updateOne(
       { _id: new ObjectId(postId) },
       { $push: { comments: newComment } },
     );
-    const post = await posts.findOne({ _id: new ObjectId(postId) });
-    if (post && post.uid !== uid)
+    if (post.uid !== uid)
       await createNotification("comment", uid, post.uid, postId);
 
     await updateQuestProgress(uid, 'comment_post');
@@ -2442,59 +3018,64 @@ app.post("/api/posts/:id/comment", async (req, res) => {
   }
 });
 
+// Comments are identified by `id` (current) or `_id` (legacy), stored as ObjectId or string.
+function findCommentKey(comments, commentId) {
+  const target = String(commentId);
+  for (const c of comments || []) {
+    if (c?.id != null && c.id.toString() === target) return { field: "id", value: c.id, comment: c };
+    if (c?._id != null && c._id.toString() === target) return { field: "_id", value: c._id, comment: c };
+  }
+  return null;
+}
+
 // Toggle like on a comment
 app.post("/api/posts/:id/likeComment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { commentId, uid } = req.body;
+    const { commentId } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid Post ID" });
     if (!commentId || !uid)
       return res.status(400).json({ error: "Missing parameters" });
 
     const posts = db.collection("posts");
-    const post = await posts.findOne({ _id: new ObjectId(postId) });
+    const _id = new ObjectId(postId);
+    const post = await posts.findOne({ _id }, { projection: { comments: 1 } });
     if (!post) return res.status(404).json({ error: "Post not found" });
 
-    const comments = post.comments || [];
-    const idx = comments.findIndex((c) => {
-      try {
-        if (c.id && c.id.toString() === commentId) return true;
-      } catch (e) { }
-      try {
-        if (c._id && c._id.toString() === commentId) return true;
-      } catch (e) { }
-      // fallback to string id
-      return c.id === commentId || c._id === commentId;
-    });
+    const found = findCommentKey(post.comments, commentId);
+    if (!found) return res.status(404).json({ error: "Comment not found" });
+    const elemKey = `elem.${found.field}`;
 
-    if (idx === -1) return res.status(404).json({ error: "Comment not found" });
-
-    const comment = comments[idx];
-    comment.likedBy = comment.likedBy || [];
-    comment.likes = comment.likes || 0;
-    const alreadyLiked = comment.likedBy.includes(uid);
-
-    if (alreadyLiked) {
-      comment.likedBy = comment.likedBy.filter((u) => u !== uid);
-      comment.likes = Math.max(0, comment.likes - 1);
-    } else {
-      comment.likedBy.push(uid);
-      comment.likes = (comment.likes || 0) + 1;
-      // Notify the comment author
-      if (comment.uid && comment.uid !== uid) {
-        await createNotification("like", uid, comment.uid, postId);
-      }
+    // Update only that comment in place. Rewriting the whole comments array (as before)
+    // silently dropped any comment added by someone else at the same moment.
+    const liked = await posts.updateOne(
+      { _id },
+      {
+        $addToSet: { "comments.$[elem].likedBy": uid },
+        $inc: { "comments.$[elem].likes": 1 },
+      },
+      { arrayFilters: [{ [elemKey]: found.value, "elem.likedBy": { $ne: uid } }] },
+    );
+    const isNowLiked = liked.modifiedCount === 1;
+    if (!isNowLiked) {
+      await posts.updateOne(
+        { _id },
+        {
+          $pull: { "comments.$[elem].likedBy": uid },
+          $inc: { "comments.$[elem].likes": -1 },
+        },
+        { arrayFilters: [{ [elemKey]: found.value, "elem.likedBy": uid }] },
+      );
+    } else if (found.comment.uid && found.comment.uid !== uid) {
+      await createNotification("like", uid, found.comment.uid, postId);
     }
 
-    // Persist updated comments array
-    await posts.updateOne(
-      { _id: new ObjectId(postId) },
-      { $set: { comments } },
-    );
-
-    res.json({ likes: comment.likes, likedBy: comment.likedBy });
+    const updated = await posts.findOne({ _id }, { projection: { comments: 1 } });
+    const after = findCommentKey(updated?.comments, commentId)?.comment || {};
+    res.json({ likes: Math.max(0, after.likes || 0), likedBy: after.likedBy || [] });
   } catch (error) {
     console.error("Like comment error:", error);
     res.status(500).json({ error: "Failed to like comment" });
@@ -2506,37 +3087,32 @@ app.post("/api/posts/:id/deleteComment", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { commentId, uid } = req.body;
+    const { commentId } = req.body;
+    const uid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid Post ID" });
     if (!commentId || !uid)
       return res.status(400).json({ error: "Missing parameters" });
 
     const posts = db.collection("posts");
-    const post = await posts.findOne({ _id: new ObjectId(postId) });
+    const _id = new ObjectId(postId);
+    const post = await posts.findOne({ _id }, { projection: { uid: 1, comments: 1 } });
     if (!post) return res.status(404).json({ error: "Post not found" });
 
-    const comments = post.comments || [];
-    const commentIdStr = String(commentId);
-    const matches = (c) => {
-      const cId = c.id ?? c._id;
-      return cId != null && cId.toString() === commentIdStr;
-    };
+    const found = findCommentKey(post.comments, commentId);
+    if (!found) return res.status(404).json({ error: "Comment not found" });
 
-    const target = comments.find(matches);
-    if (!target) return res.status(404).json({ error: "Comment not found" });
-
-    if (target.uid !== uid && post.uid !== uid) {
+    if (found.comment.uid !== uid && post.uid !== uid) {
       return res.status(403).json({ error: "Unauthorized" });
     }
 
-    const remaining = comments.filter((c) => !matches(c));
     await posts.updateOne(
-      { _id: new ObjectId(postId) },
-      { $set: { comments: remaining } },
+      { _id },
+      { $pull: { comments: { [found.field]: found.value } } },
     );
+    const updated = await posts.findOne({ _id }, { projection: { comments: 1 } });
 
-    res.json({ success: true, comments: remaining });
+    res.json({ success: true, comments: updated?.comments || [] });
   } catch (error) {
     console.error("Delete comment error:", error);
     res.status(500).json({ error: "Failed to delete comment" });
@@ -2545,22 +3121,42 @@ app.post("/api/posts/:id/deleteComment", async (req, res) => {
 
 // --- MEETUP ACTIONS ---
 
+function meetupCapacity(post) {
+  const n = parseInt(post?.meetupDetails?.maxGuests);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 app.post("/api/meetups/:id/join", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { uid } = req.body;
-    if (!ObjectId.isValid(postId))
+    const uid = req.authUid;
+    if (!ObjectId.isValid(postId) || !uid)
       return res.status(400).json({ error: "Invalid ID" });
     const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
-    if (!post) return res.status(404).json({ error: "Meetup not found" });
-    await posts.updateOne(
+    if (!post || post.type !== "meetup")
+      return res.status(404).json({ error: "Meetup not found" });
+    if (post.uid === uid)
+      return res.status(400).json({ error: "You're hosting this meetup" });
+    if ((post.attendees || []).includes(uid))
+      return res.json({ success: true, status: "attending" });
+    const blocked = await getMutualBlockedUids(uid);
+    if (blocked.includes(post.uid))
+      return res.status(403).json({ error: "You can't join this meetup" });
+    const cap = meetupCapacity(post);
+    if (cap && (post.attendees || []).length >= cap)
+      return res.status(400).json({ error: "This meetup is full" });
+
+    const result = await posts.updateOne(
       { _id: new ObjectId(postId) },
       { $addToSet: { pendingRequests: uid } },
     );
-    await createNotification("meetup_request", uid, post.uid, postId);
-    res.json({ success: true });
+    // Only notify the host the first time (repeat taps used to spam them).
+    if (result.modifiedCount > 0) {
+      await createNotification("meetup_request", uid, post.uid, postId);
+    }
+    res.json({ success: true, status: "pending" });
   } catch (e) {
     res.status(500).json({ error: "Failed to join meetup" });
   }
@@ -2570,7 +3166,8 @@ app.post("/api/meetups/:id/accept", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { hostUid, requesterUid } = req.body;
+    const { requesterUid } = req.body;
+    const hostUid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid ID" });
     const posts = db.collection("posts");
@@ -2578,6 +3175,11 @@ app.post("/api/meetups/:id/accept", async (req, res) => {
     if (!post) return res.status(404).json({ error: "Meetup not found" });
     if (post.uid !== hostUid)
       return res.status(403).json({ error: "Unauthorized" });
+    if (!(post.pendingRequests || []).includes(requesterUid))
+      return res.status(400).json({ error: "No pending request from this user" });
+    const cap = meetupCapacity(post);
+    if (cap && (post.attendees || []).length >= cap)
+      return res.status(400).json({ error: "This meetup is full" });
     await posts.updateOne(
       { _id: new ObjectId(postId) },
       {
@@ -2596,7 +3198,8 @@ app.post("/api/meetups/:id/reject", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { hostUid, requesterUid } = req.body;
+    const { requesterUid } = req.body;
+    const hostUid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid ID" });
     const posts = db.collection("posts");
@@ -2618,13 +3221,15 @@ app.post("/api/meetups/:id/remove-attendee", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const postId = req.params.id;
-    const { hostUid, targetUid } = req.body;
+    const { targetUid } = req.body;
+    const hostUid = req.authUid;
     if (!ObjectId.isValid(postId))
       return res.status(400).json({ error: "Invalid ID" });
     const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Meetup not found" });
-    if (post.uid !== hostUid)
+    // Hosts can remove anyone; attendees can remove themselves (leave).
+    if (post.uid !== hostUid && targetUid !== hostUid)
       return res.status(403).json({ error: "Unauthorized" });
 
     await posts.updateOne(
@@ -2639,7 +3244,7 @@ app.post("/api/meetups/:id/remove-attendee", async (req, res) => {
   }
 });
 
-app.get("/api/notifications/:uid", async (req, res) => {
+app.get("/api/notifications/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const notifications = db.collection("notifications");
@@ -2657,11 +3262,18 @@ app.get("/api/notifications/:uid", async (req, res) => {
 app.post("/api/notifications/mark-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { notificationIds } = req.body;
+    const { notificationIds } = req.body || {};
+    if (!Array.isArray(notificationIds))
+      return res.status(400).json({ error: "notificationIds must be an array" });
+    const ids = notificationIds
+      .filter((id) => typeof id === "string" && ObjectId.isValid(id))
+      .slice(0, 500)
+      .map((id) => new ObjectId(id));
+    if (ids.length === 0) return res.json({ success: true });
     const notifications = db.collection("notifications");
-    const ids = notificationIds.map((id) => new ObjectId(id));
+    // Only the recipient can mark their notifications read.
     await notifications.updateMany(
-      { _id: { $in: ids } },
+      { _id: { $in: ids }, ...(req.legacyAuth ? {} : { toUid: req.authUid }) },
       { $set: { read: true } },
     );
     res.json({ success: true });
@@ -2673,7 +3285,7 @@ app.post("/api/notifications/mark-read", async (req, res) => {
 app.post("/api/notifications/mark-all-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
     const notifications = db.collection("notifications");
     await notifications.updateMany(
@@ -2686,7 +3298,7 @@ app.post("/api/notifications/mark-all-read", async (req, res) => {
   }
 });
 
-app.get("/api/notifications/unread-count/:uid", async (req, res) => {
+app.get("/api/notifications/unread-count/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const notifications = db.collection("notifications");
@@ -2700,39 +3312,45 @@ app.get("/api/notifications/unread-count/:uid", async (req, res) => {
   }
 });
 
-// --- VIBE WAVE: Broadcast an anonymous ping to all nearby users ---
-app.post("/api/vibe/send", async (req, res) => {
+// --- VIBE WAVE: Broadcast a ping to nearby users ---
+const MAX_VIBE_RADIUS_KM = 50;
+app.post("/api/vibe/send", vibeLimiter, async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, radius, lat, lng } = req.body;
-    if (!uid || !radius || lat == null || lng == null) {
+    const uid = req.authUid;
+    const radius = Math.min(Number(req.body?.radius) || 0, MAX_VIBE_RADIUS_KM);
+    const lat = Number(req.body?.lat);
+    const lng = Number(req.body?.lng);
+    if (!uid || !radius || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
     const profiles = db.collection("profiles");
 
-    // Fetch all profiles that have a last location
-    const allProfiles = await profiles
-      .find({ uid: { $ne: uid }, isDiscoverable: { $ne: false }, "lastLocation.lat": { $exists: true } })
+    // Bounding-box query instead of loading every profile in the database, and the
+    // radius is capped (the client could previously ask to ping the whole world).
+    const latDelta = radius / 111.32;
+    const lngDelta = radius / (111.32 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+    const candidates = await profiles
+      .find({
+        uid: { $ne: uid },
+        isDiscoverable: { $ne: false },
+        "lastLocation.lat": { $gte: lat - latDelta, $lte: lat + latDelta },
+        "lastLocation.lng": { $gte: lng - lngDelta, $lte: lng + lngDelta },
+      })
       .project({ uid: 1, lastLocation: 1 })
+      .limit(500)
       .toArray();
 
-    // Haversine filter for radius
-    const R = 6371;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const nearbyUids = allProfiles
-      .filter((p) => {
-        const dLat = toRad(p.lastLocation.lat - lat);
-        const dLng = toRad(p.lastLocation.lng - lng);
-        const a =
-          Math.sin(dLat / 2) ** 2 +
-          Math.cos(toRad(lat)) * Math.cos(toRad(p.lastLocation.lat)) * Math.sin(dLng / 2) ** 2;
-        const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return distKm <= radius;
-      })
-      .map((p) => p.uid);
+    const nearbyUids = candidates
+      .filter(
+        (p) =>
+          getDistanceMeters(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <=
+          radius * 1000,
+      )
+      .map((p) => p.uid)
+      .slice(0, 100);
 
-    // Send vibe_wave notification to each nearby user (fire-and-forget)
     const notifPromises = nearbyUids.map((toUid) =>
       createNotification("vibe_wave", uid, toUid)
     );
@@ -2750,13 +3368,22 @@ app.post("/api/vibe/acknowledge", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { notificationId } = req.body;
-    if (!notificationId) return res.status(400).json({ error: "Missing notificationId" });
+    if (!notificationId || !ObjectId.isValid(notificationId))
+      return res.status(400).json({ error: "Missing notificationId" });
 
     const notifications = db.collection("notifications");
-    const notif = await notifications.findOne({ _id: new ObjectId(notificationId) });
+    // Must be a vibe_wave addressed to the caller, and only acknowledged once.
+    const notif = await notifications.findOneAndUpdate(
+      {
+        _id: new ObjectId(notificationId),
+        type: "vibe_wave",
+        ...(req.legacyAuth ? {} : { toUid: req.authUid }),
+        acknowledged: { $ne: true },
+      },
+      { $set: { acknowledged: true, read: true } },
+    );
     if (!notif) return res.status(404).json({ error: "Notification not found" });
 
-    // The person who received the vibe_wave is now acknowledging — send vibe_check back to the original sender
     await createNotification("vibe_check", notif.toUid, notif.fromUid);
 
     res.json({ success: true });
@@ -2767,12 +3394,15 @@ app.post("/api/vibe/acknowledge", async (req, res) => {
 });
 
 // --- HELPER: Send Push Notification (Expo & Web) with Retry Logic ---
+// `channels` limits a retry to the channel that actually failed — previously a web-push
+// failure retried BOTH channels, so the phone got the same Expo notification 2-3 times.
 async function sendPushNotification(
   receiverUid,
   payloadStr,
   expoPayload,
   retryCount = 0,
   maxRetries = 2,
+  channels = { expo: true, web: true },
 ) {
   if (!db) return;
   try {
@@ -2797,15 +3427,32 @@ async function sendPushNotification(
         ? receiver.pushSubscription
         : null);
 
+    const result = { expoToken: !!expoPushToken, webSubscription: !!webPushSubscription, expoTicket: null, webStatus: null };
     if (!expoPushToken && !webPushSubscription) {
-      console.log(`[PUSH] No push tokens found for user: ${receiverUid}`);
-      return;
+      console.log(`[PUSH] No push token registered for ${receiverUid} — the app never sent one (see /api/push/test)`);
+      return result;
     }
 
-    let expoSuccess = false;
-    let webSuccess = false;
+    const retry = (onlyChannel) => {
+      if (retryCount >= maxRetries) return;
+      console.log(
+        `[PUSH] Retrying ${onlyChannel} push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
+      );
+      setTimeout(
+        () =>
+          sendPushNotification(
+            receiverUid,
+            payloadStr,
+            expoPayload,
+            retryCount + 1,
+            maxRetries,
+            { expo: onlyChannel === "expo", web: onlyChannel === "web" },
+          ),
+        2000,
+      );
+    };
 
-    if (expoPushToken) {
+    if (expoPushToken && channels.expo && expoPayload) {
       try {
         // Calculate total unread count for the badge
         const [msgCount, notifCount] = await Promise.all([
@@ -2824,15 +3471,18 @@ async function sendPushNotification(
             sound: "default",
             priority: "high",
             channelId: "default",
-            badge: totalBadge,
             ttl: 2419200, // 4 weeks
             _displayInForeground: true,
             ...expoPayload,
+            // Must come AFTER the spread: callers used to pass `badge: 1`, which
+            // overwrote the real count and pinned the app badge at 1.
+            badge: totalBadge,
           },
         ]);
 
-        const receiptIds = [];
+        result.expoTicket = tickets?.[0] || null;
         for (const ticket of tickets || []) {
+          if (ticket?.id) scheduleReceiptCheck(ticket.id, receiverUid);
           if (ticket?.status === "error") {
             const errorCode = ticket?.details?.error;
             console.error(
@@ -2840,9 +3490,6 @@ async function sendPushNotification(
               ticket,
             );
             if (errorCode === "DeviceNotRegistered") {
-              console.log(
-                `[PUSH] Removing invalid Expo token for ${receiverUid}`,
-              );
               await profiles.updateOne(
                 { uid: receiverUid },
                 {
@@ -2851,92 +3498,31 @@ async function sendPushNotification(
                 },
               );
             }
-          } else if (ticket?.status === "ok") {
-            expoSuccess = true;
-          }
-          if (ticket?.id) receiptIds.push(ticket.id);
-        }
-
-        if (receiptIds.length) {
-          try {
-            const receipts =
-              await expo.getPushNotificationReceiptsAsync(receiptIds);
-            for (const receiptId of Object.keys(receipts || {})) {
-              const receipt = receipts[receiptId];
-              if (receipt?.status === "error") {
-                console.error(
-                  `[PUSH] Expo Receipt Error for ${receiverUid}:`,
-                  receiptId,
-                  receipt,
-                );
-              }
-            }
-          } catch (receiptErr) {
-            console.error(
-              `[PUSH] Expo receipt fetch failed for ${receiverUid}:`,
-              receiptErr,
-            );
-            if (retryCount < maxRetries) {
-              console.log(
-                `[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
-              );
-              setTimeout(
-                () =>
-                  sendPushNotification(
-                    receiverUid,
-                    payloadStr,
-                    expoPayload,
-                    retryCount + 1,
-                    maxRetries,
-                  ),
-                2000,
-              );
-            }
           }
         }
-        console.log(
-          `[PUSH] Expo notification sent successfully to ${receiverUid}`,
-        );
+        // Receipts are only available ~15 minutes after sending, so the old immediate
+        // receipt check never found anything and its failure path re-sent the push.
       } catch (err) {
         console.error(
           `[PUSH] Expo Push failed for ${receiverUid}:`,
           err.message,
         );
-        if (retryCount < maxRetries) {
-          console.log(
-            `[PUSH] Retrying Expo push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
-          );
-          setTimeout(
-            () =>
-              sendPushNotification(
-                receiverUid,
-                payloadStr,
-                expoPayload,
-                retryCount + 1,
-                maxRetries,
-              ),
-            2000,
-          );
-        }
+        result.expoError = err.message;
+        retry("expo");
       }
     }
 
-    if (webPushSubscription && webPushConfigured) {
+    if (webPushSubscription && webPushConfigured && channels.web && payloadStr) {
       try {
         await webpush.sendNotification(webPushSubscription, payloadStr);
-        webSuccess = true;
-        console.log(
-          `[PUSH] Web push notification sent successfully to ${receiverUid}`,
-        );
+        result.webStatus = "ok";
       } catch (err) {
+        result.webStatus = `error: ${err.statusCode || err.message}`;
         console.error(
           `[PUSH] Web Push failed for ${receiverUid}:`,
           err.message,
         );
         if (err.statusCode === 410 || err.statusCode === 404) {
-          console.log(
-            `[PUSH] Removing invalid web push subscription for ${receiverUid}`,
-          );
           await profiles.updateOne(
             { uid: receiverUid },
             {
@@ -2944,45 +3530,115 @@ async function sendPushNotification(
               $set: { pushSubscription: null },
             },
           );
-        } else if (
-          retryCount < maxRetries &&
-          err.statusCode !== 410 &&
-          err.statusCode !== 404
-        ) {
-          console.log(
-            `[PUSH] Retrying web push for ${receiverUid} (attempt ${retryCount + 1}/${maxRetries})`,
-          );
-          setTimeout(
-            () =>
-              sendPushNotification(
-                receiverUid,
-                payloadStr,
-                expoPayload,
-                retryCount + 1,
-                maxRetries,
-              ),
-            2000,
-          );
+        } else {
+          retry("web");
         }
       }
     }
-
-    if (!expoSuccess && !webSuccess) {
-      console.warn(`[PUSH] Both push methods failed for ${receiverUid}`);
-    }
+    return result;
   } catch (e) {
     console.error(
       `[PUSH] Error in sendPushNotification helper for ${receiverUid}:`,
       e,
     );
+    return { error: e?.message || String(e) };
   }
 }
+
+// Expo only knows whether FCM/APNs actually accepted a push in the *receipt*, which
+// is available ~15 minutes after sending. Receipt errors are where problems like
+// "InvalidCredentials" (FCM key not uploaded to Expo) or "DeviceNotRegistered"
+// (app uninstalled) show up, so check them in batches and act on them.
+const pendingReceipts = new Map(); // receiptId -> uid
+let receiptTimer = null;
+function scheduleReceiptCheck(receiptId, uid) {
+  pendingReceipts.set(receiptId, uid);
+  if (receiptTimer) return;
+  receiptTimer = setTimeout(checkPushReceipts, 15 * 60 * 1000);
+}
+async function checkPushReceipts() {
+  receiptTimer = null;
+  const batch = new Map(pendingReceipts);
+  pendingReceipts.clear();
+  if (batch.size === 0 || !db) return;
+  try {
+    for (const chunk of expo.chunkPushNotificationReceiptIds([...batch.keys()])) {
+      const receipts = await expo.getPushNotificationReceiptsAsync(chunk);
+      for (const [id, receipt] of Object.entries(receipts || {})) {
+        if (receipt?.status !== "error") continue;
+        const uid = batch.get(id);
+        const code = receipt?.details?.error;
+        console.error(`[PUSH] Delivery failed for ${uid}: ${code} — ${receipt.message}`);
+        if (code === "DeviceNotRegistered" && uid) {
+          await db.collection("profiles").updateOne(
+            { uid },
+            { $unset: { expoPushToken: "" }, $set: { pushSubscription: null } },
+          );
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[PUSH] Receipt check failed:", e?.message || e);
+  }
+}
+
+// Resolve a group chat id to either a community room or a meetup post, and
+// whether `uid` may read/write it.
+async function resolveGroup(groupId, uid) {
+  let community = null;
+  if (ObjectId.isValid(groupId)) {
+    community = await db
+      .collection("communities")
+      .findOne({ _id: new ObjectId(groupId) });
+  }
+  if (!community) {
+    community = await db.collection("communities").findOne({ _id: groupId });
+  }
+  if (community) {
+    const isMember = (community.members || []).includes(uid);
+    return {
+      kind: "community",
+      community,
+      title: community.name,
+      members: community.members || [],
+      canWrite: isMember,
+      // Public rooms can be previewed before joining; private rooms are members-only.
+      canRead: isMember || !community.isPrivate,
+    };
+  }
+  const post = await db
+    .collection("posts")
+    .findOne(ObjectId.isValid(groupId) ? { _id: new ObjectId(groupId) } : { _id: groupId });
+  if (!post) return null;
+  const members = [...new Set([post.uid, ...(post.attendees || [])])];
+  const isMember = members.includes(uid);
+  return {
+    kind: "meetup",
+    post,
+    title: post.meetupDetails?.title || "Meetup Group",
+    members,
+    canWrite: isMember,
+    canRead: isMember,
+  };
+}
+
+const MAX_MESSAGE_LENGTH = 4000;
 
 app.post("/api/chat/send", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo } =
-      req.body;
+    const { toUid, groupId, text, mediaType, mediaUrl, replyTo } = req.body;
+    const fromUid = req.authUid;
+    if (!fromUid) return res.status(401).json({ error: "Unauthorized" });
+    if (text !== undefined && text !== null && typeof text !== "string")
+      return res.status(400).json({ error: "Invalid message" });
+    if (typeof text === "string" && text.length > MAX_MESSAGE_LENGTH)
+      return res.status(400).json({ error: "Message is too long" });
+    if (!(text && text.trim()) && !mediaUrl)
+      return res.status(400).json({ error: "Message is empty" });
+    if (mediaType && !["image", "emoji", "audio"].includes(mediaType))
+      return res.status(400).json({ error: "Invalid media type" });
+
     const messages = db.collection("messages");
     const profiles = db.collection("profiles");
     const sender = await profiles.findOne({ uid: fromUid });
@@ -2995,6 +3651,8 @@ app.post("/api/chat/send", async (req, res) => {
       else if (mediaType === "emoji") displayBody = "sent a big emoji";
       else if (mediaType === "audio") displayBody = "sent a voice note";
     }
+    // Keep push previews short.
+    if (displayBody.length > 140) displayBody = displayBody.slice(0, 137) + "...";
 
     let newMessage = {
       fromUid,
@@ -3005,65 +3663,40 @@ app.post("/api/chat/send", async (req, res) => {
       authorPhoto,
       mediaType,
       mediaUrl,
-      ...(replyTo ? { replyTo } : {}),
+      ...(replyTo && typeof replyTo === "object"
+        ? {
+            replyTo: {
+              _id: replyTo._id,
+              text: typeof replyTo.text === "string" ? replyTo.text.slice(0, 300) : replyTo.text,
+              fromName: replyTo.fromName,
+              mediaType: replyTo.mediaType,
+            },
+          }
+        : {}),
     };
 
     if (groupId) {
-      // --- 1. Try community rooms first ---
-      let community = null;
-      if (ObjectId.isValid(groupId)) {
-        community = await db
-          .collection("communities")
-          .findOne({ _id: new ObjectId(groupId) });
+      const group = await resolveGroup(groupId, fromUid);
+      if (!group) return res.status(404).json({ error: "Group not found" });
+      if (!group.canWrite) {
+        return res
+          .status(403)
+          .json({ error: group.kind === "community" ? "You are not a member of this room" : "You are not a member of this group" });
       }
-      if (!community) {
-        community = await db
-          .collection("communities")
-          .findOne({ _id: groupId });
-      }
-
-      let groupTitle, recipients;
+      const community = group.kind === "community" ? group.community : null;
+      const groupTitle = group.title;
+      newMessage.groupId = String(community ? community._id : group.post._id);
+      newMessage.groupTitle = groupTitle;
+      // Lets clients tell room messages (Rooms tab) from meetup group chats (Inbox).
+      newMessage.groupKind = group.kind;
+      const recipients = new Set(group.members);
 
       if (community) {
-        // Community room
-        if (!community.members.includes(fromUid)) {
-          return res
-            .status(403)
-            .json({ error: "You are not a member of this room" });
-        }
-        groupTitle = community.name;
-        newMessage.groupId = community._id.toString();
-        newMessage.groupTitle = groupTitle;
-        recipients = new Set(community.members);
-        // Keep lastActivity fresh
         await db.collection("communities").updateOne(
           { _id: community._id },
           { $set: { lastActivity: Date.now() } }
         );
         await updateQuestProgress(fromUid, 'visit_room');
-      } else {
-        // --- 2. Fall back to meetup posts ---
-        const posts = db.collection("posts");
-        let query = {};
-        if (ObjectId.isValid(groupId)) {
-          query = { _id: new ObjectId(groupId) };
-        } else {
-          query = { _id: groupId };
-        }
-        const post = await posts.findOne(query);
-        if (!post) return res.status(404).json({ error: "Group not found" });
-
-        const isHost = post.uid === fromUid;
-        const isAttendee = post.attendees && post.attendees.includes(fromUid);
-        if (!isHost && !isAttendee) {
-          return res
-            .status(403)
-            .json({ error: "You are not a member of this group" });
-        }
-        groupTitle = post.meetupDetails?.title || "Meetup Group";
-        newMessage.groupId = String(post._id);
-        newMessage.groupTitle = groupTitle;
-        recipients = new Set([...(post.attendees || []), post.uid]);
       }
 
       const result = await messages.insertOne(newMessage);
@@ -3074,15 +3707,16 @@ app.post("/api/chat/send", async (req, res) => {
           expo: `/community/${community._id}`,
           web: `/app/rooms/${community._id}`,
         }
-        : { expo: `/chat/group/${groupId}`, web: `/chat/group/${groupId}` };
+        // Web routes live under /app — the old `/chat/group/...` link fell through
+        // to the catch-all and dumped the user on the landing page.
+        : { expo: `/chat/group/${newMessage.groupId}`, web: `/app/chat/group/${newMessage.groupId}` };
 
       const expoPayload = {
         title: `💬 ${groupTitle}`,
         body: `${authorName}: ${displayBody}`,
         sound: "default",
-        badge: 1,
         channelId: "default",
-        data: { url: notifUrl.expo },
+        data: { url: notifUrl.expo, groupId: newMessage.groupId },
       };
       const webPayloadStr = JSON.stringify({
         title: `💬 ${groupTitle}`,
@@ -3100,6 +3734,18 @@ app.post("/api/chat/send", async (req, res) => {
 
       return res.json(fullMessage);
     } else {
+      if (!isUid(toUid) || toUid === fromUid)
+        return res.status(400).json({ error: "Invalid recipient" });
+      const targetUser = await profiles.findOne({ uid: toUid });
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+      // Blocking used to have no effect on DMs.
+      if (
+        (targetUser.blockedUsers || []).includes(fromUid) ||
+        (sender?.blockedUsers || []).includes(toUid)
+      ) {
+        return res.status(403).json({ error: "You can't message this user" });
+      }
+
       newMessage.toUid = toUid;
       const result = await messages.insertOne(newMessage);
       const fullMessage = { ...newMessage, _id: result.insertedId };
@@ -3112,21 +3758,19 @@ app.post("/api/chat/send", async (req, res) => {
         title: authorName,
         body: displayBody,
         sound: "default",
-        badge: 1,
         channelId: "default",
-        data: { url: `/chat/${fromUid}` },
+        data: { url: `/chat/${fromUid}`, chatPartnerUid: fromUid },
       };
       const webPayloadStr = JSON.stringify({
         title: authorName,
         body: displayBody,
         icon: authorPhoto || "/pwa-192x192.png",
-        data: { url: `/chat/${fromUid}` },
+        data: { url: `/app/chat/${fromUid}` },
       });
-      await sendPushNotification(toUid, webPayloadStr, expoPayload);
+      sendPushNotification(toUid, webPayloadStr, expoPayload).catch(() => { });
 
       // Quest: Friendly Face (greet high match)
-      const targetUser = await profiles.findOne({ uid: toUid });
-      if (targetUser && sender) {
+      if (sender) {
         const uInterests = targetUser.interests || [];
         const myInterests = sender.interests || [];
         const overlap = uInterests.filter(i => myInterests.includes(i)).length;
@@ -3143,10 +3787,15 @@ app.post("/api/chat/send", async (req, res) => {
   }
 });
 
+const MAX_HISTORY = 1000;
+
 app.get("/api/chat/history/:uid1/:uid2", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid1, uid2 } = req.params;
+    // You can only read conversations you are part of.
+    if (!req.legacyAuth && req.authUid !== uid1 && req.authUid !== uid2)
+      return res.status(403).json({ error: "Forbidden" });
     const messages = db.collection("messages");
     const history = await messages
       .find({
@@ -3155,9 +3804,10 @@ app.get("/api/chat/history/:uid1/:uid2", async (req, res) => {
           { fromUid: uid2, toUid: uid1 },
         ],
       })
-      .sort({ createdAt: 1 })
+      .sort({ createdAt: -1 })
+      .limit(MAX_HISTORY)
       .toArray();
-    res.json(history);
+    res.json(history.reverse());
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch history" });
   }
@@ -3167,6 +3817,11 @@ app.get("/api/chat/history/:groupId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { groupId } = req.params;
+    if (!req.legacyAuth) {
+      const group = await resolveGroup(groupId, req.authUid);
+      if (!group) return res.json([]);
+      if (!group.canRead) return res.status(403).json({ error: "Forbidden" });
+    }
     const messages = db.collection("messages");
 
     // Support both string and ObjectId storage for robustness
@@ -3177,18 +3832,23 @@ app.get("/api/chat/history/:groupId", async (req, res) => {
       };
     }
 
-    const history = await messages.find(query).sort({ createdAt: 1 }).toArray();
-    res.json(history);
+    const history = await messages
+      .find(query)
+      .sort({ createdAt: -1 })
+      .limit(MAX_HISTORY)
+      .toArray();
+    res.json(history.reverse());
   } catch (e) {
     res.status(500).json({ error: "Failed to fetch group history" });
   }
 });
 
-app.get("/api/chat/inbox/:uid", async (req, res) => {
+app.get("/api/chat/inbox/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
     const messages = db.collection("messages");
+    const blocked = await getMutualBlockedUids(uid);
 
     // 1. Direct Messages
     const directPipeline = [
@@ -3214,6 +3874,7 @@ app.get("/api/chat/inbox/:uid", async (req, res) => {
           },
         },
       },
+      { $match: { _id: { $nin: blocked } } },
       {
         $lookup: {
           from: "profiles",
@@ -3227,7 +3888,15 @@ app.get("/api/chat/inbox/:uid", async (req, res) => {
         $project: {
           _id: 0,
           type: "direct",
-          partner: "$otherUser",
+          // Only public fields — this used to return the partner's whole profile
+          // document (email, push tokens, block lists...).
+          partner: {
+            uid: "$otherUser.uid",
+            displayName: "$otherUser.displayName",
+            photoURL: "$otherUser.photoURL",
+            badgeTitle: "$otherUser.badgeTitle",
+            jobRole: "$otherUser.jobRole",
+          },
           lastMessage: 1,
           unreadCount: 1,
         },
@@ -3323,9 +3992,10 @@ app.get("/api/chat/inbox/:uid", async (req, res) => {
 app.post("/api/chat/mark-read", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { myUid, partnerUid, groupId } = req.body;
+    const { partnerUid, groupId } = req.body;
+    const myUid = req.authUid;
     const messages = db.collection("messages");
-    if (!groupId) {
+    if (!groupId && myUid && partnerUid) {
       await messages.updateMany(
         { toUid: myUid, fromUid: partnerUid, read: false },
         { $set: { read: true } },
@@ -3337,24 +4007,29 @@ app.post("/api/chat/mark-read", async (req, res) => {
   }
 });
 
+function broadcastToUid(uid, payload) {
+  const sockets = clients.get(uid);
+  if (!sockets) return;
+  const data = JSON.stringify(payload);
+  sockets.forEach((ws) => {
+    try {
+      if (ws.readyState === WebSocket.OPEN) ws.send(data);
+    } catch { }
+  });
+}
+
 // Delete (unsend) a single message — only the sender can do this
 app.delete("/api/chat/message/:messageId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { messageId } = req.params;
-    const { fromUid } = req.body;
+    const fromUid = req.authUid;
     if (!fromUid) return res.status(400).json({ error: "fromUid required" });
+    if (!ObjectId.isValid(messageId))
+      return res.status(400).json({ error: "Invalid message ID" });
 
     const messages = db.collection("messages");
-    // ObjectId is imported at the top of this file. A local require() here threw
-    // "require is not defined" — this file is ESM ("type": "module") — which made
-    // every message-delete request fail with a 500.
-    let query;
-    try {
-      query = { _id: new ObjectId(messageId), fromUid };
-    } catch {
-      return res.status(400).json({ error: "Invalid message ID" });
-    }
+    const query = { _id: new ObjectId(messageId), fromUid };
 
     const result = await messages.updateOne(query, {
       $set: { deleted: true, text: "", mediaUrl: null },
@@ -3362,26 +4037,15 @@ app.delete("/api/chat/message/:messageId", async (req, res) => {
     if (result.matchedCount === 0)
       return res.status(403).json({ error: "Not found or not your message" });
 
-    // Broadcast deletion to WebSocket clients
-    const broadcastDelete = (uid) => {
-      if (clients.has(uid)) {
-        clients.get(uid).forEach((ws) => {
-          if (ws.readyState === 1)
-            ws.send(JSON.stringify({ type: "message_deleted", messageId }));
-        });
-      }
-    };
-
-    // Get message to find the recipient to notify
     const msg = await messages.findOne({ _id: new ObjectId(messageId) });
-    if (msg) {
-      if (msg.toUid) broadcastDelete(msg.toUid);
-      if (msg.groupId) {
-        // broadcast to all group members via their open sockets
-        clients.forEach((_, uid) => broadcastDelete(uid));
-      }
+    const payload = { type: "message_deleted", messageId, groupId: msg?.groupId };
+    if (msg?.toUid) broadcastToUid(msg.toUid, payload);
+    if (msg?.groupId) {
+      // Only the group's members — this used to broadcast to every connected user.
+      const group = await resolveGroup(String(msg.groupId), fromUid);
+      for (const uid of group?.members || []) broadcastToUid(uid, payload);
     }
-    broadcastDelete(fromUid);
+    broadcastToUid(fromUid, payload);
 
     res.json({ success: true });
   } catch (e) {
@@ -3390,7 +4054,7 @@ app.delete("/api/chat/message/:messageId", async (req, res) => {
   }
 });
 
-app.get("/api/chat/unread-count/:uid", async (req, res) => {
+app.get("/api/chat/unread-count/:uid", selfParam("uid"), async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { uid } = req.params;
@@ -3408,16 +4072,22 @@ app.get("/api/chat/unread-count/:uid", async (req, res) => {
 app.post("/api/stories", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, authorName, authorPhoto, imageURL, location } = req.body;
-    if (!uid || !imageURL)
+    const { imageURL, location } = req.body;
+    const uid = req.authUid;
+    if (!uid || !imageURL || typeof imageURL !== "string")
       return res.status(400).json({ error: "Missing required fields" });
 
+    // Author details from the stored profile (they were taken from the request body).
+    const profile = await db.collection("profiles").findOne({ uid });
     const newStory = {
       uid,
-      authorName,
-      authorPhoto,
+      authorName: profile?.displayName || "User",
+      authorPhoto: profile?.photoURL || "",
       imageURL,
-      location, // { lat, lng, name }
+      location:
+        location && typeof location.lat === "number" && typeof location.lng === "number"
+          ? { lat: location.lat, lng: location.lng, name: location.name }
+          : null,
       createdAt: Date.now(),
       expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
       views: [], // Track uids of viewers
@@ -3434,7 +4104,7 @@ app.post("/api/stories", async (req, res) => {
 app.get("/api/stories", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { viewerUid } = req.query;
+    const viewerUid = req.authUid;
     const profile = viewerUid
       ? await db.collection("profiles").findOne({ uid: viewerUid })
       : null;
@@ -3442,31 +4112,39 @@ app.get("/api/stories", async (req, res) => {
     const radius = profile?.discoveryRadius || 10; // km
 
     const now = Date.now();
-    const query = { expiresAt: { $gt: now } };
+    const blocked = await getMutualBlockedUids(viewerUid);
+    const query = {
+      expiresAt: { $gt: now },
+      // Blocked users' stories were still shown.
+      ...(blocked.length ? { uid: { $nin: blocked } } : {}),
+    };
 
     const stories = await db
       .collection("stories")
       .find(query)
       .sort({ createdAt: -1 })
+      .limit(500)
       .toArray();
 
     // Group by User
     const groupedStories = stories.reduce((acc, story) => {
       // Geo-filtering
       if (myLocation && story.location && story.uid !== viewerUid) {
-        const R = 6371; // km
-        const dLat = ((story.location.lat - myLocation.lat) * Math.PI) / 180;
-        const dLon = ((story.location.lng - myLocation.lng) * Math.PI) / 180;
-        const a =
-          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-          Math.cos((myLocation.lat * Math.PI) / 180) *
-          Math.cos((story.location.lat * Math.PI) / 180) *
-          Math.sin(dLon / 2) *
-          Math.sin(dLon / 2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const dist = R * c;
+        const dist =
+          getDistanceMeters(
+            myLocation.lat,
+            myLocation.lng,
+            story.location.lat,
+            story.location.lng,
+          ) / 1000;
         if (dist > radius) return acc;
       }
+
+      // Only the author sees who viewed; others just get a count.
+      const safeStory =
+        story.uid === viewerUid
+          ? story
+          : { ...story, views: (story.views || []).includes(viewerUid) ? [viewerUid] : [], viewCount: (story.views || []).length };
 
       if (!acc[story.uid]) {
         acc[story.uid] = {
@@ -3476,7 +4154,7 @@ app.get("/api/stories", async (req, res) => {
           stories: [],
         };
       }
-      acc[story.uid].stories.push(story);
+      acc[story.uid].stories.push(safeStory);
       return acc;
     }, {});
 
@@ -3491,8 +4169,10 @@ app.post("/api/stories/:storyId/view", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { storyId } = req.params;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid) return res.status(400).json({ error: "Missing uid" });
+    if (!ObjectId.isValid(storyId))
+      return res.status(400).json({ error: "Invalid story ID" });
 
     await db
       .collection("stories")
@@ -3507,7 +4187,9 @@ app.delete("/api/stories/:storyId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { storyId } = req.params;
-    const { uid } = req.body; // Owner UID for verification
+    const uid = req.authUid;
+    if (!ObjectId.isValid(storyId))
+      return res.status(400).json({ error: "Invalid story ID" });
 
     const result = await db.collection("stories").deleteOne({
       _id: new ObjectId(storyId),
@@ -3553,7 +4235,7 @@ setInterval(expireInactiveChats, 24 * 60 * 60 * 1000); // Run daily
 // --- Revive Chat API ---
 app.post("/api/chats/:chatId/revive", requireAuth, async (req, res) => {
   const { chatId } = req.params;
-  const uid = req.body.uid;
+  const uid = req.authUid;
 
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
@@ -3586,7 +4268,8 @@ app.post("/api/chats/:chatId/revive", requireAuth, async (req, res) => {
 app.post("/api/communities", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, name, description, tags, isPrivate, location } = req.body;
+    const { name, description, tags, isPrivate, location } = req.body;
+    const uid = req.authUid;
     if (!uid || !name || typeof name !== "string" || name.trim().length === 0) {
       return res.status(400).json({ error: "uid and name are required" });
     }
@@ -3609,7 +4292,10 @@ app.post("/api/communities", async (req, res) => {
       isPrivate: isPrivate === true,
       pinnedMessageId: null,
       pinnedMessageText: null,
-      location: location || null, // Optional location
+      location:
+        location && typeof location.lat === "number" && typeof location.lng === "number"
+          ? { lat: location.lat, lng: location.lng, name: location.name }
+          : null, // Optional location
     });
     res.json({ success: true, id: result.insertedId.toString() });
   } catch (e) {
@@ -3625,6 +4311,10 @@ app.get("/api/communities", async (req, res) => {
     const { lat, lng, radius } = req.query;
     const communities = db.collection("communities");
 
+    // Private rooms are only listed for their members.
+    const visibility = {
+      $or: [{ isPrivate: { $ne: true } }, { members: req.authUid }],
+    };
     let filter = {};
     const radiusInKm = radius ? parseFloat(radius) : null;
 
@@ -3646,7 +4336,7 @@ app.get("/api/communities", async (req, res) => {
     }
 
     const list = await communities
-      .find(filter)
+      .find({ $and: [visibility, filter] })
       .sort({ lastActivity: -1 })
       .limit(100)
       .toArray();
@@ -3678,13 +4368,15 @@ app.post("/api/communities/:id/join", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
     if (!community)
       return res.status(404).json({ error: "Community not found" });
+    if (community.isPrivate && !(community.members || []).includes(uid))
+      return res.status(403).json({ error: "This room is private" });
     await communities.updateOne(
       { _id: new ObjectId(id) },
       { $addToSet: { members: uid }, $set: { lastActivity: Date.now() } },
@@ -3700,7 +4392,7 @@ app.post("/api/communities/:id/leave", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const communities = db.collection("communities");
@@ -3726,7 +4418,8 @@ app.put("/api/communities/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    const { uid, name, description } = req.body;
+    const { name, description } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const communities = db.collection("communities");
@@ -3760,7 +4453,7 @@ app.delete("/api/communities/:id", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const communities = db.collection("communities");
@@ -3785,12 +4478,15 @@ app.delete("/api/communities/:id/messages/:msgId", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id, msgId } = req.params;
-    const { uid } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(msgId) || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const messages = db.collection("messages");
     const msg = await messages.findOne({ _id: new ObjectId(msgId) });
-    if (!msg) return res.status(404).json({ error: "Message not found" });
+    // The message must belong to THIS room — a room owner could previously delete any
+    // message in any chat by pairing their own room id with someone else's message id.
+    if (!msg || String(msg.groupId) !== String(id))
+      return res.status(404).json({ error: "Message not found" });
     const community = await db
       .collection("communities")
       .findOne({ _id: new ObjectId(id) });
@@ -3832,7 +4528,8 @@ app.put("/api/communities/:id/pin", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const { id } = req.params;
-    const { uid, messageId, messageText } = req.body;
+    const { messageId, messageText } = req.body;
+    const uid = req.authUid;
     if (!uid || !ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid request" });
     const community = await db
@@ -3937,6 +4634,7 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
             bio: 1,
             friends: 1,
             isSuspended: 1,
+            badgeTitle: 1,
           })
           .toArray(),
         posts
@@ -4065,14 +4763,16 @@ app.get("/api/admin/users/:uid/comprehensive", requireAdmin, async (req, res) =>
     });
     
     const stories = await db.collection("stories").find({ uid }).toArray();
+    // Field names fixed: rooms store ownerUid, messages use fromUid/toUid/createdAt,
+    // reports use targetUid — the old names matched nothing, so these were always empty.
     const communities = await db.collection("communities").find({
-      $or: [{ creatorUid: uid }, { members: uid }]
+      $or: [{ ownerUid: uid }, { members: uid }]
     }).toArray();
     const chats = await db.collection("messages").find({
-      $or: [{ senderId: uid }, { receiverId: uid }]
-    }).sort({ timestamp: -1 }).toArray();
+      $or: [{ fromUid: uid }, { toUid: uid }]
+    }).sort({ createdAt: -1 }).limit(500).toArray();
     const reports = await db.collection("reports").find({
-      $or: [{ reportedUid: uid }, { reporterUid: uid }]
+      $or: [{ targetUid: uid }, { reporterUid: uid }]
     }).sort({ createdAt: -1 }).toArray();
     
     res.json({
@@ -4465,6 +5165,7 @@ app.patch("/api/admin/users/:uid/suspend", requireAdmin, async (req, res) => {
         { $set: { isSuspended: !current } },
         { upsert: true },
       );
+    suspensionCache.delete(uid);
     res.json({ success: true, isSuspended: !current });
   } catch (e) {
     res.status(500).json({ error: "Failed to update suspension" });
@@ -4510,7 +5211,7 @@ app.get("/api/admin/posts", requireAdmin, async (req, res) => {
       filterQuery._id = { $in: flaggedIds };
     }
     if (searchQuery) {
-      filterQuery.content = { $regex: searchQuery, $options: "i" };
+      filterQuery.content = { $regex: escapeRegex(searchQuery), $options: "i" };
     }
 
     const total = await db.collection("posts").countDocuments(filterQuery);
@@ -4563,7 +5264,8 @@ app.get("/api/admin/posts", requireAdmin, async (req, res) => {
         authorBadgeTitle: p.authorBadgeTitle || profile.badgeTitle || "",
         content: p.content || "",
         imageURL: p.imageURL || null,
-        likeCount: (p.likes || []).length,
+        // `likes` is a number; likedBy is the array.
+        likeCount: typeof p.likes === "number" ? p.likes : (p.likedBy || []).length,
         commentCount: (p.comments || []).length,
         reportCount: reportCountMap[p._id.toString()] || 0,
         createdAt,
@@ -4731,14 +5433,25 @@ app.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
           notification: fullNotif,
         });
         // Expo push notification for offline / background users
-        sendPushNotification(notif.toUid, null, {
-          title: notif.title || "Orbyt",
-          body: notif.message,
-          data: {
-            url: "/notifications",
-            notificationId: insertedId.toString(),
+        // Web push used to receive a null payload (blank notification).
+        sendPushNotification(
+          notif.toUid,
+          JSON.stringify({
+            title: notif.title || "Orbyt",
+            body: notif.message,
+            icon: "/pwa-192x192.png",
+            data: { url: "/app/notifications", notificationId: insertedId.toString() },
+          }),
+          {
+            title: notif.title || "Orbyt",
+            body: notif.message,
+            data: {
+              url: "/notifications",
+              notificationId: insertedId.toString(),
+              notificationType: "announcement",
+            },
           },
-        });
+        );
       });
     }
     res.json({ success: true, sent: notifications.length });
@@ -4763,14 +5476,24 @@ app.get("/api/admin/communities", requireAdmin, async (req, res) => {
     const communityReportAgg = await db
       .collection("reports")
       .aggregate([
+        // Reports store `communityId` (older ones may have `targetCommunityId`);
+        // this only counted the latter, so every room showed 0 reports.
         {
           $match: {
             type: "community",
             status: "pending",
-            targetCommunityId: { $exists: true },
+            $or: [
+              { communityId: { $exists: true, $ne: null } },
+              { targetCommunityId: { $exists: true, $ne: null } },
+            ],
           },
         },
-        { $group: { _id: "$targetCommunityId", count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: { $ifNull: ["$communityId", "$targetCommunityId"] },
+            count: { $sum: 1 },
+          },
+        },
       ])
       .toArray();
     const comReportMap = {};
@@ -4782,7 +5505,7 @@ app.get("/api/admin/communities", requireAdmin, async (req, res) => {
       id: c._id.toString(),
       name: c.name,
       description: c.description || "",
-      createdBy: c.uid || c.createdBy || "",
+      createdBy: c.ownerUid || c.uid || c.createdBy || "",
       memberCount: (c.members || []).length,
       isPrivate: c.isPrivate || false,
       isFlagged: c.isFlagged || false,
@@ -4832,6 +5555,7 @@ app.delete("/api/admin/communities/:id", requireAdmin, async (req, res) => {
     if (!ObjectId.isValid(id))
       return res.status(400).json({ error: "Invalid id" });
     await db.collection("communities").deleteOne({ _id: new ObjectId(id) });
+    await db.collection("messages").deleteMany({ groupId: id });
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to delete community" });
@@ -4932,7 +5656,7 @@ app.get("/api/admin/communities/:id/peek", requireAdmin, async (req, res) => {
     // Community report count
     const reportCount = await db.collection("reports").countDocuments({
       type: "community",
-      targetCommunityId: id,
+      $or: [{ communityId: id }, { targetCommunityId: id }],
       status: "pending",
     });
 
@@ -4963,21 +5687,27 @@ app.get("/api/admin/communities/:id/peek", requireAdmin, async (req, res) => {
 app.post("/api/report-community", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { reporterUid, communityId, reason } = req.body;
-    if (!reporterUid || !communityId || !reason) {
+    const { communityId, reason } = req.body;
+    const reporterUid = req.authUid;
+    if (!reporterUid || !communityId || typeof reason !== "string" || !reason.trim()) {
       return res
         .status(400)
         .json({ error: "reporterUid, communityId, and reason are required" });
     }
-    await db.collection("reports").insertOne({
-      type: "community",
-      reporterUid,
-      targetUid: null,
-      communityId: String(communityId),
-      reason,
-      createdAt: Date.now(),
-      status: "pending",
-    });
+    await db.collection("reports").updateOne(
+      {
+        type: "community",
+        reporterUid,
+        targetUid: null,
+        communityId: String(communityId),
+        status: "pending",
+      },
+      {
+        $set: { reason: reason.trim().slice(0, 500) },
+        $setOnInsert: { createdAt: Date.now() },
+      },
+      { upsert: true },
+    );
     res.json({ success: true });
   } catch (e) {
     res.status(500).json({ error: "Failed to submit report" });
@@ -5363,7 +6093,7 @@ app.get("/api/admin/stories", requireAdmin, async (req, res) => {
     const search = (req.query.search || "").trim();
 
     const filter = {};
-    if (search) filter.caption = { $regex: search, $options: "i" };
+    if (search) filter.authorName = { $regex: escapeRegex(search), $options: "i" };
 
     const total = await db.collection("stories").countDocuments(filter);
     const stories = await db
@@ -5499,7 +6229,23 @@ app.get("/api/admin/events", requireAdmin, async (req, res) => {
     const now = Date.now();
     const query = { type: "meetup" };
     if (search)
-      query["meetupDetails.title"] = { $regex: search, $options: "i" };
+      query["meetupDetails.title"] = { $regex: escapeRegex(search), $options: "i" };
+    // The upcoming/past/flagged filter was parsed but never applied.
+    if (filter === "flagged") {
+      const flaggedIds = await db
+        .collection("reports")
+        .distinct("postId", { status: "pending", postId: { $ne: null } });
+      query._id = {
+        $in: flaggedIds
+          .map(String)
+          .filter((id) => ObjectId.isValid(id))
+          .map((id) => new ObjectId(id)),
+      };
+    } else if (filter === "upcoming" || filter === "past") {
+      const today = new Date().toISOString().slice(0, 10);
+      query["meetupDetails.date"] =
+        filter === "upcoming" ? { $gte: today } : { $lt: today };
+    }
 
     const total = await db.collection("posts").countDocuments(query);
     let events = await db
@@ -5611,7 +6357,8 @@ app.delete("/api/admin/events/:eventId", requireAdmin, async (req, res) => {
 app.get("/api/highlights", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid, lat, lng, radius = 50 } = req.query;
+    const uid = req.authUid;
+    const { lat, lng } = req.query;
     if (!uid) return res.status(400).json({ error: "UID required" });
 
     const profiles = db.collection("profiles");
@@ -5619,8 +6366,13 @@ app.get("/api/highlights", async (req, res) => {
     const posts = db.collection("posts");
 
     const user = await profiles.findOne({ uid });
-    const latVal = parseFloat(lat);
-    const lngVal = parseFloat(lng);
+    let latVal = parseFloat(lat);
+    let lngVal = parseFloat(lng);
+    if (!Number.isFinite(latVal) || !Number.isFinite(lngVal)) {
+      latVal = user?.lastLocation?.lat;
+      lngVal = user?.lastLocation?.lng;
+    }
+    const hasLocation = Number.isFinite(latVal) && Number.isFinite(lngVal);
 
     // 1. Social Quest
     const quest = user?.quests?.[0] || {
@@ -5633,48 +6385,65 @@ app.get("/api/highlights", async (req, res) => {
       completed: false,
     };
 
+    if (!hasLocation) {
+      return res.json({ quest, matches: [], featuredRoom: null, featuredPost: null });
+    }
+
+    // These queries used top-level `lat`/`lng` fields that don't exist (locations live
+    // in lastLocation / location), so matches, room and post were always empty.
+    const OFFSET = 0.5; // ~50km box
+    const box = (prefix) => ({
+      [`${prefix}.lat`]: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
+      [`${prefix}.lng`]: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
+    });
+    const blocked = await getMutualBlockedUids(uid);
+    const excluded = [uid, ...blocked, ...(user?.passedUsers || [])];
+
     // 2. Top Matches Nearby
-    const OFFSET = 0.5;
     const nearby = await profiles
       .find({
-        uid: { $ne: uid },
-        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
-        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
+        uid: { $nin: excluded },
+        isDiscoverable: { $ne: false },
+        ...box("lastLocation"),
       })
-      .limit(20)
+      .project({ uid: 1, displayName: 1, photoURL: 1, interests: 1, reputation: 1, lastActiveText: 1 })
+      .limit(50)
       .toArray();
 
+    const myInterests = user?.interests || [];
     const matches = nearby
       .map((u) => {
         const uInterests = u.interests || [];
-        const myInterests = user?.interests || [];
         const overlap = uInterests.filter((i) => myInterests.includes(i)).length;
+        // Deterministic (was randomised on every request).
         const baseMatch = overlap * 15 + 65;
         return {
           uid: u.uid,
           displayName: u.displayName,
           photoURL: u.photoURL,
-          matchPercentage: Math.min(98, baseMatch + (Math.floor(Math.random() * 5))),
+          matchPercentage: Math.min(98, baseMatch + (hashString(uid + u.uid) % 5)),
           reputation: u.reputation?.[0] || "Friendly",
-          lastActive: u.lastActiveText || "Nearby"
+          lastActive: u.lastActiveText || "Nearby",
         };
       })
       .sort((a, b) => b.matchPercentage - a.matchPercentage)
       .slice(0, 3);
 
-    // 3. One Featured Active Room
-    const room = await communities
-      .findOne({
-        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
-        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
-      }, { sort: { memberCount: -1 } });
+    // 3. One Featured Active Room (most recently active nearby public room)
+    const room = await communities.findOne(
+      { isPrivate: { $ne: true }, ...box("location") },
+      { sort: { lastActivity: -1 } },
+    );
 
-    // 4. One Hot Post
-    const hotPost = await posts
-      .findOne({
-        lat: { $gte: latVal - OFFSET, $lte: latVal + OFFSET },
-        lng: { $gte: lngVal - OFFSET, $lte: lngVal + OFFSET },
-      }, { sort: { commentCount: -1, likeCount: -1 } });
+    // 4. One Hot Post (most liked in the last 7 days nearby)
+    const hotPost = await posts.findOne(
+      {
+        uid: { $nin: blocked },
+        createdAt: { $gt: Date.now() - 7 * 24 * 60 * 60 * 1000 },
+        ...box("location"),
+      },
+      { sort: { likes: -1, createdAt: -1 } },
+    );
 
     res.json({
       quest,

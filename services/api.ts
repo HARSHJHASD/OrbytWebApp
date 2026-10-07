@@ -34,10 +34,49 @@ const getBaseUrl = (): string => {
 
 const API_BASE = getBaseUrl();
 
+// --- Session token -------------------------------------------------------
+// The backend now authenticates every request with a signed token returned by
+// login/signup/google. It is stored alongside the user in the session object.
+const SESSION_KEY = "socially_session";
+
+export const getAuthToken = (): string | null => {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw)?.token || null : null;
+  } catch {
+    return null;
+  }
+};
+
+let handlingAuthFailure = false;
+const handleAuthFailure = () => {
+  if (handlingAuthFailure) return;
+  handlingAuthFailure = true;
+  localStorage.removeItem(SESSION_KEY);
+  // Old sessions (from before tokens existed) or expired tokens: log in again.
+  if (!window.location.pathname.startsWith("/auth")) {
+    window.location.href = "/auth";
+  }
+};
+
+const authFetch = async (input: string, init: RequestInit = {}): Promise<Response> => {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers || {});
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const response = await fetch(input, { ...init, headers });
+  if (response.status === 401 && !String(input).includes("/auth/") && !String(input).includes("/admin/")) {
+    const body = await response.clone().json().catch(() => null);
+    if (body?.code === "AUTH_REQUIRED" || body?.code === "AUTH_INVALID") handleAuthFailure();
+  }
+  return response;
+};
+
 export const api = {
   auth: {
     signup: async (email: string, password: string) => {
-      const response = await fetch(`${API_BASE}/auth/signup`, {
+      const response = await authFetch(`${API_BASE}/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -48,7 +87,7 @@ export const api = {
     },
 
     login: async (email: string, password: string) => {
-      const response = await fetch(`${API_BASE}/auth/login`, {
+      const response = await authFetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -59,14 +98,15 @@ export const api = {
     },
 
     googleLogin: async (
-      email: string,
-      displayName: string,
-      photoURL: string,
+      idToken: string,
+      displayName?: string,
+      photoURL?: string,
     ) => {
-      const response = await fetch(`${API_BASE}/auth/google`, {
+      // The server verifies the Google ID token itself; it no longer trusts a raw email.
+      const response = await authFetch(`${API_BASE}/auth/google`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, displayName, photoURL }),
+        body: JSON.stringify({ idToken, displayName, photoURL }),
       });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Google Login failed");
@@ -78,7 +118,7 @@ export const api = {
     get: async (uid: string, viewerUid?: string) => {
       try {
         const query = viewerUid ? `?viewerUid=${encodeURIComponent(viewerUid)}` : "";
-        const response = await fetch(`${API_BASE}/profile/${uid}${query}`);
+        const response = await authFetch(`${API_BASE}/profile/${uid}${query}`);
         if (!response?.ok) return null;
         return await response.json();
       } catch (error) {
@@ -89,7 +129,7 @@ export const api = {
 
     getBatch: async (uids: string[]) => {
       try {
-        const response = await fetch(`${API_BASE}/profiles/batch`, {
+        const response = await authFetch(`${API_BASE}/profiles/batch`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uids }),
@@ -112,7 +152,7 @@ export const api = {
         const query = params.toString();
         const url = `${API_BASE}/profiles${query ? `?${query}` : ""}`;
 
-        const response = await fetch(url);
+        const response = await authFetch(url);
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {
@@ -127,7 +167,7 @@ export const api = {
         data.lastLocation.lat = parseFloat(data.lastLocation.lat.toFixed(3));
         data.lastLocation.lng = parseFloat(data.lastLocation.lng.toFixed(3));
       }
-      const response = await fetch(`${API_BASE}/profile/${uid}`, {
+      const response = await authFetch(`${API_BASE}/profile/${uid}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -136,14 +176,14 @@ export const api = {
     },
 
     delete: async (uid: string) => {
-      const response = await fetch(`${API_BASE}/profile/${uid}`, {
+      const response = await authFetch(`${API_BASE}/profile/${uid}`, {
         method: "DELETE"
       });
       return response?.ok;
     },
     recordView: async (viewerUid: string, targetUid: string) => {
       try {
-        await fetch(`${API_BASE}/profile/view`, {
+        await authFetch(`${API_BASE}/profile/view`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ viewerUid, targetUid }),
@@ -154,7 +194,7 @@ export const api = {
     },
     pass: async (uid: string, targetUid: string) => {
       try {
-        await fetch(`${API_BASE}/user/pass`, {
+        await authFetch(`${API_BASE}/user/pass`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uid, targetUid }),
@@ -163,7 +203,7 @@ export const api = {
     },
     unpass: async (uid: string, targetUid: string) => {
       try {
-        await fetch(`${API_BASE}/user/unpass`, {
+        await authFetch(`${API_BASE}/user/unpass`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uid, targetUid }),
@@ -172,7 +212,7 @@ export const api = {
     },
     getViewers: async (uid: string) => {
       try {
-        const response = await fetch(`${API_BASE}/profile/views/${uid}`);
+        const response = await authFetch(`${API_BASE}/profile/views/${uid}`);
         if (!response?.ok) return [];
         return await response.json();
       } catch (e) {
@@ -184,7 +224,7 @@ export const api = {
 
   userAction: {
     block: async (uid: string, targetUid: string) => {
-      const response = await fetch(`${API_BASE}/user/block`, {
+      const response = await authFetch(`${API_BASE}/user/block`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, targetUid }),
@@ -192,7 +232,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to block user");
     },
     unblock: async (uid: string, targetUid: string) => {
-      const response = await fetch(`${API_BASE}/user/unblock`, {
+      const response = await authFetch(`${API_BASE}/user/unblock`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, targetUid }),
@@ -206,7 +246,7 @@ export const api = {
       postId?: string,
       options?: { type?: string; storyId?: string; communityId?: string }
     ) => {
-      const response = await fetch(`${API_BASE}/report`, {
+      const response = await authFetch(`${API_BASE}/report`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -225,7 +265,7 @@ export const api = {
 
   friends: {
     sendRequest: async (fromUid: string, toUid: string, message?: string) => {
-      const response = await fetch(`${API_BASE}/friends/request`, {
+      const response = await authFetch(`${API_BASE}/friends/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fromUid, toUid, message }),
@@ -233,7 +273,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to send request");
     },
     acceptRequest: async (userUid: string, requesterUid: string) => {
-      const response = await fetch(`${API_BASE}/friends/accept`, {
+      const response = await authFetch(`${API_BASE}/friends/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userUid, requesterUid }),
@@ -241,7 +281,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to accept request");
     },
     rejectRequest: async (userUid: string, requesterUid: string) => {
-      const response = await fetch(`${API_BASE}/friends/reject`, {
+      const response = await authFetch(`${API_BASE}/friends/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userUid, requesterUid }),
@@ -249,7 +289,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to reject request");
     },
     removeFriend: async (uid1: string, uid2: string) => {
-      const response = await fetch(`${API_BASE}/friends/remove`, {
+      const response = await authFetch(`${API_BASE}/friends/remove`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid1, uid2 }),
@@ -260,7 +300,7 @@ export const api = {
 
   meetups: {
     join: async (postId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/meetups/${postId}/join`, {
+      const response = await authFetch(`${API_BASE}/meetups/${postId}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -268,7 +308,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to join meetup");
     },
     accept: async (postId: string, hostUid: string, requesterUid: string) => {
-      const response = await fetch(`${API_BASE}/meetups/${postId}/accept`, {
+      const response = await authFetch(`${API_BASE}/meetups/${postId}/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostUid, requesterUid }),
@@ -276,7 +316,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to accept request");
     },
     reject: async (postId: string, hostUid: string, requesterUid: string) => {
-      const response = await fetch(`${API_BASE}/meetups/${postId}/reject`, {
+      const response = await authFetch(`${API_BASE}/meetups/${postId}/reject`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ hostUid, requesterUid }),
@@ -288,7 +328,7 @@ export const api = {
       hostUid: string,
       targetUid: string,
     ) => {
-      const response = await fetch(
+      const response = await authFetch(
         `${API_BASE}/meetups/${postId}/remove-attendee`,
         {
           method: "POST",
@@ -310,7 +350,7 @@ export const api = {
       mediaUrl?: string,
       replyTo?: { _id: string; text?: string; fromName: string; mediaType?: 'image' | 'emoji' | 'audio'; },
     ): Promise<Message> => {
-      const response = await fetch(`${API_BASE}/chat/send`, {
+      const response = await authFetch(`${API_BASE}/chat/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fromUid, toUid, groupId, text, mediaType, mediaUrl, replyTo }),
@@ -321,7 +361,7 @@ export const api = {
     },
     getHistory: async (uid1: string, uid2: string): Promise<Message[]> => {
       try {
-        const response = await fetch(
+        const response = await authFetch(
           `${API_BASE}/chat/history/${uid1}/${uid2}`,
         );
         if (!response?.ok) return [];
@@ -333,7 +373,7 @@ export const api = {
     },
     getGroupHistory: async (groupId: string): Promise<Message[]> => {
       try {
-        const response = await fetch(`${API_BASE}/chat/history/${groupId}`);
+        const response = await authFetch(`${API_BASE}/chat/history/${groupId}`);
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {
@@ -343,7 +383,7 @@ export const api = {
     },
     getInbox: async (uid: string) => {
       try {
-        const response = await fetch(`${API_BASE}/chat/inbox/${uid}`);
+        const response = await authFetch(`${API_BASE}/chat/inbox/${uid}`);
         if (!response?.ok) return [];
         return await response.json();
       } catch (e) {
@@ -353,7 +393,7 @@ export const api = {
     },
     markRead: async (myUid: string, partnerUid?: string, groupId?: string) => {
       try {
-        await fetch(`${API_BASE}/chat/mark-read`, {
+        await authFetch(`${API_BASE}/chat/mark-read`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ myUid, partnerUid, groupId }),
@@ -364,7 +404,7 @@ export const api = {
     },
     getUnreadCount: async (uid: string): Promise<number> => {
       try {
-        const response = await fetch(`${API_BASE}/chat/unread-count/${uid}`);
+        const response = await authFetch(`${API_BASE}/chat/unread-count/${uid}`);
         if (!response?.ok) return 0;
         const data = await response.json();
         return data?.count || 0;
@@ -373,14 +413,14 @@ export const api = {
       }
     },
     deleteMessage: async (messageId: string, fromUid: string): Promise<void> => {
-      const response = await fetch(`${API_BASE}/chat/message/${messageId}`, {
+      const response = await authFetch(`${API_BASE}/chat/message/${messageId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fromUid }),
       });
       if (!response?.ok) throw new Error('Failed to delete message');
     },
-    subscribe: (uid: string, onMessage: (msg: Message) => void) => {
+    subscribe: (_uid: string, onMessage: (msg: Message) => void) => {
       const { protocol, hostname, port } = window?.location;
 
       const isLocal =
@@ -397,19 +437,19 @@ export const api = {
       if (isLocal) {
         const wsProtocol = "ws:";
         const portPart = port ? `:${port}` : "";
-        wsUrl = `${wsProtocol}//${hostname}${portPart}?uid=${uid}`;
+        wsUrl = `${wsProtocol}//${hostname}${portPart}?token=${encodeURIComponent(getAuthToken() || "")}`;
       }
 
       // 2️⃣ If frontend hosted on Vercel
       else if (isVercel) {
-        wsUrl = `${API_CONFIG.WEBSOCKET.VERCEL}?uid=${uid}`;
+        wsUrl = `${API_CONFIG.WEBSOCKET.VERCEL}?token=${encodeURIComponent(getAuthToken() || "")}`;
       }
 
       // 3️⃣ Production (custom domain)
       else {
         const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
         const portPart = port ? `:${port}` : "";
-        wsUrl = `${wsProtocol}//${hostname}${portPart}?uid=${uid}`;
+        wsUrl = `${wsProtocol}//${hostname}${portPart}?token=${encodeURIComponent(getAuthToken() || "")}`;
       }
 
       let socket: WebSocket | null = null;
@@ -469,7 +509,7 @@ export const api = {
   notifications: {
     get: async (uid: string): Promise<Notification[]> => {
       try {
-        const response = await fetch(`${API_BASE}/notifications/${uid}`);
+        const response = await authFetch(`${API_BASE}/notifications/${uid}`);
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {
@@ -479,7 +519,7 @@ export const api = {
     },
     markRead: async (notificationIds: string[]) => {
       try {
-        await fetch(`${API_BASE}/notifications/mark-read`, {
+        await authFetch(`${API_BASE}/notifications/mark-read`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ notificationIds }),
@@ -490,7 +530,7 @@ export const api = {
     },
     markAllRead: async (uid: string) => {
       try {
-        await fetch(`${API_BASE}/notifications/mark-all-read`, {
+        await authFetch(`${API_BASE}/notifications/mark-all-read`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ uid }),
@@ -501,7 +541,7 @@ export const api = {
     },
     getUnreadCount: async (uid: string): Promise<number> => {
       try {
-        const response = await fetch(`${API_BASE}/notifications/unread-count/${uid}`);
+        const response = await authFetch(`${API_BASE}/notifications/unread-count/${uid}`);
         if (!response?.ok) return 0;
         const data = await response.json();
         return data?.count || 0;
@@ -511,7 +551,7 @@ export const api = {
     },
     sendVibe: async (uid: string, radius: number, lat: number, lng: number) => {
       try {
-        const response = await fetch(`${API_BASE}/vibe/send`, {
+        const response = await authFetch(`${API_BASE}/vibe/send`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uid, radius, lat, lng }),
@@ -525,7 +565,7 @@ export const api = {
     },
     acknowledgeVibe: async (notificationId: string) => {
       try {
-        await fetch(`${API_BASE}/vibe/acknowledge`, {
+        await authFetch(`${API_BASE}/vibe/acknowledge`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ notificationId }),
@@ -538,18 +578,30 @@ export const api = {
 
   push: {
     subscribe: async (uid: string, subscription: PushSubscription) => {
-      const response = await fetch(`${API_BASE}/push/subscribe`, {
+      const response = await authFetch(`${API_BASE}/push/subscribe`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, platform: "web", subscription }),
       });
       if (!response?.ok) throw new Error("Failed to subscribe to push notifications");
-    }
+    },
+    // Called on logout so this browser stops receiving the account's notifications.
+    unsubscribe: async () => {
+      try {
+        await authFetch(`${API_BASE}/push/unsubscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: "web" }),
+        });
+      } catch {
+        /* best effort */
+      }
+    },
   },
 
   posts: {
     create: async (postData: Partial<Post>) => {
-      const response = await fetch(`${API_BASE}/posts`, {
+      const response = await authFetch(`${API_BASE}/posts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(postData),
@@ -564,7 +616,7 @@ export const api = {
         url.searchParams.append('page', page.toString());
         url.searchParams.append('limit', limit.toString());
 
-        const response = await fetch(url.toString());
+        const response = await authFetch(url.toString());
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {
@@ -574,7 +626,7 @@ export const api = {
     },
     getUserPosts: async (uid: string) => {
       try {
-        const response = await fetch(`${API_BASE}/posts/user/${uid}`);
+        const response = await authFetch(`${API_BASE}/posts/user/${uid}`);
         if (!response?.ok) return [];
         return await response.json();
       } catch (error) {
@@ -584,7 +636,7 @@ export const api = {
     },
     getPost: async (postId: string) => {
       try {
-        const response = await fetch(`${API_BASE}/posts/${postId}`);
+        const response = await authFetch(`${API_BASE}/posts/${postId}`);
         if (!response?.ok) return null;
         return await response.json();
       } catch (error) {
@@ -598,7 +650,7 @@ export const api = {
       content: string,
       imageURL?: string | null,
     ) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, content, imageURL }),
@@ -606,7 +658,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to update post");
     },
     deletePost: async (postId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -614,7 +666,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to delete post");
     },
     toggleLike: async (postId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}/like`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}/like`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -623,7 +675,7 @@ export const api = {
       return await response.json();
     },
     addComment: async (postId: string, uid: string, text: string) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}/comment`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}/comment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, text }),
@@ -632,7 +684,7 @@ export const api = {
       return await response.json();
     },
     deleteComment: async (postId: string, commentId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}/deleteComment`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}/deleteComment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ commentId, uid }),
@@ -641,7 +693,7 @@ export const api = {
       return await response.json();
     },
     likeComment: async (postId: string, commentId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/posts/${postId}/likeComment`, {
+      const response = await authFetch(`${API_BASE}/posts/${postId}/likeComment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ commentId, uid }),
@@ -652,12 +704,12 @@ export const api = {
   },
   util: {
     getStories: async (viewerUid: string) => {
-      const response = await fetch(`${API_BASE}/stories?viewerUid=${viewerUid}`);
+      const response = await authFetch(`${API_BASE}/stories?viewerUid=${viewerUid}`);
       if (!response?.ok) return [];
       return await response.json();
     },
     createStory: async (storyData: any) => {
-      const response = await fetch(`${API_BASE}/stories`, {
+      const response = await authFetch(`${API_BASE}/stories`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(storyData),
@@ -666,7 +718,7 @@ export const api = {
       return await response.json();
     },
     viewStory: async (storyId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/stories/${storyId}/view`, {
+      const response = await authFetch(`${API_BASE}/stories/${storyId}/view`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -675,7 +727,7 @@ export const api = {
       return await response.json();
     },
     deleteStory: async (storyId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/stories/${storyId}`, {
+      const response = await authFetch(`${API_BASE}/stories/${storyId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -686,13 +738,13 @@ export const api = {
   },
   config: {
     getLists: async () => {
-      const response = await fetch(`${API_BASE}/config/lists`);
+      const response = await authFetch(`${API_BASE}/config/lists`);
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch config");
       return data;
     },
     getVersion: async () => {
-      const response = await fetch(`${API_BASE}/config/version`);
+      const response = await authFetch(`${API_BASE}/config/version`);
       if (!response?.ok) throw new Error("Failed to fetch version config");
       return await response.json(); // { minAppVersion: string, updateUrl: string }
     }
@@ -700,7 +752,7 @@ export const api = {
 
   communities: {
     create: async (uid: string, name: string, description?: string, tags?: string[], isPrivate?: boolean) => {
-      const response = await fetch(`${API_BASE}/communities`, {
+      const response = await authFetch(`${API_BASE}/communities`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, name, description, tags, isPrivate }),
@@ -711,20 +763,20 @@ export const api = {
     },
     getAll: async () => {
       try {
-        const response = await fetch(`${API_BASE}/communities`);
+        const response = await authFetch(`${API_BASE}/communities`);
         if (!response?.ok) return [];
         return await response.json() as Community[];
       } catch { return []; }
     },
     get: async (id: string) => {
       try {
-        const response = await fetch(`${API_BASE}/communities/${id}`);
+        const response = await authFetch(`${API_BASE}/communities/${id}`);
         if (!response?.ok) return null;
         return await response.json() as Community;
       } catch { return null; }
     },
     join: async (id: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/communities/${id}/join`, {
+      const response = await authFetch(`${API_BASE}/communities/${id}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -732,7 +784,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to join room");
     },
     leave: async (id: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/communities/${id}/leave`, {
+      const response = await authFetch(`${API_BASE}/communities/${id}/leave`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -741,7 +793,7 @@ export const api = {
       if (!response?.ok) throw new Error(data?.error || "Failed to leave room");
     },
     update: async (id: string, uid: string, name: string, description?: string, tags?: string[], isPrivate?: boolean) => {
-      const response = await fetch(`${API_BASE}/communities/${id}`, {
+      const response = await authFetch(`${API_BASE}/communities/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, name, description, tags, isPrivate }),
@@ -749,7 +801,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to update room");
     },
     delete: async (id: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/communities/${id}`, {
+      const response = await authFetch(`${API_BASE}/communities/${id}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -757,7 +809,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to delete room");
     },
     deleteMessage: async (communityId: string, messageId: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/communities/${communityId}/messages/${messageId}`, {
+      const response = await authFetch(`${API_BASE}/communities/${communityId}/messages/${messageId}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid }),
@@ -765,7 +817,7 @@ export const api = {
       if (!response?.ok) throw new Error("Failed to delete message");
     },
     pinMessage: async (communityId: string, uid: string, messageId: string | null, messageText: string | null) => {
-      const response = await fetch(`${API_BASE}/communities/${communityId}/pin`, {
+      const response = await authFetch(`${API_BASE}/communities/${communityId}/pin`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uid, messageId, messageText }),
@@ -776,7 +828,7 @@ export const api = {
 
   admin: {
     getComprehensiveUserDetails: async (token: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/admin/users/${uid}/comprehensive`, {
+      const response = await authFetch(`${API_BASE}/admin/users/${uid}/comprehensive`, {
         headers: { "x-admin-secret": token }
       });
       const data = await response.json();
@@ -784,7 +836,7 @@ export const api = {
       return data;
     },
     login: async (secret: string) => {
-      const response = await fetch(`${API_BASE}/admin/login`, {
+      const response = await authFetch(`${API_BASE}/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ secret }),
@@ -795,7 +847,7 @@ export const api = {
     },
 
     getStats: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/stats`, {
+      const response = await authFetch(`${API_BASE}/admin/stats`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -804,7 +856,7 @@ export const api = {
     },
 
     getUsers: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/users?limit=100000`, {
+      const response = await authFetch(`${API_BASE}/admin/users?limit=100000`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -813,7 +865,7 @@ export const api = {
     },
 
     deleteUser: async (token: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/admin/users/${uid}`, {
+      const response = await authFetch(`${API_BASE}/admin/users/${uid}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -823,7 +875,7 @@ export const api = {
     },
 
     getReports: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/reports`, {
+      const response = await authFetch(`${API_BASE}/admin/reports`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -832,7 +884,7 @@ export const api = {
     },
 
     resolveReport: async (token: string, reportId: string, status: 'resolved' | 'dismissed') => {
-      const response = await fetch(`${API_BASE}/admin/reports/${reportId}`, {
+      const response = await authFetch(`${API_BASE}/admin/reports/${reportId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify({ status }),
@@ -843,7 +895,7 @@ export const api = {
     },
 
     suspendUser: async (token: string, uid: string) => {
-      const response = await fetch(`${API_BASE}/admin/users/${uid}/suspend`, {
+      const response = await authFetch(`${API_BASE}/admin/users/${uid}/suspend`, {
         method: "PATCH",
         headers: { "x-admin-secret": token },
       });
@@ -853,7 +905,7 @@ export const api = {
     },
 
     getCommunities: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/communities`, {
+      const response = await authFetch(`${API_BASE}/admin/communities`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -862,7 +914,7 @@ export const api = {
     },
 
     deleteCommunity: async (token: string, id: string) => {
-      const response = await fetch(`${API_BASE}/admin/communities/${id}`, {
+      const response = await authFetch(`${API_BASE}/admin/communities/${id}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -873,14 +925,14 @@ export const api = {
 
     getPosts: async (token: string, page = 1, flaggedOnly = false) => {
       const url = `${API_BASE}/admin/posts?page=${page}&limit=50${flaggedOnly ? '&flagged=true' : ''}`;
-      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const response = await authFetch(url, { headers: { "x-admin-secret": token } });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch posts");
       return data as { posts: AdminPost[]; total: number; page: number; pages: number };
     },
 
     deletePost: async (token: string, postId: string) => {
-      const response = await fetch(`${API_BASE}/admin/posts/${postId}`, {
+      const response = await authFetch(`${API_BASE}/admin/posts/${postId}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -890,7 +942,7 @@ export const api = {
     },
 
     pinPost: async (token: string, postId: string) => {
-      const response = await fetch(`${API_BASE}/admin/posts/${postId}/pin`, {
+      const response = await authFetch(`${API_BASE}/admin/posts/${postId}/pin`, {
         method: "PUT",
         headers: { "x-admin-secret": token },
       });
@@ -900,7 +952,7 @@ export const api = {
     },
 
     assignBadge: async (token: string, uid: string, badgeTitle: string) => {
-      const response = await fetch(`${API_BASE}/admin/users/${uid}/badge`, {
+      const response = await authFetch(`${API_BASE}/admin/users/${uid}/badge`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify({ badgeTitle })
@@ -911,7 +963,7 @@ export const api = {
     },
 
     updateLists: async (token: string, lists: any) => {
-      const response = await fetch(`${API_BASE}/admin/config/lists`, {
+      const response = await authFetch(`${API_BASE}/admin/config/lists`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify(lists)
@@ -923,14 +975,14 @@ export const api = {
 
     getStories: async (token: string, page = 1, search = '') => {
       const url = `${API_BASE}/admin/stories?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
-      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const response = await authFetch(url, { headers: { "x-admin-secret": token } });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch stories");
       return data as { stories: AdminStory[]; total: number; page: number; pages: number };
     },
 
     deleteStory: async (token: string, storyId: string) => {
-      const response = await fetch(`${API_BASE}/admin/stories/${storyId}`, {
+      const response = await authFetch(`${API_BASE}/admin/stories/${storyId}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -940,7 +992,7 @@ export const api = {
     },
 
     deleteAllStories: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/stories/all`, {
+      const response = await authFetch(`${API_BASE}/admin/stories/all`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -951,14 +1003,14 @@ export const api = {
 
     getEvents: async (token: string, page = 1, search = '') => {
       const url = `${API_BASE}/admin/events?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
-      const response = await fetch(url, { headers: { "x-admin-secret": token } });
+      const response = await authFetch(url, { headers: { "x-admin-secret": token } });
       const data = await response.json();
       if (!response?.ok) throw new Error(data?.error || "Failed to fetch events");
       return data as { events: AdminEvent[]; total: number; page: number; pages: number };
     },
 
     deleteEvent: async (token: string, eventId: string) => {
-      const response = await fetch(`${API_BASE}/admin/events/${eventId}`, {
+      const response = await authFetch(`${API_BASE}/admin/events/${eventId}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -968,7 +1020,7 @@ export const api = {
     },
 
     broadcast: async (token: string, title: string, message: string, segment = 'all') => {
-      const response = await fetch(`${API_BASE}/admin/broadcast`, {
+      const response = await authFetch(`${API_BASE}/admin/broadcast`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify({ title, message, segment }),
@@ -979,7 +1031,7 @@ export const api = {
     },
 
     getAnalytics: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/analytics`, {
+      const response = await authFetch(`${API_BASE}/admin/analytics`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -994,7 +1046,7 @@ export const api = {
     },
 
     getAuditLogs: async (token: string, limit = 200) => {
-      const response = await fetch(`${API_BASE}/admin/audit-logs?limit=${limit}`, {
+      const response = await authFetch(`${API_BASE}/admin/audit-logs?limit=${limit}`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -1003,7 +1055,7 @@ export const api = {
     },
 
     getSettings: async (token: string) => {
-      const response = await fetch(`${API_BASE}/admin/settings`, {
+      const response = await authFetch(`${API_BASE}/admin/settings`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -1012,7 +1064,7 @@ export const api = {
     },
 
     saveSettings: async (token: string, autoSuspendThreshold: number) => {
-      const response = await fetch(`${API_BASE}/admin/settings`, {
+      const response = await authFetch(`${API_BASE}/admin/settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify({ autoSuspendThreshold }),
@@ -1023,7 +1075,7 @@ export const api = {
     },
 
     bulkDeleteFlagged: async (token: string, minReports = 3) => {
-      const response = await fetch(`${API_BASE}/admin/posts/bulk-flagged?minReports=${minReports}`, {
+      const response = await authFetch(`${API_BASE}/admin/posts/bulk-flagged?minReports=${minReports}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -1033,7 +1085,7 @@ export const api = {
     },
 
     bulkDeleteFlaggedUsers: async (token: string, minReports = 3) => {
-      const response = await fetch(`${API_BASE}/admin/users/bulk-flagged?minReports=${minReports}`, {
+      const response = await authFetch(`${API_BASE}/admin/users/bulk-flagged?minReports=${minReports}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -1043,7 +1095,7 @@ export const api = {
     },
 
     bulkDeleteUsers: async (token: string, uids: string[]) => {
-      const response = await fetch(`${API_BASE}/admin/users/bulk`, {
+      const response = await authFetch(`${API_BASE}/admin/users/bulk`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json", "x-admin-secret": token },
         body: JSON.stringify({ uids }),
@@ -1054,7 +1106,7 @@ export const api = {
     },
 
     bulkDeleteFlaggedEvents: async (token: string, minReports = 3) => {
-      const response = await fetch(`${API_BASE}/admin/events/bulk-flagged?minReports=${minReports}`, {
+      const response = await authFetch(`${API_BASE}/admin/events/bulk-flagged?minReports=${minReports}`, {
         method: "DELETE",
         headers: { "x-admin-secret": token },
       });
@@ -1065,7 +1117,7 @@ export const api = {
 
 
     flagCommunity: async (token: string, id: string) => {
-      const response = await fetch(`${API_BASE}/admin/communities/${id}/flag`, {
+      const response = await authFetch(`${API_BASE}/admin/communities/${id}/flag`, {
         method: "PATCH",
         headers: { "x-admin-secret": token },
       });
@@ -1075,7 +1127,7 @@ export const api = {
     },
 
     peekCommunity: async (token: string, id: string) => {
-      const response = await fetch(`${API_BASE}/admin/communities/${id}/peek`, {
+      const response = await authFetch(`${API_BASE}/admin/communities/${id}/peek`, {
         headers: { "x-admin-secret": token },
       });
       const data = await response.json();
@@ -1091,7 +1143,7 @@ export const api = {
 
 // --- Revive Chat API ---
 export async function reviveChat(chatId: string, uid: string) {
-  const response = await fetch(`${API_BASE}/chats/${chatId}/revive`, {
+  const response = await authFetch(`${API_BASE}/chats/${chatId}/revive`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

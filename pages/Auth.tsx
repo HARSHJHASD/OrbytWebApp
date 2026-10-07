@@ -34,7 +34,7 @@ const AuthPage: React.FC = () => {
       } else {
         response = await api.auth.signup(email, password);
       }
-      login(response.user);
+      login({ ...response.user, token: response.token });
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -72,12 +72,13 @@ const AuthPage: React.FC = () => {
     if (!payload) return;
 
     try {
+      // Send the signed Google credential; the server verifies it with Google.
       const apiResponse = await api.auth.googleLogin(
-        payload.email,
+        response.credential,
         payload.name,
-        ""
+        payload.picture || ""
       );
-      login(apiResponse.user);
+      login({ ...apiResponse.user, token: apiResponse.token });
     } catch {
       setError("Google login failed.");
     }
@@ -247,4 +248,4 @@ const AuthPage: React.FC = () => {
   );
 };
 
-export default AuthPage;
+export default AuthPage;

@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { AuthStatus } from '../types';
+import { api } from '../services/api';
 
 
 interface User {
   uid: string;
   email: string | null;
+  /** Signed session token from the backend; sent as `Authorization: Bearer`. */
+  token?: string;
 }
 
 interface AuthContextType {
@@ -32,7 +35,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedUser = localStorage.getItem('socially_session');
     if (storedUser) {
       try {
-        setUser(JSON.parse(storedUser));
+        const parsed = JSON.parse(storedUser);
+        // Sessions saved before the backend issued tokens can't make API calls any more.
+        if (!parsed?.token) {
+          localStorage.removeItem('socially_session');
+          setStatus('unauthenticated');
+          return;
+        }
+        setUser(parsed);
         setStatus('authenticated');
       } catch (e) {
         setStatus('unauthenticated');
@@ -50,6 +60,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    // Detach this browser's push subscription from the account before the token is gone.
+    await api.push.unsubscribe();
     // Clear all storage and cookies for a full logout
     localStorage.clear();
     sessionStorage.clear();
@@ -70,4 +82,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       {children}
     </AuthContext.Provider>
   );
-};
+};
