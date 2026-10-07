@@ -49,14 +49,48 @@ if (publicVapidKey && privateVapidKey) {
     "[PUSH] VAPID keys not set — browser push notifications are disabled.",
   );
 }
+// gzip/brotli for JSON and static files. Optional so a deploy without `npm install`
+// still boots.
+let compression = null;
+try {
+  ({ default: compression } = await import("compression"));
+} catch {
+  console.warn("[PERF] 'compression' is not installed — responses are sent uncompressed. Run npm install.");
+}
+if (compression) app.use(compression());
+
 //this is for hosting frontend in render
 app.use(express.static(path.join(__dirname, "dist")));
+
+// Serves images that API responses reference by URL instead of inlining them as
+// base64 (see rewriteDataImages). Content-addressed, so it can be cached forever.
+app.get("/img/:hash", async (req, res) => {
+  const { hash } = req.params;
+  if (!/^[a-f0-9]{40}$/.test(hash) || !db) return res.status(404).end();
+  const headers = {
+    "Cache-Control": "public, max-age=31536000, immutable",
+    ETag: `"${hash}"`,
+    "Access-Control-Allow-Origin": "*",
+    "Cross-Origin-Resource-Policy": "cross-origin",
+    "X-Content-Type-Options": "nosniff",
+  };
+  if (req.get("if-none-match") === `"${hash}"`) return res.set(headers).status(304).end();
+  try {
+    const doc = await db.collection("images").findOne({ _id: hash });
+    if (!doc || !OFFLOADABLE_IMAGE_MIME.has(doc.mime)) return res.status(404).end();
+    const data = doc.data?.buffer ? Buffer.from(doc.data.buffer) : Buffer.from(doc.data);
+    res.set({ ...headers, "Content-Type": doc.mime }).send(data);
+  } catch (e) {
+    console.error("[IMG] read failed:", e?.message || e);
+    res.status(500).end();
+  }
+});
 // SPA catch-all: serve index.html for any non-API route so React Router (HashRouter) handles it.
 // NOTE: Express matches routes in registration order, and this pattern is greedy, so it
 // SHADOWS any server-rendered page route declared below it. Every such path must be added
 // to the negative lookahead here, or its handler becomes dead code (this is what happened
 // to the /post/:id deep-link page). API routes are excluded the same way.
-app.get(/^\/(?!api\/|post\/).*/, (req, res) => {
+app.get(/^\/(?!api\/|post\/|img\/).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
@@ -360,6 +394,119 @@ function createAuditLog(req, res, next) {
 }
 
 app.use(createAuditLog);
+
+// --- IMAGE OFFLOADING ---
+// Clients upload photos as base64 data URLs and they are stored inline on profiles,
+// posts, comments, stories and messages (and copied into every post/notification by
+// the same author). Sending them back inline made a feed page or a map refresh weigh
+// megabytes, and the app could never cache an image. Responses now carry a URL to
+// /img/<sha1> instead; each distinct image is stored once in the `images` collection.
+// Stored documents are untouched. Set IMAGE_URL_REWRITE=false to switch this off.
+const IMAGE_URL_REWRITE = process.env.IMAGE_URL_REWRITE !== "false";
+// Raster formats only: an inline SVG served from this origin could run script.
+const OFFLOADABLE_IMAGE_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"]);
+const DATA_IMAGE_RE = /^data:(image\/[a-z0-9.+-]+);base64,/i;
+const storedImageHashes = new Set(); // hashes already known to be in `images`
+const pendingImageWrites = new Map(); // hash -> Promise (dedupes concurrent writes)
+
+function ensureImageStored(hash, mime, dataUrl, prefixLength) {
+  if (storedImageHashes.has(hash)) return null;
+  let p = pendingImageWrites.get(hash);
+  if (!p) {
+    p = db
+      .collection("images")
+      .updateOne(
+        { _id: hash },
+        {
+          $setOnInsert: {
+            mime,
+            data: Buffer.from(dataUrl.slice(prefixLength), "base64"),
+            createdAt: Date.now(),
+          },
+        },
+        { upsert: true },
+      )
+      .then(() => {
+        if (storedImageHashes.size > 100000) storedImageHashes.clear();
+        storedImageHashes.add(hash);
+      })
+      .finally(() => pendingImageWrites.delete(hash));
+    pendingImageWrites.set(hash, p);
+  }
+  return p;
+}
+
+// Returns a copy of `value` with every base64 image string replaced by an /img URL.
+// Copy-on-write: objects without images are returned as-is, nothing is mutated.
+async function rewriteDataImages(value, baseUrl) {
+  const writes = [];
+  const urlFor = new Map(); // dataUrl -> url, within this response
+  const convertString = (s) => {
+    if (s.length < 200 || !s.startsWith("data:image/")) return s;
+    const cached = urlFor.get(s);
+    if (cached) return cached;
+    const m = DATA_IMAGE_RE.exec(s);
+    if (!m) return s;
+    const mime = m[1].toLowerCase();
+    if (!OFFLOADABLE_IMAGE_MIME.has(mime)) return s;
+    const hash = crypto.createHash("sha1").update(s).digest("hex");
+    const w = ensureImageStored(hash, mime, s, m[0].length);
+    if (w) writes.push(w);
+    const url = `${baseUrl}/img/${hash}`;
+    urlFor.set(s, url);
+    return url;
+  };
+  const walk = (v, depth) => {
+    if (typeof v === "string") return convertString(v);
+    if (v === null || typeof v !== "object" || depth > 12) return v;
+    if (Array.isArray(v)) {
+      let out = null;
+      for (let i = 0; i < v.length; i++) {
+        const r = walk(v[i], depth + 1);
+        if (r !== v[i]) (out ??= v.slice())[i] = r;
+      }
+      return out ?? v;
+    }
+    // Plain objects only (skips ObjectId, Date, Buffer and other class instances).
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) return v;
+    let out = null;
+    for (const k of Object.keys(v)) {
+      const r = walk(v[k], depth + 1);
+      if (r !== v[k]) (out ??= { ...v })[k] = r;
+    }
+    return out ?? v;
+  };
+  const result = walk(value, 0);
+  // The client fetches the image right after this response, so it must exist first.
+  await Promise.all(writes);
+  return result;
+}
+
+app.use("/api", (req, res, next) => {
+  if (!IMAGE_URL_REWRITE) return next();
+  const sendJson = res.json.bind(res);
+  res.json = (body) => {
+    if (!db || body === null || typeof body !== "object") return sendJson(body);
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    rewriteDataImages(body, baseUrl).then(
+      (rewritten) => sendJson(rewritten),
+      (err) => {
+        // Never fail a request over this: fall back to the original inline payload.
+        console.error("[IMG] rewrite failed:", err?.message || err);
+        sendJson(body);
+      },
+    );
+    return res;
+  };
+  next();
+});
+
+// Web push payloads are capped at ~4KB, so an inline base64 photo as the icon made the
+// whole push fail. Only real URLs are usable as icons.
+function pushIcon(photo) {
+  return typeof photo === "string" && /^https?:\/\//.test(photo) ? photo : "/pwa-192x192.png";
+}
 
 // --- AUDIT LOG RETRIEVAL ENDPOINT ---
 app.get("/api/admin/audit-logs", requireAdmin, (req, res) => {
@@ -733,8 +880,13 @@ async function createNotification(
   try {
     const notifications = db.collection("notifications");
     const profiles = db.collection("profiles");
-    const sender = await profiles.findOne({ uid: fromUid });
-    const receiver = await profiles.findOne({ uid: toUid });
+    const [sender, receiver] = await Promise.all([
+      profiles.findOne(
+        { uid: fromUid },
+        { projection: { displayName: 1, photoURL: 1, blockedUsers: 1 } },
+      ),
+      profiles.findOne({ uid: toUid }, { projection: { blockedUsers: 1 } }),
+    ]);
 
     if (!sender || !receiver) return;
 
@@ -853,7 +1005,7 @@ async function createNotification(
     const payload = JSON.stringify({
       title,
       body,
-      icon: sender.photoURL || "/pwa-192x192.png",
+      icon: pushIcon(sender.photoURL),
       data: { url: notifUrl.web, notificationId: notifResult.insertedId.toString(), notificationType: type },
     });
 
@@ -1113,6 +1265,26 @@ async function createIndexes() {
   } catch (e) {
     console.error("Error creating indexes:", e);
   }
+
+  // Compound indexes matching the hot queries (feed sort, block lookups, unread counts,
+  // chat history). Built in the background so a large collection doesn't delay startup.
+  const compound = [
+    ["posts", { isPinned: -1, createdAt: -1 }], // feed: sort({ isPinned: -1, createdAt: -1 })
+    ["posts", { uid: 1, createdAt: -1 }], // profile grids
+    ["profiles", { blockedUsers: 1 }], // getMutualBlockedUids runs on almost every read
+    ["profiles", { "lastLocation.lat": 1, "lastLocation.lng": 1 }], // nearby people / map
+    ["notifications", { toUid: 1, createdAt: -1 }],
+    ["notifications", { toUid: 1, read: 1 }],
+    ["messages", { toUid: 1, read: 1 }],
+    ["messages", { fromUid: 1, toUid: 1, createdAt: -1 }],
+    ["messages", { groupId: 1, createdAt: -1 }],
+    ["stories", { expiresAt: 1, createdAt: -1 }],
+  ];
+  for (const [collName, spec] of compound) {
+    db.collection(collName)
+      .createIndex(spec)
+      .catch((e) => console.warn(`[DB] index ${collName} ${JSON.stringify(spec)} failed:`, e?.message || e));
+  }
 }
 
 async function run() {
@@ -1302,7 +1474,10 @@ async function getMutualBlockedUids(viewerUid) {
     return [];
   try {
     const profiles = db.collection("profiles");
-    const viewer = await profiles.findOne({ uid: viewerUid });
+    const viewer = await profiles.findOne(
+      { uid: viewerUid },
+      { projection: { blockedUsers: 1 } },
+    );
     const blockedByViewer = viewer?.blockedUsers || [];
     const blockers = await profiles
       .find({ blockedUsers: viewerUid })
@@ -2043,7 +2218,10 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
 
     const profiles = db.collection("profiles");
     const viewerProfile = viewerUid
-      ? await profiles.findOne({ uid: viewerUid })
+      ? await profiles.findOne(
+          { uid: viewerUid },
+          { projection: { friends: 1, lastLocation: 1, discoveryRadius: 1 } },
+        )
       : null;
     const viewerFriends = new Set(viewerProfile?.friends || []);
     const viewerLocation = viewerProfile?.lastLocation;
@@ -2061,6 +2239,29 @@ app.get("/api/profiles", mapProfilesLimiter, async (req, res) => {
       if (excludedUids.length > 0) {
         filter.uid = { $nin: excludedUids };
       }
+    }
+
+    // Narrow to the radius in the database. Previously this read the first 500
+    // profiles anywhere and filtered by distance afterwards — slow, and in a busy area
+    // people inside the radius could be missed entirely. The box contains the circle
+    // used by the exact distance check below, so results are otherwise unchanged.
+    if (
+      !isGlobalDiscovery &&
+      typeof viewerLocation?.lat === "number" &&
+      typeof viewerLocation?.lng === "number"
+    ) {
+      const latDelta = effectiveRadius / 111.32;
+      const lngDelta =
+        effectiveRadius /
+        (111.32 * Math.max(0.01, Math.cos((viewerLocation.lat * Math.PI) / 180)));
+      filter["lastLocation.lat"] = {
+        $gte: viewerLocation.lat - latDelta,
+        $lte: viewerLocation.lat + latDelta,
+      };
+      filter["lastLocation.lng"] = {
+        $gte: viewerLocation.lng - lngDelta,
+        $lte: viewerLocation.lng + lngDelta,
+      };
     }
 
     const rawUsers = await profiles
@@ -3407,7 +3608,10 @@ async function sendPushNotification(
   if (!db) return;
   try {
     const profiles = db.collection("profiles");
-    const receiver = await profiles.findOne({ uid: receiverUid });
+    const receiver = await profiles.findOne(
+      { uid: receiverUid },
+      { projection: { expoPushToken: 1, pushSubscription: 1, webPushSubscription: 1 } },
+    );
     if (!receiver) {
       console.log(`[PUSH] Receiver profile not found: ${receiverUid}`);
       return;
@@ -3721,7 +3925,7 @@ app.post("/api/chat/send", async (req, res) => {
       const webPayloadStr = JSON.stringify({
         title: `💬 ${groupTitle}`,
         body: `${authorName}: ${displayBody}`,
-        icon: authorPhoto || "/pwa-192x192.png",
+        icon: pushIcon(authorPhoto),
         data: { url: notifUrl.web },
       });
 
@@ -3764,7 +3968,7 @@ app.post("/api/chat/send", async (req, res) => {
       const webPayloadStr = JSON.stringify({
         title: authorName,
         body: displayBody,
-        icon: authorPhoto || "/pwa-192x192.png",
+        icon: pushIcon(authorPhoto),
         data: { url: `/app/chat/${fromUid}` },
       });
       sendPushNotification(toUid, webPayloadStr, expoPayload).catch(() => { });
@@ -4106,7 +4310,9 @@ app.get("/api/stories", async (req, res) => {
   try {
     const viewerUid = req.authUid;
     const profile = viewerUid
-      ? await db.collection("profiles").findOne({ uid: viewerUid })
+      ? await db
+          .collection("profiles")
+          .findOne({ uid: viewerUid }, { projection: { lastLocation: 1, discoveryRadius: 1 } })
       : null;
     const myLocation = profile?.lastLocation;
     const radius = profile?.discoveryRadius || 10; // km

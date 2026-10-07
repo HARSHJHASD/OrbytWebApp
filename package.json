@@ -13,6 +13,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "bcrypt": "^6.0.0",
     "buffer": "^6.0.3",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "expo-server-sdk": "^6.1.0",
