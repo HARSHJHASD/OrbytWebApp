@@ -16,6 +16,20 @@ import { calculateDistance } from "../util/location";
 import { useTheme } from "../context/ThemeContext";
 /* -------------------- TYPES -------------------- */
 
+// Map tiles. CARTO now requires a (free) key: set VITE_CARTO_KEY in socially/.env
+// (get one at https://carto.com/basemaps/apikey). Without a key we fall back to the
+// free OpenStreetMap tiles so the map always works. Both require the credit line.
+const CARTO_KEY = (import.meta as any).env?.VITE_CARTO_KEY as string | undefined;
+const MAP_TILES = CARTO_KEY
+  ? {
+      url: `https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=${CARTO_KEY}`,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }
+  : {
+      url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    };
+
 type NearbyUser = UserProfile & {
   distDisplay: string;
   distMeters: number;
@@ -276,11 +290,12 @@ const MapPage: React.FC = () => {
         zoom={14}
         scrollWheelZoom
         zoomControl={false}
-        attributionControl={false}
         className="w-full h-full"
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          url={MAP_TILES.url}
+          attribution={MAP_TILES.attribution}
+          maxZoom={19}
           updateWhenIdle={false}
         />
         <ResizeMap />
