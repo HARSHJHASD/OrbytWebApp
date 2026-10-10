@@ -66,7 +66,10 @@ const authFetch = async (input: string, init: RequestInit = {}): Promise<Respons
     headers.set("Authorization", `Bearer ${token}`);
   }
   const response = await fetch(input, { ...init, headers });
-  if (response.status === 401 && !String(input).includes("/auth/") && !String(input).includes("/admin/")) {
+  // Only a signed-in visitor whose session was rejected gets sent to /auth. A logged-out
+  // visitor on a public page (landing, legal pages) used to be redirected to the login
+  // screen by any API call that needed a session.
+  if (token && response.status === 401 && !String(input).includes("/auth/") && !String(input).includes("/admin/")) {
     const body = await response.clone().json().catch(() => null);
     if (body?.code === "AUTH_REQUIRED" || body?.code === "AUTH_INVALID") handleAuthFailure();
   }

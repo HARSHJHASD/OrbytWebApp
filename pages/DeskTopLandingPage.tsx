@@ -29,8 +29,9 @@ const DesktopLanding: React.FC = () => {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  const [realUsers, setRealUsers] = useState<UserProfile[]>([]);
-  const [testimonialUsers, setTestimonialUsers] = useState<(UserProfile & { reviewText: string })[]>([]);
+  // The public landing page shows no member data: it works without an account and
+  // doesn't expose members' photos to anonymous visitors.
+  const realUsers: UserProfile[] = [];
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -47,50 +48,6 @@ const DesktopLanding: React.FC = () => {
     setActiveFaq(activeFaq === index ? null : index);
   };
 
-  useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const users = await api.profile.getAllWithLocation();
-        // Take users with photos, up to 4
-        const withPhotos = users
-          .filter((u: UserProfile) => u.photoURL)
-          .slice(0, 4);
-        setRealUsers(withPhotos);
-
-        // Reviews to assign
-        const reviews = [
-          "Orbyt is exactly what I needed! It's so refreshing to meet real people specifically looking for genuine connections. The map feature makes it so easy to see who's around.",
-          "Finally, a social app that actually prioritizes real-world interactions. I've met some incredible people through here. The 18+ environment feels much more mature and safe.",
-          "The best discovery app I've used. I love how I can see people nearby and just send a quick wave. It's made my social life so much more active!",
-          "Safety and authenticity are huge for me, and Orbyt delivers. Seeing real profiles and having verified features gives me peace of mind when meeting up.",
-          "Found my favorite weekend hiking partner here! The interest matching is spot on, and the community is super welcoming.",
-          "If you're tired of endless swiping and want to actually meet people, this is it. The spontaneous meetups at local spots are the highlight of my week.",
-        ];
-
-        // Filter for "complete" profiles
-        const completeProfiles = users.filter(
-          (u: UserProfile) =>
-            u.photoURL &&
-            u.displayName &&
-            (u.bio || u.jobRole || (u.interests && u.interests.length > 0))
-        );
-
-        // Shuffle and pick up to 3 for the grid (or more if layout allows, but 3 is current)
-        const selected = [...completeProfiles]
-          .sort(() => 0.5 - Math.random())
-          .slice(0, 3)
-          .map((u, i) => ({
-            ...u,
-            reviewText: reviews[i % reviews.length],
-          }));
-
-        setTestimonialUsers(selected);
-      } catch (error) {
-        console.error("Failed to fetch real users for landing page:", error);
-      }
-    };
-    fetchUsers();
-  }, []);
 
   useEffect(() => {
     const fetchVersion = async () => {
@@ -539,73 +496,40 @@ const DesktopLanding: React.FC = () => {
         </div>
       </section>
 
-      {/* Testimonials */}
+      {/* Why Orbyt — feature highlights. (This used to show invented reviews under real
+          members' names and photos, which misled visitors and misrepresented members.) */}
       <section className="py-24">
         <div className="max-w-7xl mx-auto px-6">
           <h2 className="text-3xl font-bold text-center mb-16">
-            Loved by explorers everywhere
+            Why people use Orbyt
           </h2>
           <div className="grid md:grid-cols-3 gap-8">
-            {(testimonialUsers.length > 0
-              ? testimonialUsers
-              : [
-                  {
-                    reviewText:
-                      "I moved to a new city and didn't know anyone. Orbyt helped me find a hiking group within my first week!",
-                    displayName: "Elena R.",
-                    jobRole: "Digital Nomad",
-                    photoURL: "https://i.pravatar.cc/100?img=5",
-                  },
-                  {
-                    reviewText:
-                      "Finally, a social app that actually gets you off your phone. The real-time map is a game changer for spontaneous meetups.",
-                    displayName: "Marcus T.",
-                    jobRole: "Photographer",
-                    photoURL: "https://i.pravatar.cc/100?img=11",
-                  },
-                  {
-                    reviewText:
-                      "The safety features make me feel comfortable meeting new people. Verified profiles give peace of mind.",
-                    displayName: "Sarah J.",
-                    jobRole: "Student",
-                    photoURL: "https://i.pravatar.cc/100?img=9",
-                  },
-                ]
-            ).map((t, i) => (
+            {[
+              {
+                icon: MapPin,
+                title: "New in town?",
+                text: "See people nearby who share your interests and find your crowd faster.",
+              },
+              {
+                icon: Zap,
+                title: "Plans, not just chats",
+                text: "Join or host local meetups — coffee, a run, a game night — and meet in person.",
+              },
+              {
+                icon: Shield,
+                title: "Privacy built in",
+                text: "Your exact location is never shown, and you can block or report anyone in one tap.",
+              },
+            ].map(({ icon: Icon, title, text }) => (
               <div
-                key={i}
-                className="bg-slate-900 p-8 rounded-3xl border border-slate-800 relative group hover:border-primary-500/50 transition-all duration-300"
+                key={title}
+                className="bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-primary-500/50 transition-all duration-300"
               >
-                <div className="flex gap-1 mb-4 text-yellow-500">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star key={s} className="w-4 h-4 fill-current" />
-                  ))}
+                <div className="w-12 h-12 rounded-2xl bg-primary-500/10 flex items-center justify-center mb-6">
+                  <Icon className="w-6 h-6 text-primary-400" />
                 </div>
-                <p className="text-slate-300 mb-6 leading-relaxed italic">
-                  "{t?.reviewText}"
-                </p>
-                <div className="flex items-center gap-4">
-                  <div className="relative group-hover:scale-110 transition-transform duration-300">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-primary-500 to-purple-500 rounded-full blur opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <img
-                      draggable={false}
-                      src={t?.photoURL}
-                      alt={t?.displayName}
-                      className="relative w-12 h-12 rounded-full object-cover border-2 border-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <p className="font-bold text-white text-sm">
-                      {t?.displayName}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {t?.jobRole ||
-                        ('interests' in t && t.interests && t.interests.length > 0
-                          ? t.interests[0]
-                          : "Member")}
-                    </p>
-                  </div>
-                </div>
+                <p className="font-bold text-white text-lg mb-3">{title}</p>
+                <p className="text-slate-300 leading-relaxed">{text}</p>
               </div>
             ))}
           </div>
