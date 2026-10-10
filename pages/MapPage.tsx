@@ -272,7 +272,7 @@ const MapPage: React.FC = () => {
   /* ---------------- RENDER ---------------- */
 
   return (
-    <div className={`h-screen w-full relative bg-slate-50 dark:bg-slate-950 transition-colors duration-300 ${isDark ? 'dark' : ''}`}>
+    <div className={`h-[100dvh] md:h-full w-full relative bg-slate-50 dark:bg-slate-950 transition-colors duration-300 ${isDark ? 'dark' : ''}`}>
       <MapContainer
         center={[myLocation.lat, myLocation.lng]}
         zoom={14}
@@ -359,7 +359,7 @@ const MapPage: React.FC = () => {
 
       {/* SELECTED USER CARD */}
       {selectedUser && (
-        <div className="absolute bottom-6 left-4 right-4 z-[1002] bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xl transition-colors duration-300">
+        <div className="absolute bottom-[96px] left-4 right-4 z-[1002] bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200 dark:border-slate-800 shadow-2xl transition-colors duration-300">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-14 h-14 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0">
               {selectedUser.photoURL ? (

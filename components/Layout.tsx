@@ -125,7 +125,7 @@ const Layout: React.FC = () => {
   };
 
   const content = React.useMemo(() => (
-    <div className={`app-shell flex flex-col min-h-[100dvh] bg-slate-950 ${isDesktop ? 'h-[820px]' : ''} overflow-hidden`}>
+    <div className={`app-shell relative flex flex-col bg-slate-950 overflow-hidden ${isDesktop ? 'h-full' : 'min-h-[100dvh]'}`}>
       {/* Desktop Top Navigation */}
       {/* <div className="hidden md:flex sticky top-0 z-[3000] bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 items-center justify-between px-8 h-16">
         <div className="flex items-center cursor-pointer group" onClick={() => navigate('/')}>
@@ -150,8 +150,14 @@ const Layout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto no-scrollbar" style={{ 
-        paddingBottom: isDesktop ? 88 : 'calc(6rem + env(safe-area-inset-bottom))' 
+      {/* Bottom padding keeps every page's last content clear of the floating nav bar.
+          On desktop this area must exactly fill the phone frame (it used to be taller,
+          so the end of each page was cut off behind the bar). The map is full-bleed
+          and positions its own controls above the bar. */}
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{
+        paddingBottom: location.pathname === '/app/map'
+          ? 0
+          : isDesktop ? 96 : 'calc(6.5rem + env(safe-area-inset-bottom))'
       }}>
         <Outlet />
       </div>

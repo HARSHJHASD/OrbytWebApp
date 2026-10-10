@@ -10,6 +10,8 @@ import ImageCropperModal from '../components/ImageCropperModal';
 import SearchableDropdown from '../components/ui/SearchableDropdown';
 import { PROFESSIONS } from '../constants/professions';
 
+const cleanInstagramHandle = (v: string) => v.trim().replace(/^(https?:\/\/)?(www\.)?instagram\.com\//i, "").replace(/[@\s/?#]/g, "");
+
 
 const EditProfile: React.FC = () => {
   const { user } = useAuth();
@@ -114,33 +116,50 @@ const EditProfile: React.FC = () => {
     });
   };
   
+  // Slots to fill for a pick that starts at `index`: the tapped slot first, then the
+  // other empty slots in order. Other filled slots are never overwritten (picking
+  // several photos used to fill index, index+1, index+2 blindly).
   const handleThatsMeUpload = async (e: React.ChangeEvent<HTMLInputElement>, index: number) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+    const files = Array.from(e.target.files || []);
+    // Reset so choosing the same photo again still triggers a change.
+    e.target.value = "";
+    if (files.length === 0) return;
 
+    const targets = [index, ...[0, 1, 2].filter((i) => i !== index && !thatsMePhotos[i])];
+    const picked = files.slice(0, targets.length);
+    const skippedForCount = files.length - picked.length;
+
+    setLoading(true);
+    setError(null);
+    const problems: string[] = [];
     try {
-      setLoading(true);
-      setError(null);
-      const newPhotos = [...thatsMePhotos];
-      
-      for (let i = 0; i < files.length; i++) {
-        const file:any = files[i];
-        const targetIndex = index + i;
-        if (targetIndex >= 3) break;
-
-        if (file.size > 10 * 1024 * 1024) {
+      for (let i = 0; i < picked.length; i++) {
+        const file = picked[i];
+        if (!file.type.startsWith("image/")) {
+          problems.push(`${file.name} isn't an image`);
           continue;
         }
-
-        const compressed = await compressImage(file, 1080, 0.7);
-        newPhotos[targetIndex] = compressed;
+        if (file.size > 10 * 1024 * 1024) {
+          problems.push(`${file.name} is over 10 MB`);
+          continue;
+        }
+        try {
+          const compressed = await compressImage(file, 1080, 0.7);
+          const slot = targets[i];
+          setThatsMePhotos((prev) => {
+            const next = [0, 1, 2].map((s) => prev[s] || "");
+            next[slot] = compressed;
+            return next;
+          });
+        } catch {
+          problems.push(`${file.name} couldn't be processed`);
+        }
       }
-      setThatsMePhotos(newPhotos);
-    } catch (err: any) {
-      setError("Failed to process one or more images.");
     } finally {
       setLoading(false);
     }
+    if (skippedForCount > 0) problems.push(`only 3 photos fit, so ${skippedForCount} ${skippedForCount === 1 ? "was" : "were"} left out`);
+    if (problems.length) setError(`Some photos weren't added: ${problems.join("; ")}.`);
   };
 
   const calculateAge = (dateString: string) => {
@@ -359,10 +378,12 @@ const EditProfile: React.FC = () => {
             <div className="space-y-2">
               <Input
                 label="Instagram"
-                placeholder="@username"
+                placeholder="username"
                 icon={<span className="text-slate-500 font-bold">@</span>}
                 value={instagram}
-                onChange={(e) => setInstagram(e.target.value.replace('@', ''))}
+                // One "@" is shown before the field, so strip any typed "@", spaces, or a
+                // pasted instagram.com link and keep just the handle.
+                onChange={(e) => setInstagram(cleanInstagramHandle(e.target.value))}
               />
               {instagram.trim().length > 0 && (
                 <button
