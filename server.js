@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import dotenv from "dotenv";
 import { Expo } from "expo-server-sdk";
 import express from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import http from "http";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import path from "path";
@@ -330,15 +330,37 @@ const authLimiter = rateLimit({
   message: { error: "Too many authentication attempts, please try again later" },
 });
 
+// Limit per signed-in user, not per IP. Mobile carriers (Jio/Airtel/Vi CGNAT) and
+// proxies put many phones behind one IP, so a per-IP limit of 100/min was shared by
+// every user on that network: a few people opening the app at once (each launch makes
+// ~20-40 requests) locked everyone out with "Too many requests". Requests without a
+// valid session still fall back to the IP, with a higher ceiling for shared networks.
+function rateLimitKey(req) {
+  if (req.rateLimitKey) return req.rateLimitKey;
+  const token = getBearerToken(req);
+  const uid = token ? verifyAuthToken(token) : null;
+  req.rateLimitKey = uid ? `user:${uid}` : `ip:${ipKeyGenerator(req.ip || "")}`;
+  return req.rateLimitKey;
+}
+const isUserKey = (req) => rateLimitKey(req).startsWith("user:");
+
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 100, // 100 requests per minute
+  limit: (req) => (isUserKey(req) ? 300 : 1000),
+  keyGenerator: rateLimitKey,
+  // The version check gates app startup; never block it.
+  skip: (req) => req.path === "/config/version",
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
   message: { error: "Too many requests, please try again later" },
 });
 
 const mapProfilesLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
-  max: 20, // map refresh abuse guard
+  limit: (req) => (isUserKey(req) ? 30 : 200), // map refresh abuse guard
+  keyGenerator: rateLimitKey,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
   message: { error: "Too many map refresh requests, please try again shortly" },
 });
 
