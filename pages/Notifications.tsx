@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone, Eye, MapPin, Clock, Hand } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
 
@@ -43,8 +43,36 @@ function getNotifMeta(type: Notification['type']) {
             return { icon: <Megaphone className="w-4 h-4" />, color: 'bg-violet-600', label: '' };
         case 'message':
             return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-600', label: 'sent you a message' };
+        case 'profile_view':
+            return { icon: <Eye className="w-4 h-4" />, color: 'bg-blue-500', label: 'with matching interests opened your profile.' };
+        case 'crossed_paths':
+            return { icon: <MapPin className="w-4 h-4" />, color: 'bg-emerald-500', label: 'who shares your interests crossed paths with you.' };
+        case 'meetup_reminder':
+            return { icon: <Clock className="w-4 h-4" />, color: 'bg-orange-500', label: 'A plan near you is starting soon.' };
+        case 'vibe_wave':
+            return { icon: <Hand className="w-4 h-4" />, color: 'bg-rose-500', label: 'sent you a wave. Wave back?' };
+        case 'vibe_check':
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-rose-500', label: "waved back. It's a match!" };
+        case 'orbit_collision':
+            return { icon: <MapPin className="w-4 h-4" />, color: 'bg-orange-500', label: 'is right near you!' };
         default:
-            return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'did something. unclear what.' };
+            return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'sent you an update.' };
+    }
+}
+
+// Who the sentence is about, and what it says. Profile views, crossed paths and
+// "someone nearby" nudges are anonymous on purpose, so they never show a name.
+// The server sometimes sends a ready-made phrase in `message` that follows "Someone".
+function notifSentence(n: Notification, label: string): { actor: string | null; text: string } {
+    const msg = (n as any).message as string | undefined;
+    switch (n.type) {
+        case 'profile_view':
+        case 'crossed_paths':
+            return { actor: 'Someone', text: msg || label };
+        case 'meetup_reminder':
+            return msg ? { actor: 'Someone', text: msg } : { actor: null, text: label };
+        default:
+            return n.fromName ? { actor: n.fromName, text: label } : { actor: null, text: msg || 'You have a new update on Orbyt.' };
     }
 }
 
@@ -68,6 +96,12 @@ function getNotifLink(n: Notification): string {
             return `/app/notifications`;
         case 'message':
             return `/app/chat/${n.fromUid}`;
+        case 'vibe_wave':
+        case 'vibe_check':
+        case 'orbit_collision':
+            return n.fromUid ? `/app/profile/${n.fromUid}` : `/app/notifications`;
+        case 'meetup_reminder':
+            return n.postId ? `/app/post/${n.postId}` : `/app/notifications`;
         default:
             return `/app/notifications`;
     }
@@ -77,6 +111,8 @@ function getNotifLink(n: Notification): string {
 
 const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap }) => {
     const { icon, color, label } = getNotifMeta(n.type);
+    const sentence = notifSentence(n, label);
+    const anonymous = sentence.actor === 'Someone' || sentence.actor === null;
 
     // Announcement card — different layout, no user avatar
     if (n.type === 'announcement') {
@@ -113,7 +149,7 @@ const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap 
         >
             {/* Avatar + type badge */}
             <div className="relative shrink-0">
-                {n.fromPhoto ? (
+                {n.fromPhoto && !anonymous ? (
                     <img
                         src={n.fromPhoto}
                         alt={n.fromName}
@@ -122,7 +158,7 @@ const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap 
                     />
                 ) : (
                     <div className="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-lg">
-                        {n.fromName?.[0]?.toUpperCase() ?? '?'}
+                        {anonymous ? '?' : (n.fromName?.[0]?.toUpperCase() ?? '?')}
                     </div>
                 )}
                 <div className={`absolute -bottom-0.5 -right-0.5 ${color} text-white rounded-full w-5 h-5 flex items-center justify-center shadow-lg border-2 border-slate-900`}>
@@ -133,9 +169,8 @@ const NotifCard: React.FC<{ n: Notification; onTap: () => void }> = ({ n, onTap 
             {/* Text */}
             <div className="flex-1 min-w-0">
                 <p className="text-sm text-slate-100 leading-snug">
-                    <span className="font-bold">{n.fromName}</span>
-                    {' '}
-                    <span className="text-slate-300">{label}</span>
+                    {sentence.actor && <><span className="font-bold">{sentence.actor}</span>{' '}</>}
+                    <span className="text-slate-300">{sentence.text}</span>
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">{timeAgo(n.createdAt)}</p>
             </div>

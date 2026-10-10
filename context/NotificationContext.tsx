@@ -256,7 +256,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                                 ? `🔥 Vibe Confirmed!`
                                 : t === 'orbit_collision'
                                 ? `☄️ Orbit Collision Detected`
-                                : data.notification.fromName,
+                                : t === 'profile_view'
+                                ? `👀 Someone's curious!`
+                                : t === 'crossed_paths'
+                                ? `👣 You crossed paths!`
+                                : t === 'meetup_reminder'
+                                ? `⏰ Heads up`
+                                : (data.notification.fromName || 'Orbyt'),
                             body: t === 'like' ? 'actually noticed your post. wild, right?' :
                                   t === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
                                   t === 'friend_request' ? 'slid into your orbit' :
@@ -269,9 +275,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                                   t === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
                                   t === 'friend_event' ? 'planned something. probably involves leaving the house.' :
                                   t === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
-                                  'did something. unclear what.',
-                            icon: data.notification.fromPhoto,
-                            url: (t === 'vibe_wave' || t === 'vibe_check' || t === 'orbit_collision')
+                                  // Anonymous on purpose: never name the viewer / passer-by.
+                                  t === 'profile_view' ? 'Someone with matching interests opened your profile.' :
+                                  t === 'crossed_paths' ? 'You just passed someone with similar interests.' :
+                                  t === 'meetup_reminder' ? (data.notification.message ? `Someone ${data.notification.message}` : 'A plan near you is starting soon.') :
+                                  'You have a new update on Orbyt.',
+                            icon: (t === 'profile_view' || t === 'crossed_paths' || t === 'meetup_reminder') ? undefined : data.notification.fromPhoto,
+                            url: (t === 'profile_view' || t === 'crossed_paths' || t === 'meetup_reminder')
+                                ? (data.notification.postId ? `/app/post/${data.notification.postId}` : '/app/notifications')
+                                : (t === 'vibe_wave' || t === 'vibe_check' || t === 'orbit_collision')
                                 ? `/app/profile/${data.notification.fromUid}`
                                 : data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
                             type: 'notification',
