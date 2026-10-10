@@ -213,16 +213,6 @@ export const api = {
         });
       } catch (e) { }
     },
-    getViewers: async (uid: string) => {
-      try {
-        const response = await authFetch(`${API_BASE}/profile/views/${uid}`);
-        if (!response?.ok) return [];
-        return await response.json();
-      } catch (e) {
-        console.error("Failed to fetch profile viewers:", e);
-        return [];
-      }
-    },
   },
 
   userAction: {

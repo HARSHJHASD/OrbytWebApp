@@ -22,8 +22,8 @@ const NEARBY_INITIAL_DELAY_MS = 15 * 1000;            // 15 seconds after mount
 const KNOWN_NOTIFICATION_TYPES = [
     'friend_request', 'friend_accept', 'like', 'comment',
     'meetup_request', 'meetup_accept', 'friend_post', 'friend_event', 'new_event', 'announcement',
-    'profile_view', 'meetup_reminder', 'crossed_paths',
-    'vibe_wave', 'vibe_check', 'orbit_collision',
+    // Removed types (profile views, "nearby" nudges, orbit collisions) are ignored.
+    'crossed_paths', 'vibe_wave', 'vibe_check',
 ] as const;
 
 // Only check during times when metro-city users are typically free:
@@ -53,7 +53,6 @@ interface NotificationContextType {
     clearUnreadMessages: () => void;
     clearUnreadRooms: () => void;
     showToast: (message: string, type?: 'error' | 'success' | 'info') => void;
-    activeCollision: any | null;
 }
 
 const NotificationContext = createContext<NotificationContextType>({
@@ -67,7 +66,6 @@ const NotificationContext = createContext<NotificationContextType>({
     clearUnreadMessages: () => { },
     clearUnreadRooms: () => { },
     showToast: () => { },
-    activeCollision: null,
 });
 
 let globalToastHandler: ((message: string, type: 'error' | 'success' | 'info') => void) | null = null;
@@ -80,6 +78,29 @@ export const showGlobalToast = (message: string, type: 'error' | 'success' | 'in
     }
 };
 
+// Title/body/link for an in-app pop-up. Plain, warm wording that matches the server's
+// pushes (it has to translate well). Crossed paths is anonymous on purpose.
+function describeNotification(n: any): { title: string; body: string; url: string; anonymous: boolean } {
+    const name = n.fromName || 'Someone';
+    const post = n.postId ? `/app/post/${n.postId}` : '/app/notifications';
+    const profile = n.fromUid ? `/app/profile/${n.fromUid}` : '/app/notifications';
+    switch (n.type) {
+        case 'like': return { title: '❤️ New like', body: `${name} liked your post.`, url: post, anonymous: false };
+        case 'comment': return { title: '💬 New comment', body: `${name} commented on your post.`, url: post, anonymous: false };
+        case 'friend_request': return { title: '👋 New connection request', body: `${name} wants to connect with you.`, url: profile, anonymous: false };
+        case 'friend_accept': return { title: "🎉 You're connected", body: `${name} accepted your connection request.`, url: profile, anonymous: false };
+        case 'meetup_request': return { title: '🙋 Someone wants to join', body: `${name} asked to join your plan.`, url: post, anonymous: false };
+        case 'meetup_accept': return { title: "✅ You're in!", body: `${name} accepted your request. See you there!`, url: n.postId ? `/app/chat/group/${n.postId}` : '/app/notifications', anonymous: false };
+        case 'friend_post': return { title: `📸 New post from ${name}`, body: 'Tap to see what they shared.', url: '/app', anonymous: false };
+        case 'friend_event': return { title: `📅 ${name} made a plan`, body: 'Tap to see the details.', url: post, anonymous: false };
+        case 'new_event': return { title: '📍 New plan near you', body: `${name} is hosting a plan nearby.`, url: '/app?tab=meetup', anonymous: false };
+        case 'vibe_wave': return { title: '👋 Someone waved', body: `${name} waved at you. Wave back?`, url: profile, anonymous: false };
+        case 'vibe_check': return { title: "🎉 It's a match", body: `${name} waved back.`, url: profile, anonymous: false };
+        case 'crossed_paths': return { title: '👣 You crossed paths', body: 'You passed someone with similar interests. Say hello next time!', url: '/app/notifications', anonymous: true };
+        default: return { title: 'Orbyt', body: 'You have a new update on Orbyt.', url: '/app/notifications', anonymous: true };
+    }
+}
+
 export const useNotifications = () => useContext(NotificationContext);
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -89,7 +110,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const [toasts, setToasts] = useState<Toast[]>([]);
     const [unreadMessages, setUnreadMessages] = useState(0);
     const [unreadRooms, setUnreadRooms] = useState(0);
-    const [activeCollision, setActiveCollision] = useState<any | null>(null);
     const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const lastNearbyUidsRef = useRef<Set<string>>(new Set());
 
@@ -134,19 +154,6 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         if (!p.lastLocation?.lat || !p.lastLocation?.lng) return false;
                         return haversineKm(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <= radius;
                     });
-
-                    // Orbit Collision Check (within 20m = 0.02km)
-                    if (myProfile?.liveStatusMode) {
-                        const collisions = nearbyUsers.filter((p: any) => {
-                            if (!p.liveStatusMode || p.liveStatusMode !== myProfile.liveStatusMode) return false;
-                            return haversineKm(lat, lng, p.lastLocation.lat, p.lastLocation.lng) <= 0.02;
-                        });
-                        if (collisions.length > 0 && !activeCollision) {
-                            setActiveCollision(collisions[0]);
-                            // Auto-clear after 5 minutes
-                            setTimeout(() => setActiveCollision(null), 5 * 60 * 1000);
-                        }
-                    }
 
                     const newPeople = nearbyUsers.filter((p: any) => !lastNearbyUidsRef.current.has(p.uid));
                     lastNearbyUidsRef.current = new Set(nearbyUsers.map((p: any) => p.uid as string));
@@ -242,50 +249,13 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                             type: 'notification',
                         });
                     } else {
-                        const t = data.notification.type;
+                        const n = data.notification;
+                        const { title, body, url, anonymous } = describeNotification(n);
                         addToast({
-                            title: t === 'friend_post'
-                                ? `📸 ${data.notification.fromName} graced the feed`
-                                : t === 'friend_event'
-                                ? `🎉 ${data.notification.fromName} allegedly has a plan`
-                                : t === 'new_event'
-                                ? `🔥 Someone nearby made plans. No pressure.`
-                                : t === 'vibe_wave'
-                                ? `⚡️ Vibe Check: Someone's near!`
-                                : t === 'vibe_check'
-                                ? `🔥 Vibe Confirmed!`
-                                : t === 'orbit_collision'
-                                ? `☄️ Orbit Collision Detected`
-                                : t === 'profile_view'
-                                ? `👀 Someone's curious!`
-                                : t === 'crossed_paths'
-                                ? `👣 You crossed paths!`
-                                : t === 'meetup_reminder'
-                                ? `⏰ Heads up`
-                                : (data.notification.fromName || 'Orbyt'),
-                            body: t === 'like' ? 'actually noticed your post. wild, right?' :
-                                  t === 'comment' ? 'had thoughts. they couldn\'t help themselves.' :
-                                  t === 'friend_request' ? 'slid into your orbit' :
-                                  t === 'friend_accept' ? '🎉 mutual obsession confirmed!' :
-                                  t === 'meetup_request' ? 'wants in on your gathering. the audacity.' :
-                                  t === 'meetup_accept' ? '✅ fine, you can come. don\'t be weird about it.' :
-                                  t === 'vibe_wave' ? `${data.notification.fromName} sent a wave. Click to reach back.` :
-                                  t === 'vibe_check' ? `${data.notification.fromName} caught your wave. It's a match.` :
-                                  t === 'orbit_collision' ? `You just intersected paths with ${data.notification.fromName}!` :
-                                  t === 'friend_post' ? 'blessed the feed. priorities, obviously.' :
-                                  t === 'friend_event' ? 'planned something. probably involves leaving the house.' :
-                                  t === 'new_event' ? `${data.notification.fromName} made plans nearby. your couch won\'t miss you.` :
-                                  // Anonymous on purpose: never name the viewer / passer-by.
-                                  t === 'profile_view' ? 'Someone with matching interests opened your profile.' :
-                                  t === 'crossed_paths' ? 'You just passed someone with similar interests.' :
-                                  t === 'meetup_reminder' ? (data.notification.message ? `Someone ${data.notification.message}` : 'A plan near you is starting soon.') :
-                                  'You have a new update on Orbyt.',
-                            icon: (t === 'profile_view' || t === 'crossed_paths' || t === 'meetup_reminder') ? undefined : data.notification.fromPhoto,
-                            url: (t === 'profile_view' || t === 'crossed_paths' || t === 'meetup_reminder')
-                                ? (data.notification.postId ? `/app/post/${data.notification.postId}` : '/app/notifications')
-                                : (t === 'vibe_wave' || t === 'vibe_check' || t === 'orbit_collision')
-                                ? `/app/profile/${data.notification.fromUid}`
-                                : data.notification.postId ? `/app/post/${data.notification.postId}` : `/app/profile/${data.notification.fromUid}`,
+                            title,
+                            body,
+                            icon: anonymous ? undefined : n.fromPhoto,
+                            url,
                             type: 'notification',
                         });
                     }
@@ -344,7 +314,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     }, []);
 
     return (
-        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms, showToast, activeCollision }}>
+        <NotificationContext.Provider value={{ notifications, unreadCount, unreadMessages, unreadRooms, markRead, markAllRead, addNotification, clearUnreadMessages, clearUnreadRooms, showToast }}>
             {children}
             
             {/* Toast Container */}

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone, Eye, MapPin, Clock, Hand } from 'lucide-react';
+import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone, MapPin, Hand } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
 
@@ -22,58 +22,42 @@ function timeAgo(ts: number): string {
 function getNotifMeta(type: Notification['type']) {
     switch (type) {
         case 'like':
-            return { icon: <Heart className="w-4 h-4" />, color: 'bg-red-500', label: 'actually noticed your post. mark your calendar.' };
+            return { icon: <Heart className="w-4 h-4" />, color: 'bg-red-500', label: 'liked your post.' };
         case 'comment':
-            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'had thoughts about your post. couldn\'t keep them in.' };
+            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-500', label: 'commented on your post.' };
         case 'friend_request':
-            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'slid into your orbit' };
+            return { icon: <UserPlus className="w-4 h-4" />, color: 'bg-purple-500', label: 'wants to connect with you.' };
         case 'friend_accept':
-            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: '🎉 mutual obsession officially confirmed' };
+            return { icon: <UserCheck className="w-4 h-4" />, color: 'bg-green-500', label: 'accepted your connection request.' };
         case 'meetup_request':
-            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'wants in on your little gathering 🙋' };
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-orange-500', label: 'asked to join your plan.' };
         case 'meetup_accept':
-            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: '✅ fine, you\'re allowed to come. see you there.' };
+            return { icon: <CalendarCheck className="w-4 h-4" />, color: 'bg-teal-500', label: 'accepted your request. See you there!' };
         case 'friend_post':
-            return { icon: <Zap className="w-4 h-4" />, color: 'bg-yellow-500', label: 'blessed the feed with their presence. don\'t act too excited.' };
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-yellow-500', label: 'shared a new post.' };
         case 'friend_event':
-            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'planned something. could be great, could be terrible.' };
+            return { icon: <Calendar className="w-4 h-4" />, color: 'bg-pink-500', label: 'made a new plan.' };
         case 'new_event':
-            return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'created an event nearby. social obligations incoming 🔥' };
+            return { icon: <Zap className="w-4 h-4" />, color: 'bg-red-600', label: 'is hosting a plan near you.' };
         case 'announcement':
             return { icon: <Megaphone className="w-4 h-4" />, color: 'bg-violet-600', label: '' };
         case 'message':
-            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-600', label: 'sent you a message' };
-        case 'profile_view':
-            return { icon: <Eye className="w-4 h-4" />, color: 'bg-blue-500', label: 'with matching interests opened your profile.' };
+            return { icon: <MessageCircle className="w-4 h-4" />, color: 'bg-blue-600', label: 'sent you a message.' };
         case 'crossed_paths':
             return { icon: <MapPin className="w-4 h-4" />, color: 'bg-emerald-500', label: 'who shares your interests crossed paths with you.' };
-        case 'meetup_reminder':
-            return { icon: <Clock className="w-4 h-4" />, color: 'bg-orange-500', label: 'A plan near you is starting soon.' };
         case 'vibe_wave':
-            return { icon: <Hand className="w-4 h-4" />, color: 'bg-rose-500', label: 'sent you a wave. Wave back?' };
+            return { icon: <Hand className="w-4 h-4" />, color: 'bg-rose-500', label: 'waved at you. Wave back?' };
         case 'vibe_check':
             return { icon: <Zap className="w-4 h-4" />, color: 'bg-rose-500', label: "waved back. It's a match!" };
-        case 'orbit_collision':
-            return { icon: <MapPin className="w-4 h-4" />, color: 'bg-orange-500', label: 'is right near you!' };
         default:
             return { icon: <Bell className="w-4 h-4" />, color: 'bg-slate-500', label: 'sent you an update.' };
     }
 }
 
-// Who the sentence is about, and what it says. Profile views, crossed paths and
-// "someone nearby" nudges are anonymous on purpose, so they never show a name.
-// The server sometimes sends a ready-made phrase in `message` that follows "Someone".
+// Who the sentence is about, and what it says. Crossed paths is anonymous on purpose.
 function notifSentence(n: Notification, label: string): { actor: string | null; text: string } {
-    const msg = (n as any).message as string | undefined;
-    switch (n.type) {
-        case 'profile_view':
-        case 'crossed_paths':
-            return { actor: 'Someone', text: msg || label };
-        case 'meetup_reminder':
-            return msg ? { actor: 'Someone', text: msg } : { actor: null, text: label };
-        default:
-            return n.fromName ? { actor: n.fromName, text: label } : { actor: null, text: msg || 'You have a new update on Orbyt.' };
-    }
+    if (n.type === 'crossed_paths') return { actor: 'Someone', text: label };
+    return n.fromName ? { actor: n.fromName, text: label } : { actor: null, text: n.message || 'You have a new update on Orbyt.' };
 }
 
 function getNotifLink(n: Notification): string {
@@ -98,10 +82,7 @@ function getNotifLink(n: Notification): string {
             return `/app/chat/${n.fromUid}`;
         case 'vibe_wave':
         case 'vibe_check':
-        case 'orbit_collision':
             return n.fromUid ? `/app/profile/${n.fromUid}` : `/app/notifications`;
-        case 'meetup_reminder':
-            return n.postId ? `/app/post/${n.postId}` : `/app/notifications`;
         default:
             return `/app/notifications`;
     }

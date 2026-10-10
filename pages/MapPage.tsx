@@ -4,12 +4,11 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import "leaflet/dist/leaflet.css";
 import { Check, ChevronRight, Instagram, Loader2, LocateFixed, MessageCircle, RefreshCw, Search, Sparkles, User, UserPlus, X, MapPin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Circle, MapContainer, Marker, Polyline, CircleMarker, TileLayer, useMap } from "react-leaflet";
+import { Circle, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-markercluster";
 import { useNavigate } from "react-router-dom";
 import { useUserLocation } from "../components/LocationGuard";
 import { useAuth } from "../context/AuthContext";
-import { useNotifications } from "../context/NotificationContext";
 import VibeModal from "../components/VibeModal";
 import { api } from "../services/api";
 import { POPULAR_INTERESTS, UserProfile } from "../types";
@@ -85,7 +84,6 @@ const MapPage: React.FC = () => {
   const { location: myLocation } = useUserLocation();
   const { user: currentUser } = useAuth();
   const { isDark } = useTheme();
-  const { activeCollision } = useNotifications();
   const [currentUserProfile, setCurrentUserProfile] =
     useState<UserProfile | null>(null);
   const navigate = useNavigate();
@@ -312,31 +310,6 @@ const MapPage: React.FC = () => {
           }}
         />
 
-        {/* Ghost Path for active Orbit Collision */}
-        {activeCollision?.lastLocation && (
-          <>
-            <Polyline
-              positions={[
-                [myLocation.lat, myLocation.lng],
-                [
-                  (myLocation.lat + activeCollision.lastLocation.lat) / 2,
-                  (myLocation.lng + activeCollision.lastLocation.lng) / 2,
-                ],
-                [activeCollision.lastLocation.lat, activeCollision.lastLocation.lng],
-              ]}
-              pathOptions={{ color: '#ff4b2b', weight: 2, dashArray: '6, 10', opacity: 0.85 }}
-            />
-            <CircleMarker
-              center={[
-                (myLocation.lat + activeCollision.lastLocation.lat) / 2,
-                (myLocation.lng + activeCollision.lastLocation.lng) / 2,
-              ]}
-              radius={8}
-              pathOptions={{ color: '#ff4b2b', fillColor: '#ff4b2b', fillOpacity: 1, weight: 2 }}
-            />
-          </>
-        )}
-
         <Marker position={[myLocation.lat, myLocation.lng]} icon={myIcon} />
 
         <MarkerClusterGroup chunkedLoading>
@@ -460,21 +433,6 @@ const MapPage: React.FC = () => {
           <RefreshCw className="w-3 h-3" />
         </button>
       </div>
-
-      {/* Time-to-Intersect Banner */}
-      {activeCollision?.lastLocation && myLocation && (
-        <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1001] bg-black/85 backdrop-blur-sm border border-red-500/60 rounded-2xl px-4 py-2 flex flex-col items-center shadow-xl">
-          <span className="text-red-500 text-[9px] font-black tracking-[0.15em] uppercase">Time to Intersect</span>
-          <span className="text-white text-sm font-bold">
-            {Math.max(1, Math.round(
-              Math.sqrt(
-                Math.pow((myLocation.lat - activeCollision.lastLocation.lat) * 111, 2) +
-                Math.pow((myLocation.lng - activeCollision.lastLocation.lng) * 111 * Math.cos(myLocation.lat * Math.PI / 180), 2)
-              ) * 1000 / 2 / 1.4 / 60
-            ))} min to meet
-          </span>
-        </div>
-      )}
 
       {/* BOTTOM DRAWER */}
       {isListOpen && (

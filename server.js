@@ -891,6 +891,8 @@ function notificationUrls(type, fromUid, postId, groupId) {
   }
 }
 
+const REMOVED_NOTIFICATION_TYPES = ["profile_view", "meetup_reminder", "orbit_collision"];
+
 async function createNotification(
   type,
   fromUid,
@@ -899,6 +901,9 @@ async function createNotification(
   extra = {},
 ) {
   if (!db || fromUid === toUid) return;
+  // Removed features: profile-view alerts, fake-urgency "nearby" nudges and 20 m
+  // orbit-collision alerts. Never create these, whatever calls this.
+  if (REMOVED_NOTIFICATION_TYPES.includes(type)) return;
   try {
     const notifications = db.collection("notifications");
     const profiles = db.collection("profiles");
@@ -938,87 +943,64 @@ async function createNotification(
       notification: { ...notifDoc, _id: notifResult.insertedId },
     });
 
-    let title = "New Notification";
-    let body = "You have a new notification on Orbyt.";
-    const name = sender.displayName;
+    // Plain, warm wording that translates well. No invented urgency or scarcity:
+    // only say "spots left" etc. when it's actually true.
+    let title = "Orbyt";
+    let body = "You have a new update on Orbyt.";
+    const name = sender.displayName || "Someone";
 
     switch (type) {
       case "like":
-        title = "❤️ New Like!";
+        title = "❤️ New like";
         body = `${name} liked your post.`;
         break;
       case "comment":
-        title = "💬 New Comment!";
+        title = "💬 New comment";
         body = `${name} commented on your post.`;
         break;
       case "friend_request":
-        title = "💛 Someone likes you!";
+        title = "👋 New connection request";
         body = `${name} wants to connect with you.`;
         break;
       case "friend_accept":
-        title = "🎉 It's a match!";
-        body = `${name} connected with you! You're now connected.`;
+        title = "🎉 You're connected";
+        body = `${name} accepted your connection request.`;
         break;
       case "meetup_request":
-        title = "🙋 Meetup Request";
-        body = `${name} wants to join your meetup. Accept them?`;
+        title = "🙋 Someone wants to join";
+        body = `${name} asked to join your plan.`;
         break;
       case "meetup_accept":
         title = "✅ You're in!";
-        body = `${name} accepted your request. See you at the meetup!`;
+        body = `${name} accepted your request. See you there!`;
         break;
       case "friend_post":
-        title = `📸 ${name} just dropped something!`;
-        body = `New post from your connection. Don't miss the vibe 🔥`;
+        title = `📸 New post from ${name}`;
+        body = "Tap to see what they shared.";
         break;
       case "friend_event":
-        title = `🎉 ${name} is planning something fun!`;
-        body = extra.eventTitle
-          ? `"${extra.eventTitle}" just dropped. Only a few spots left—grab yours! 🏃‍♂️`
-          : `A new event just dropped. Only a few spots left—grab yours! 🏃‍♂️`;
+        title = `📅 ${name} made a plan`;
+        body = extra.eventTitle ? `"${extra.eventTitle}" — tap to see the details.` : "Tap to see the details.";
         break;
       case "new_event":
-        title = `🔥 Hot new event near you!`;
-        body = extra.eventTitle
-          ? `${name} is hosting "${extra.eventTitle}". Don't sleep on this—filling up fast! ⚡`
-          : `${name} just created a new event. Don't sleep on this—filling up fast! ⚡`;
+        title = "📍 New plan near you";
+        body = extra.eventTitle ? `${name} is hosting "${extra.eventTitle}".` : `${name} is hosting a plan nearby.`;
         break;
       case "room_message":
-        title = `💬 ${extra.groupTitle || "Room Activity"}`;
+        title = `💬 ${extra.groupTitle || "Room"}`;
         body = `${name}: ${extra.message || "sent a message"}`;
         break;
-      case "profile_view":
-        const matchPct = extra.matchPct || 0;
-        title = "👀 Someone's curious!";
-        body = `Someone with ${matchPct}% matching interests opened your profile today.`;
-        break;
-      case "meetup_reminder":
-        if (!extra.eventTitle && extra.message) {
-          // Profile-view "high match" nudge: no event attached, the text is in `message`.
-          title = "✨ A strong match checked you out";
-          body = `Someone ${extra.message}`;
-          break;
-        }
-        const timeLeft = extra.timeLeft || "soon";
-        const spotsLeft = extra.spotsLeft !== undefined ? `${extra.spotsLeft} spots left` : "last few spots";
-        title = `⏰ ${extra.eventTitle || "Event"} starting soon!`;
-        body = `${extra.eventTitle || "Event"} starts in ${timeLeft}. ${spotsLeft}. Grab your spot!`;
-        break;
       case "crossed_paths":
-        title = "👣 You crossed paths!";
-        body = `You just passed someone who also loves ${extra.interestLabel || "the same things"}. Next time, say hello!`;
+        title = "👣 You crossed paths";
+        body = `You passed someone who also likes ${extra.interestLabel || "the same things"}. Say hello next time!`;
         break;
       case "vibe_wave":
-        title = "⚡️ Vibe Check: Someone's near!";
-        body = `${name} sent a wave. Tap to reach back.`;
+        title = "👋 Someone waved";
+        body = `${name} waved at you. Wave back?`;
         break;
       case "vibe_check":
-        title = "🔥 Vibe Confirmed!";
-        body = `${name} caught your wave. It's a match.`;
-        break;
-      case "orbit_collision":
-        title = "☄️ Orbit Collision Detected";
-        body = `You just intersected paths with ${name}!`;
+        title = "🎉 It's a match";
+        body = `${name} waved back.`;
         break;
     }
 
@@ -1597,94 +1579,24 @@ function getPublicCellKey(lat, lng) {
 
 // --- API ROUTES ---
 
+// Profile-view tracking has been removed: views are no longer stored and nobody is
+// notified. The route stays so older app versions that still call it don't error.
+// It only keeps the "Small World" quest working (view someone you crossed paths with).
 app.post("/api/profile/view", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { targetUid } = req.body;
+    const { targetUid } = req.body || {};
     const viewerUid = req.authUid;
     if (!viewerUid || !isUid(targetUid) || viewerUid === targetUid) {
       return res.status(400).json({ error: "Invalid uids" });
     }
-
-    const profileViews = db.collection("profile_views");
-    const profiles = db.collection("profiles");
-
-    const lastView = await profileViews.findOne({ viewerUid, targetUid });
-    const now = Date.now();
-    const isNewDay = !lastView || now - lastView.timestamp > 24 * 60 * 60 * 1000;
-
-    await profileViews.updateOne(
-      { viewerUid, targetUid },
-      { $set: { timestamp: now } },
-      { upsert: true },
-    );
-
-    // Trigger notification if it's the first view today
-    if (isNewDay) {
-      const viewer = await profiles.findOne({ uid: viewerUid });
-      const target = await profiles.findOne({ uid: targetUid });
-
-      if (viewer && target) {
-        const vInterests = viewer.interests || [];
-        const tInterests = target.interests || [];
-
-        let matchPct = 0;
-        if (vInterests.length > 0 && tInterests.length > 0) {
-          const overlap = vInterests.filter(i => tInterests.includes(i)).length;
-          const total = new Set([...vInterests, ...tInterests]).size;
-          matchPct = Math.round((overlap / (total || 1)) * 100);
-
-          // Boost logic for psychological impact
-          if (overlap > 0 && matchPct < 75) {
-            matchPct = 75 + (overlap * 2);
-          }
-        } else {
-          // Stable fallback match percentage based on UIDs
-          const combined = viewerUid + targetUid;
-          let hash = 0;
-          for (let i = 0; i < combined.length; i++) {
-            hash = ((hash << 5) - hash) + combined.charCodeAt(i);
-            hash |= 0;
-          }
-          matchPct = 60 + (Math.abs(hash) % 30);
-        }
-
-        if (matchPct > 99) matchPct = 99;
-
-        await createNotification("profile_view", viewerUid, targetUid, null, {
-          matchPct,
-          message: `with ${matchPct}% matching interests opened your profile today.`
-        });
-
-        // Quest: Small World (view someone crossed paths with)
-        // Check if there was a crossed_paths between them in last 24h
-        const pathMatch = await db.collection("notifications").findOne({
-          toUid: viewerUid,
-          fromUid: targetUid,
-          type: 'crossed_paths',
-          createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 }
-        });
-        if (pathMatch) {
-          await updateQuestProgress(viewerUid, 'crossed_paths');
-        }
-
-        // Logic for Feature 2: Time-Limited Urgency
-        // If they are a very high match, send a "Scarcity" notification
-        if (matchPct > 85) {
-          const scarcityMsgs = [
-            `is nearby but won't be for long! Say hi now.`,
-            `is just around the corner! Don't miss the chance to connect.`,
-            `is in your radius. This session expires soon!`
-          ];
-          const msg = scarcityMsgs[Math.floor(Math.random() * scarcityMsgs.length)];
-          await createNotification("meetup_reminder", viewerUid, targetUid, null, {
-            message: msg,
-            urgency: 'high'
-          });
-        }
-      }
-    }
-
+    const pathMatch = await db.collection("notifications").findOne({
+      toUid: viewerUid,
+      fromUid: targetUid,
+      type: "crossed_paths",
+      createdAt: { $gt: Date.now() - 24 * 60 * 60 * 1000 },
+    });
+    if (pathMatch) await updateQuestProgress(viewerUid, "crossed_paths");
     res.json({ success: true });
   } catch (error) {
     console.error("Record view error:", error);
@@ -1692,39 +1604,9 @@ app.post("/api/profile/view", async (req, res) => {
   }
 });
 
-app.get("/api/profile/views/:uid", selfParam("uid"), async (req, res) => {
-  if (!db) return res.status(503).json({ error: "Database not connected" });
-  try {
-    const { uid } = req.params;
-    const profileViews = db.collection("profile_views");
-    const profiles = db.collection("profiles");
-
-    const views = await profileViews
-      .find({ targetUid: uid })
-      .sort({ timestamp: -1 })
-      .limit(20)
-      .toArray();
-
-    if (views.length === 0) return res.json([]);
-
-    const viewerUids = views.map((v) => v.viewerUid);
-    const viewerProfiles = await profiles
-      .find({ uid: { $in: viewerUids } })
-      .project({ uid: 1, displayName: 1, photoURL: 1 })
-      .toArray();
-
-    const result = views
-      .map((v) => {
-        const profile = viewerProfiles.find((p) => p.uid === v.viewerUid);
-        return profile ? { ...profile, viewedAt: v.timestamp } : null;
-      })
-      .filter((p) => p !== null);
-
-    res.json(result);
-  } catch (error) {
-    console.error("Get views error:", error);
-    res.status(500).json({ error: "Failed to fetch profile views" });
-  }
+// Removed feature: always empty. Kept so older app versions don't break.
+app.get("/api/profile/views/:uid", selfParam("uid"), (req, res) => {
+  res.json([]);
 });
 
 // Default route to check server status
@@ -3472,7 +3354,7 @@ app.get("/api/notifications/:uid", selfParam("uid"), async (req, res) => {
   try {
     const notifications = db.collection("notifications");
     const list = await notifications
-      .find({ toUid: req.params.uid })
+      .find({ toUid: req.params.uid, type: { $nin: REMOVED_NOTIFICATION_TYPES } })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray();
@@ -3528,6 +3410,7 @@ app.get("/api/notifications/unread-count/:uid", selfParam("uid"), async (req, re
     const count = await notifications.countDocuments({
       toUid: req.params.uid,
       read: false,
+      type: { $nin: REMOVED_NOTIFICATION_TYPES },
     });
     res.json({ count });
   } catch (error) {
@@ -3687,7 +3570,7 @@ async function sendPushNotification(
             .countDocuments({ toUid: receiverUid, read: false }),
           db
             .collection("notifications")
-            .countDocuments({ toUid: receiverUid, read: false }),
+            .countDocuments({ toUid: receiverUid, read: false, type: { $nin: REMOVED_NOTIFICATION_TYPES } }),
         ]);
         const totalBadge = msgCount + notifCount;
 
