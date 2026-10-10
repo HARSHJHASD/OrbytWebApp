@@ -125,7 +125,7 @@ const Layout: React.FC = () => {
   };
 
   const content = React.useMemo(() => (
-    <div className={`flex flex-col min-h-[100dvh] bg-slate-950 ${isDesktop ? 'h-[820px]' : ''} overflow-hidden`}>
+    <div className={`app-shell flex flex-col min-h-[100dvh] bg-slate-950 ${isDesktop ? 'h-[820px]' : ''} overflow-hidden`}>
       {/* Desktop Top Navigation */}
       {/* <div className="hidden md:flex sticky top-0 z-[3000] bg-slate-900/80 backdrop-blur-xl border-b border-slate-800 items-center justify-between px-8 h-16">
         <div className="flex items-center cursor-pointer group" onClick={() => navigate('/')}>
@@ -150,7 +150,7 @@ const Layout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto" style={{ 
+      <div className="flex-1 overflow-y-auto no-scrollbar" style={{ 
         paddingBottom: isDesktop ? 88 : 'calc(6rem + env(safe-area-inset-bottom))' 
       }}>
         <Outlet />

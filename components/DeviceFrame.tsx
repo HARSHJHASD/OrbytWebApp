@@ -7,7 +7,7 @@ interface DeviceFrameProps {
 
 const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 md:p-8 overflow-hidden relative">
+    <div className="h-[100dvh] bg-slate-950 flex items-center justify-center p-4 md:p-6 overflow-hidden relative">
       {/* Soft background glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none select-none">
         <div className="absolute left-1/2 top-1/2 h-[70vh] w-[70vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-600/10 blur-[140px]" />
@@ -23,7 +23,7 @@ const DeviceFrame: React.FC<DeviceFrameProps> = ({ children }) => {
       </a>
 
       {/* The Device Frame - Resized slightly smaller */}
-      <div className="relative z-10 w-full max-w-[380px] aspect-[9/19.5] max-h-[820px] bg-slate-950 rounded-[3rem] border-[8px] border-slate-800 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] flex flex-col overflow-hidden group" style={{ willChange: 'transform' }}>
+      <div className="relative z-10 w-full max-w-[380px] aspect-[9/19.5] max-h-[min(820px,calc(100dvh-3rem))] bg-slate-950 rounded-[3rem] border-[8px] border-slate-800 shadow-[0_40px_120px_-30px_rgba(0,0,0,0.9),0_0_0_1px_rgba(255,255,255,0.06)] flex flex-col overflow-hidden group" style={{ willChange: 'transform' }}>
         
         {/* Antenna Lines & Buttons (Aesthetic) */}
         <div className="absolute -left-[10px] top-24 w-[2px] h-12 bg-slate-700 rounded-r-lg" />

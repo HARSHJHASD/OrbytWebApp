@@ -424,7 +424,7 @@ const PostItem: React.FC<any> = ({
               )}
             </div>
 
-            <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-4 border-t border-slate-200 dark:border-slate-700/50 pt-3">
+            <p className="post-text text-slate-600 dark:text-slate-400 text-sm leading-relaxed mb-4 border-t border-slate-200 dark:border-slate-700/50 pt-3">
               {post?.content}
             </p>
 
@@ -509,7 +509,7 @@ const PostItem: React.FC<any> = ({
             </div>
           )}
           <div className="p-4">
-            <p className="text-slate-700 dark:text-slate-200 text-[15px] leading-relaxed mb-1">
+            <p className="post-text text-slate-700 dark:text-slate-200 text-[15px] leading-relaxed mb-1">
               {post?.content}
             </p>
           </div>
@@ -603,7 +603,7 @@ const PostItem: React.FC<any> = ({
                         <Link to={`/app/profile/${comment?.uid}`} className="font-bold text-slate-900 dark:text-slate-200 text-xs mr-2 hover:text-primary-500 transition-colors inline-block mb-0.5">
                           {comment?.authorName}
                         </Link>
-                        <span className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{comment?.text}</span>
+                        <span className="post-text text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{comment?.text}</span>
                       </div>
                       <div className="flex items-center gap-3 mt-1 ml-2">
                         <button onClick={() => handleReply(comment)} className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-primary-500 transition-colors">

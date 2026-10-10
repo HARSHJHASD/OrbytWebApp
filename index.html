@@ -95,6 +95,27 @@
     /* Firefox */
   }
 
+  /* Show posts and comments exactly as written: keep line breaks, blank lines,
+     indentation and tabs, and wrap long words/links instead of overflowing. */
+  .post-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    tab-size: 4;
+  }
+
+  /* Inside the app (feed, map, chat...) scroll areas behave like a native app:
+     scrollable, but without a visible scrollbar. */
+  .app-shell,
+  .app-shell * {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .app-shell::-webkit-scrollbar,
+  .app-shell *::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Native mobile app behavior */
   body {
     overscroll-behavior-y: none;
