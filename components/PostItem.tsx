@@ -26,6 +26,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useUserLocation } from "./LocationGuard";
 import { api } from "../services/api";
 import { calculateDistance } from "../util/location";
+import { timeAgo } from "../util/formatTime";
 
 const REACTIONS = ['❤️','😂','😮','🔥','👏'];
 const REPORT_REASONS = ['Spam','Harassment','Misinformation','Nudity / Sexual content','Hate speech','Other'];
@@ -206,19 +207,19 @@ const PostItem: React.FC<any> = ({
 
   return (
     <div
-      className={`bg-white dark:bg-slate-900 rounded-3xl shadow-sm border overflow-hidden relative transition-colors duration-300 ${isMeetup ? "border-primary-900/50" : "border-slate-200 dark:border-slate-800"}`}
+      className={`bg-white dark:bg-slate-900 rounded-[28px] shadow-sm dark:shadow-[0_18px_40px_-28px_rgba(0,0,0,0.9)] border overflow-hidden relative transition-colors duration-300 ${isMeetup ? "border-primary-500/25" : "border-slate-200 dark:border-white/[0.06]"}`}
     >
       {/* Pinned Badge */}
       {post?.isPinned && (
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[10px] font-bold px-3 py-1 rounded-b-xl z-10 uppercase tracking-wide flex items-center gap-1 shadow-sm">
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-amber-500/15 text-amber-300 text-[11px] font-semibold px-3 py-1 rounded-full z-10 flex items-center gap-1 border border-amber-400/25">
           📌 Pinned
         </div>
       )}
 
       {/* Meetup Badge */}
       {isMeetup && (
-        <div className="absolute top-0 right-0 bg-primary-600 text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl z-10 uppercase tracking-wide flex items-center gap-1">
-          <PartyPopper className="w-3 h-3" /> Meet Up
+        <div className="absolute top-3 right-3 bg-primary-500/15 text-primary-300 text-[11px] font-semibold px-2.5 py-1 rounded-full z-10 flex items-center gap-1 border border-primary-400/25">
+          <PartyPopper className="w-3 h-3" /> Meetup
         </div>
       )}
 
@@ -265,13 +266,13 @@ const PostItem: React.FC<any> = ({
                 {post?.authorName}
               </h3>
               {post?.authorBadgeTitle && (
-                <span className="bg-primary-500/10 text-primary-600 dark:text-primary-400 text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wide border border-primary-500/20">
+                <span className="bg-primary-500/10 text-primary-600 dark:text-primary-300 text-[10px] px-2 py-0.5 rounded-full font-semibold border border-primary-500/20">
                   {post.authorBadgeTitle}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-500">
-              <span>{new Date(post?.createdAt || 0).toLocaleDateString()}</span>
+              <span>{timeAgo(post?.createdAt)}</span>
               {post?.location && (
                 <>
                   <span>•</span>
@@ -289,7 +290,7 @@ const PostItem: React.FC<any> = ({
         <div className="flex items-center gap-1 shrink-0 ml-auto">
           {/* Distance Badge: Hidden on ultra-small screens to prioritize Edit/Delete, or displayed with better margins */}
           {distance && (
-            <div className="hidden xs:flex items-center gap-1 text-[10px] sm:text-xs font-black text-primary-400 bg-primary-500/10 px-2.5 py-1 rounded-lg border border-primary-500/20 mr-1 uppercase tracking-tighter">
+            <div className="hidden xs:flex items-center gap-1 text-[11px] sm:text-xs font-semibold text-primary-300 bg-primary-500/10 px-2.5 py-1 rounded-full border border-primary-500/20 mr-1">
               <Navigation className="w-3 h-3 fill-current" />
               <span>{distance}</span>
             </div>
@@ -371,14 +372,14 @@ const PostItem: React.FC<any> = ({
             </div>
           )}
 
-          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/50 relative overflow-hidden">
+          <div className="bg-slate-50 dark:bg-slate-800/40 rounded-[22px] p-4 border border-slate-200 dark:border-white/[0.06] relative overflow-hidden">
             {/* Decorative background circle */}
             <div className="absolute -right-10 -top-10 w-32 h-32 bg-primary-500/10 rounded-full blur-2xl"></div>
 
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-1">
+            <h2 className="font-display text-[22px] font-semibold leading-tight text-slate-900 dark:text-white mb-2">
               {post?.meetupDetails?.title}
             </h2>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-700/50 text-primary-400 text-xs font-bold mb-4 border border-slate-700">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary-500/10 text-primary-300 text-xs font-semibold mb-4 border border-primary-500/20">
               <PartyPopper className="w-3 h-3" /> {post?.meetupDetails?.activity}
             </div>
 
@@ -445,31 +446,31 @@ const PostItem: React.FC<any> = ({
                 {isAttendee ? (
                   <button
                     onClick={() => navigate(`/app/chat/group/${post?._id}`)}
-                    className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-500/20 active:scale-95"
+                    className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    Open Group Chat
+                    Open group chat
                   </button>
                 ) : isPending || requestSent ? (
                   <button
                     disabled
-                    className="w-full py-3 bg-slate-700 text-slate-400 rounded-xl font-bold text-sm flex items-center justify-center gap-2 cursor-not-allowed border border-slate-600"
+                    className="w-full py-3 bg-slate-800 text-slate-400 rounded-full font-semibold text-sm flex items-center justify-center gap-2 cursor-not-allowed border border-white/10"
                   >
                     <Clock className="w-4 h-4" />
-                    Request Pending
+                    Request sent
                   </button>
                 ) : (
                   <button
                     onClick={handleJoinRequest}
                     disabled={joinLoading}
-                    className="w-full py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-primary-500/20 active:scale-95"
+                    className="w-full py-3 bg-primary-500 hover:bg-primary-400 text-white rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-colors shadow-[0_10px_30px_-12px_rgba(79,124,255,0.8)] active:scale-[0.98]"
                   >
                     {joinLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <UserPlus className="w-4 h-4" />
                     )}
-                    Request to Join
+                    Ask to join
                   </button>
                 )}
               </>
@@ -477,16 +478,16 @@ const PostItem: React.FC<any> = ({
               <div className="flex flex-col gap-2">
                 <button
                   onClick={() => navigate(`/app/chat/group/${post?._id}`)}
-                  className="w-full py-3 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors shadow-lg shadow-green-500/20 active:scale-95"
+                  className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  Open Group Chat
+                  Open group chat
                 </button>
                 <button
                   onClick={() => navigate(`/app/post/${post?._id}`)}
-                  className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-colors border border-slate-600"
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-full font-semibold text-sm flex items-center justify-center gap-2 transition-colors border border-white/10"
                 >
-                  Manage Guests{" "}
+                  Manage guests{" "}
                   {post?.pendingRequests?.length
                     ? `(${post?.pendingRequests?.length})`
                     : ""}
@@ -499,7 +500,7 @@ const PostItem: React.FC<any> = ({
         /* REGULAR POST DESIGN */
         <>
           {post?.imageURL && (
-            <div className="w-full aspect-square bg-slate-950">
+            <div className="mx-3 aspect-[4/5] overflow-hidden rounded-[22px] bg-slate-950">
               <img
                 src={post?.imageURL}
                 alt="Post"
@@ -508,7 +509,7 @@ const PostItem: React.FC<any> = ({
             </div>
           )}
           <div className="p-4">
-            <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed mb-3">
+            <p className="text-slate-700 dark:text-slate-200 text-[15px] leading-relaxed mb-1">
               {post?.content}
             </p>
           </div>
@@ -518,23 +519,23 @@ const PostItem: React.FC<any> = ({
       {/* Common Footer Actions */}
       <div className="px-4 pb-4">
         <div
-          className={`flex items-center gap-4 pt-2 ${isMeetup ? "" : "border-t border-slate-100 dark:border-slate-800"}`}
+          className="flex items-center gap-4 pt-1"
         >
           {/* Like / Reaction button */}
           <div className="relative">
             <button
               onClick={() => onLike(post)}
               onContextMenu={(e) => { e.preventDefault(); setShowReactions(v => !v); }}
-              className={`flex items-center gap-1.5 transition-colors group py-2 select-none ${isLiked ? "text-primary-500" : "text-slate-500 hover:text-primary-500"}`}
+              className={`flex items-center gap-1.5 transition-colors group py-2 select-none ${isLiked ? "text-rose-500" : "text-slate-500 hover:text-rose-400"}`}
             >
               {reaction ? (
                 <span className="text-xl leading-none">{reaction}</span>
               ) : (
-                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current text-primary-500' : 'text-slate-500'}`} />
+                <Heart className={`w-5 h-5 ${isLiked ? 'fill-current text-rose-500' : 'text-slate-500'}`} />
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); openWhoLiked(); }}
-                className={`text-sm font-medium hover:underline ${isLiked ? 'text-primary-500' : 'text-slate-500'}`}
+                className={`text-sm font-medium hover:underline ${isLiked ? 'text-rose-400' : 'text-slate-500'}`}
               >
                 {post?.likes || 0}
               </button>
@@ -556,7 +557,7 @@ const PostItem: React.FC<any> = ({
             className={`flex items-center gap-1.5 transition-colors py-2 ${showAllComments ? "text-blue-400" : "text-slate-500 hover:text-blue-400"}`}
           >
             <MessageCircle
-              className={`w-6 h-6 ${showAllComments ? "fill-current" : ""}`}
+              className={`w-5 h-5 ${showAllComments ? "fill-current" : ""}`}
             />
             <span className="text-sm font-medium">{commentCount}</span>
           </button>

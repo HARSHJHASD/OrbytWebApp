@@ -624,7 +624,7 @@ const Feed: React.FC = () => {
 
       {/* Header */}
       <div
-        className="bg-slate-900/80 backdrop-blur-xl sticky top-0 z-30 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] border-b border-slate-800 flex justify-between items-center transition-transform duration-200 ease-out"
+        className="bg-slate-950/70 backdrop-blur-xl sticky top-0 z-30 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] border-b border-white/5 flex justify-between items-center transition-transform duration-200 ease-out"
         style={{ transform: `translateY(${pullY * 0.5}px)` }}
       >
         {/* <h1 className="text-xl font-bold text-white tracking-tight">Orbyt</h1> */}
@@ -633,7 +633,7 @@ const Feed: React.FC = () => {
             draggable={false}
             src={MainLogo}
             alt="Orbyt Logo"
-            className="h-10 w-auto object-contain group-hover:scale-105 transition-transform duration-200 drop-shadow-[0_0_8px_rgba(139,92,246,0.3)]"
+            className="h-8 w-auto object-contain"
           />
         </div>
 
@@ -641,7 +641,8 @@ const Feed: React.FC = () => {
           {/* Vibe Button */}
           <button
             onClick={() => setShowVibeModal(true)}
-            className="p-2 rounded-full hover:bg-slate-800 transition-colors text-violet-400 hover:text-violet-300"
+            aria-label="Send a vibe"
+            className="p-2 rounded-full hover:bg-rose-500/10 transition-colors text-rose-400 hover:text-rose-300"
           >
             <Sparkles className="w-6 h-6" />
           </button>
@@ -649,6 +650,7 @@ const Feed: React.FC = () => {
           {/* Settings Button */}
           <button
             onClick={() => navigate("/app/settings")}
+            aria-label="Settings"
             className="p-2 rounded-full hover:bg-slate-800 transition-colors text-slate-400 hover:text-white"
           >
             <Settings className="w-6 h-6" />
@@ -657,6 +659,7 @@ const Feed: React.FC = () => {
           {/* Notification Bell */}
           <button
             onClick={() => navigate("/app/notifications")}
+            aria-label="Notifications"
             className="relative p-2 rounded-full hover:bg-slate-800 transition-colors"
           >
             <Bell className="w-6 h-6 text-slate-400" />
@@ -716,13 +719,13 @@ const Feed: React.FC = () => {
 
         {/* Search Bar */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search posts, events, people…"
-            className="w-full bg-slate-900 border border-slate-800 rounded-2xl pl-9 pr-9 py-2.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500/60 transition-colors"
+            className="w-full bg-slate-900 border border-white/[0.06] rounded-full pl-10 pr-10 py-3 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500/60 transition-colors"
           />
           {searchQuery && (
             <button
@@ -736,10 +739,10 @@ const Feed: React.FC = () => {
 
         {/* Tabs Navigation */}
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xl font-bold text-white pl-1">
-            {activeTab === "regular" ? "Recent Posts" : "Upcoming Meetups"}
+          <h2 className="font-display text-2xl font-semibold tracking-[-0.01em] text-white pl-1">
+            {activeTab === "regular" ? "Around you" : "Plans nearby"}
           </h2>
-          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <div className="flex bg-slate-900 p-1 rounded-full border border-white/[0.06]">
             {["regular", "meetup"].map((type) => (
               <button
                 key={type}
@@ -747,10 +750,10 @@ const Feed: React.FC = () => {
                   setActiveTab(type as any);
                   triggerHaptic(5);
                 }}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
+                className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all duration-200 ${
                   activeTab === type
-                    ? "bg-primary-500 text-white shadow-lg shadow-primary-500/20"
-                    : "text-slate-500 hover:text-slate-300"
+                    ? "bg-white text-slate-950"
+                    : "text-slate-400 hover:text-slate-200"
                 }`}
               >
                 {type === "regular" ? "Posts" : "Events"}
@@ -766,10 +769,10 @@ const Feed: React.FC = () => {
               <button
                 key={s}
                 onClick={() => setFeedSort(s)}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                className={`shrink-0 px-3.5 py-1.5 rounded-full text-[13px] font-medium transition-all border ${
                   feedSort === s
-                    ? 'bg-primary-600 text-white border-primary-600'
-                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-primary-500/50'
+                    ? 'bg-primary-500/15 text-primary-200 border-primary-500/40'
+                    : 'bg-transparent text-slate-400 border-white/10 hover:border-white/25'
                 }`}
               >
                 {s.charAt(0).toUpperCase() + s.slice(1)}

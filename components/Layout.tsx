@@ -1,4 +1,4 @@
-import { Home, Hash, Map, MessageCircle, PlusSquare, User } from 'lucide-react';
+import { Home, Hash, Map, MessageCircle, Plus, User } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -80,6 +80,50 @@ const Layout: React.FC = () => {
     };
   }, []);
 
+  const DiscoverIcon = ({ className, active }: { className?: string; active?: boolean }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={active ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m3 11 18-5v12L3 14v-3z" />
+      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+    </svg>
+  );
+
+  const navItems: { label: string; path: string; match: string[]; Icon: any; badge?: number; fillWhenActive?: boolean }[] = [
+    { label: 'Home', path: '/app', match: ['/app'], Icon: Home, fillWhenActive: true },
+    { label: 'Map', path: '/app/map', match: ['/app/map'], Icon: Map },
+    { label: 'Discover', path: '/app/discover', match: ['/app/discover'], Icon: DiscoverIcon, fillWhenActive: true },
+    { label: 'Chat', path: '/app/inbox', match: ['/app/inbox', '/app/chat'], Icon: MessageCircle, badge: unreadMessages },
+    { label: 'Rooms', path: '/app/rooms', match: ['/app/rooms'], Icon: Hash, badge: unreadRooms },
+    { label: 'Profile', path: profilePath, match: ['/app/profile'], Icon: User },
+  ];
+
+  const renderTab = (item: (typeof navItems)[number]) => {
+    const active = item.match.some((m) => isActive(m));
+    const { Icon } = item;
+    return (
+      <button
+        key={item.label}
+        onClick={() => navigate(item.path)}
+        aria-label={item.label}
+        aria-current={active ? 'page' : undefined}
+        className={`relative flex h-[52px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-[20px] transition-colors ${
+          active ? 'bg-primary-500/15 text-primary-300' : 'text-slate-500 hover:text-slate-300'
+        }`}
+      >
+        <span className="relative">
+          {item.label === 'Discover'
+            ? <DiscoverIcon className="h-[19px] w-[19px]" active={active} />
+            : <Icon className={`h-[19px] w-[19px] ${active && item.fillWhenActive ? 'fill-current' : ''}`} strokeWidth={active ? 2.4 : 2} />}
+          {!!item.badge && item.badge > 0 && (
+            <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border-2 border-slate-900 bg-rose-500 px-0.5 text-[9px] font-bold text-white">
+              {item.badge > 9 ? '9+' : item.badge}
+            </span>
+          )}
+        </span>
+        <span className="text-[10px] font-medium leading-none">{item.label}</span>
+      </button>
+    );
+  };
+
   const content = React.useMemo(() => (
     <div className={`flex flex-col min-h-[100dvh] bg-slate-950 ${isDesktop ? 'h-[820px]' : ''} overflow-hidden`}>
       {/* Desktop Top Navigation */}
@@ -106,110 +150,32 @@ const Layout: React.FC = () => {
       )}
 
       {/* Main Content Area */}
-      <div className={`flex-1 overflow-y-auto ${isDesktop ? '' : 'pb-24'}`} style={{ 
-        paddingBottom: isDesktop ? 0 : 'calc(5rem + env(safe-area-inset-bottom))' 
+      <div className="flex-1 overflow-y-auto" style={{ 
+        paddingBottom: isDesktop ? 88 : 'calc(6rem + env(safe-area-inset-bottom))' 
       }}>
         <Outlet />
       </div>
 
-      {/* Bottom Navigation — 7 tabs */}
-      <div className={`${isDesktop ? 'absolute' : 'fixed'} bottom-0 inset-x-0 bg-slate-900/80 backdrop-blur-xl border-t border-slate-800 pb-[max(env(safe-area-inset-bottom),0px)] z-[2000]`}>
-        <div className="flex justify-around items-center h-16 max-w-md mx-auto px-0">
+      {/* Bottom navigation: floating glass bar */}
+      <nav
+        aria-label="Main"
+        className={`${isDesktop ? 'absolute' : 'fixed'} inset-x-0 bottom-0 z-[2000] px-3 pb-[max(env(safe-area-inset-bottom),12px)] pointer-events-none`}
+      >
+        <div className="pointer-events-auto mx-auto flex h-[64px] max-w-md items-center justify-between rounded-[26px] border border-white/[0.08] bg-slate-900/75 px-1.5 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.9)] backdrop-blur-2xl">
+          {navItems.slice(0, 3).map(renderTab)}
 
-          {/* Home */}
-          <button
-            onClick={() => navigate('/app')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <Home className={`w-[18px] h-[18px] ${isActive('/app') ? 'fill-current' : ''}`} />
-            <span className="text-[9px] font-medium">Home</span>
-          </button>
-
-          {/* Map */}
-          <button
-            onClick={() => navigate('/app/map')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/map') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <Map className={`w-[18px] h-[18px] ${isActive('/app/map') ? 'fill-current' : ''}`} />
-            <span className="text-[9px] font-medium">Map</span>
-          </button>
-
-          {/* Discover */}
-          <button
-            onClick={() => navigate('/app/discover')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/discover') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <div className="relative">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill={isActive('/app/discover') ? "currentColor" : "none"}
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`w-[18px] h-[18px] ${isActive('/app/discover') ? 'text-primary-500' : ''}`}
-              >
-                <path d="m3 11 18-5v12L3 14v-3z" />
-                <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
-              </svg>
-            </div>
-            <span className="text-[9px] font-medium">Discover</span>
-          </button>
-
-          {/* Create Post — elevated center */}
+          {/* Create post */}
           <button
             onClick={() => navigate('/app/create-post')}
-            className="relative -top-5"
+            aria-label="Create post"
+            className="mx-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-950 shadow-[0_8px_24px_-8px_rgba(255,255,255,0.35)] transition-transform active:scale-95"
           >
-            <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-primary-500 to-primary-600 shadow-lg shadow-primary-500/30 flex items-center justify-center text-white transform transition-transform active:scale-95 border-4 border-slate-950">
-              <PlusSquare className="w-5 h-5" />
-            </div>
+            <Plus className="h-5 w-5" strokeWidth={2.5} />
           </button>
 
-          {/* Chat */}
-          <button
-            onClick={() => navigate('/app/inbox')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 relative ${isActive('/app/inbox') || isActive('/app/chat') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <div className="relative">
-              <MessageCircle className={`w-[18px] h-[18px] ${isActive('/app/inbox') || isActive('/app/chat') ? 'fill-current' : ''}`} />
-              {unreadMessages > 0 && (
-                <div className="absolute -top-1.5 -right-1.5 bg-blue-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-slate-900">
-                  {unreadMessages > 9 ? '9+' : unreadMessages}
-                </div>
-              )}
-            </div>
-            <span className="text-[9px] font-medium">Chat</span>
-          </button>
-
-          {/* Rooms */}
-          <button
-            onClick={() => navigate('/app/rooms')}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive('/app/rooms') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <div className="relative">
-              <Hash className={`w-[18px] h-[18px] ${isActive('/app/rooms') ? 'stroke-[2.5]' : ''}`} />
-              {unreadRooms > 0 && (
-                <div className="absolute -top-1.5 -right-1.5 bg-indigo-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center border-2 border-slate-900">
-                  {unreadRooms > 9 ? '9+' : unreadRooms}
-                </div>
-              )}
-            </div>
-            <span className="text-[9px] font-medium">Rooms</span>
-          </button>
-
-          {/* Profile */}
-          <button
-            onClick={() => navigate(profilePath)}
-            className={`flex flex-col items-center justify-center w-full h-full space-y-1 relative ${isActive('/app/profile') ? 'text-primary-500' : 'text-slate-500 hover:text-slate-300'}`}
-          >
-            <User className={`w-[18px] h-[18px] ${isActive('/app/profile') ? 'fill-current' : ''}`} />
-            <span className="text-[9px] font-medium">Profile</span>
-          </button>
-
+          {navItems.slice(3).map(renderTab)}
         </div>
-      </div>
+      </nav>
     </div>
   ), [isDesktop, isOffline, unreadMessages, unreadRooms, location.pathname, user]);
 

@@ -11,7 +11,7 @@
   content="Meet people nearby who share your interests. Join local meetups, send a wave, and make real friends. Free on Android and the web, for adults 18+." />
 <meta name="keywords" content="social, local, meetup, events, nearby, chat, friends, discovery, map, community" />
 <meta name="author" content="Orbyt Inc." />
-<meta name="theme-color" content="#020617" />
+<meta name="theme-color" content="#070B1A" />
 
 <!-- Open Graph / Facebook -->
 <meta property="og:type" content="website" />
@@ -43,17 +43,38 @@
       extend: {
         fontFamily: {
           sans: ["Plus Jakarta Sans", "sans-serif"],
+          display: ["Bricolage Grotesque", "Plus Jakarta Sans", "sans-serif"],
         },
+        // Orbyt design tokens (shared with the native app):
+        //  - primary = Orbyt blue, the brand colour for actions and selection
+        //  - rose/red stay reserved for social moments (likes, waves, matches)
+        //  - slate is retuned to the night-navy surfaces, so every bg-slate-* /
+        //    border-slate-* in the app picks up the new look automatically
         colors: {
           primary: {
-            50: "#fff1f2",
-            100: "#ffe4e6",
-            200: "#fecdd3",
-            300: "#fda4af",
-            400: "#fb7185",
-            500: "#f43f5e", // Rose 500
-            600: "#e11d48",
-            700: "#be123c",
+            50: "#EEF3FF",
+            100: "#DCE6FF",
+            200: "#B9CCFF",
+            300: "#8FAEFF",
+            400: "#6B91FF",
+            500: "#4F7CFF",
+            600: "#3563F0",
+            700: "#2A4FCC",
+            800: "#233F9F",
+            900: "#1E347D",
+          },
+          slate: {
+            50: "#F6F8FD",
+            100: "#ECF0FA",
+            200: "#DCE3F5",
+            300: "#C2CBE6",
+            400: "#98A3C7",
+            500: "#6B76A0",
+            600: "#45507A",
+            700: "#2A3560",
+            800: "#1A2347",
+            900: "#0D1430",
+            950: "#070B1A",
           },
         },
       },
