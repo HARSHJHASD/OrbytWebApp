@@ -1,804 +1,541 @@
 import {
-  ArrowRight,
+  CalendarDays,
   ChevronDown,
-  Globe,
-  Heart,
+  EyeOff,
+  Flag,
+  Footprints,
+  Hand,
   MapPin,
   Menu,
   MessageCircle,
   QrCode,
   Shield,
   Sparkles,
-  Star,
   Users,
   X,
-  Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
-import { api } from "../services/api";
-import { UserProfile } from "../types";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AppModal from "../components/ui/AppModal";
-import Button from "../components/ui/Button";
 import { useAuth } from "../context/AuthContext";
-import { MainLogo } from "../util/Images";
+import { MainLogo, MainLogoOnly } from "../util/Images";
 
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
+const PLAY_STORE_URL =
+  "https://play.google.com/store/apps/details?id=com.orbyt.official.app";
+const PLAY_BADGE =
+  "https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png";
 
-const DesktopLanding: React.FC = () => {
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+// Interests shown orbiting in the hero. Illustrative only — not real members.
+const ORBITERS: { emoji: string; label: string; ring: 1 | 2 | 3; angle: number }[] = [
+  { emoji: "☕", label: "Coffee", ring: 1, angle: 20 },
+  { emoji: "🏃", label: "Running", ring: 1, angle: 200 },
+  { emoji: "🎮", label: "Gaming", ring: 2, angle: 110 },
+  { emoji: "🎵", label: "Live music", ring: 2, angle: 300 },
+  { emoji: "📚", label: "Books", ring: 3, angle: 60 },
+  { emoji: "🏔️", label: "Treks", ring: 3, angle: 170 },
+  { emoji: "📸", label: "Photography", ring: 3, angle: 260 },
+];
+// Ring radius as a fraction of the orbit box width.
+const RING_RADIUS = { 1: 0.26, 2: 0.39, 3: 0.5 } as const;
+
+const FAQ = [
+  {
+    q: "Is Orbyt free?",
+    a: "Yes. Every feature is free to use.",
+  },
+  {
+    q: "Can people see exactly where I am?",
+    a: "No. Others only ever see an approximate area, never your exact position. You can also turn off discoverability to disappear from the map entirely.",
+  },
+  {
+    q: "Is there an iPhone app?",
+    a: "Orbyt is on Google Play for Android. On iPhone, open Orbyt in Safari and use the web app — it has the same core features.",
+  },
+  {
+    q: "Who can join?",
+    a: "Orbyt is for adults only. You must be 18 or older to sign up, and accounts reported as underage are removed.",
+  },
+  {
+    q: "What if someone makes me uncomfortable?",
+    a: "Block or report them from their profile or any post. Blocked people can no longer see you, message you or find you on the map.",
+  },
+];
+
+function OrbitHero() {
+  return (
+    <div className="orbit relative mx-auto aspect-square w-full" aria-hidden="true">
+      {([1, 2, 3] as const).map((r) => (
+        <div
+          key={r}
+          className="absolute rounded-full border border-[#1E2A52]"
+          style={{ inset: `${(0.5 - RING_RADIUS[r]) * 100}%` }}
+        />
+      ))}
+      <div className="orbit-sweep absolute inset-0 rounded-full" />
+
+      {/* one rotating layer per ring, at different speeds; chips counter-rotate to stay upright */}
+      {([1, 2, 3] as const).map((ring) => (
+        <div key={ring} className={`orbit-layer orbit-layer-${ring} absolute inset-0`}>
+          {ORBITERS.filter((o) => o.ring === ring).map((o) => {
+            const rad = (o.angle * Math.PI) / 180;
+            const x = 50 + Math.cos(rad) * RING_RADIUS[ring] * 100;
+            const y = 50 + Math.sin(rad) * RING_RADIUS[ring] * 100;
+            return (
+              <div key={o.label} className="absolute" style={{ left: `${x}%`, top: `${y}%` }}>
+                <div className={`orbit-upright orbit-upright-${ring} h-0 w-0`}>
+                  <div className="w-max -translate-x-1/2 -translate-y-1/2">
+                    <div className="orbit-chip flex items-center gap-2 whitespace-nowrap rounded-full border border-white/10 bg-[#111A3A]/85 py-1.5 pl-1.5 pr-3.5 text-sm text-[#DCE3F5] shadow-[0_8px_24px_-12px_rgba(0,0,0,0.8)] backdrop-blur">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#1B2550] text-base">
+                        {o.emoji}
+                      </span>
+                      {o.label}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* the wave: one rose pulse closing in on you */}
+      <div className="absolute left-1/2 top-1/2 h-0 w-0">
+        <div className="wave-ping absolute -left-[60px] -top-[60px] h-[120px] w-[120px] rounded-full border-2 border-[#F43F5E]" />
+      </div>
+
+      {/* you */}
+      <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-b from-[#5B8CFF] to-[#2F5BEA] shadow-[0_0_60px_10px_rgba(79,124,255,0.35)] sm:h-24 sm:w-24">
+          <img src={MainLogoOnly} alt="" className="h-14 w-14 object-contain sm:h-16 sm:w-16" draggable={false} />
+        </div>
+        <span className="mt-2 rounded-full bg-white/10 px-3 py-0.5 text-xs font-semibold text-white">You</span>
+      </div>
+
+      {/* incoming wave notification */}
+      <div className="wave-card absolute bottom-[4%] right-[-2%] flex items-center gap-3 rounded-2xl border border-[#F43F5E]/30 bg-[#1A1230]/90 px-4 py-3 shadow-2xl backdrop-blur">
+        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#F43F5E]/15 text-lg">👋</span>
+        <div>
+          <p className="text-sm font-semibold text-white">Someone nearby waved</p>
+          <p className="text-xs text-[#AEB8D6]">Loves running too · about 1 km away</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function DesktopLanding() {
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-  // The public landing page shows no member data: it works without an account and
-  // doesn't expose members' photos to anonymous visitors.
-  const realUsers: UserProfile[] = [];
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const navigate = useNavigate();
   const { user } = useAuth();
 
-  const handleLaunchApp = () => {
-    if (user) {
-      navigate("/app");
-    } else {
-      navigate("/auth");
-    }
-  };
+  const openWebApp = () => navigate(user ? "/app" : "/auth");
+  const webAppLabel = user ? "Open Orbyt" : "Use it in your browser";
 
-  const toggleFaq = (index: number) => {
-    setActiveFaq(activeFaq === index ? null : index);
-  };
+  const navLinks = [
+    { href: "#features", label: "Features" },
+    { href: "#how-it-works", label: "How it works" },
+    { href: "#privacy", label: "Privacy" },
+    { href: "#faq", label: "FAQ" },
+  ];
 
-
-  useEffect(() => {
-    const fetchVersion = async () => {
-      try {
-        const config = await api.config.getVersion();
-        if (config?.minAppVersion) setLatestVersion(config.minAppVersion);
-      } catch {
-      }
-    };
-    fetchVersion();
-  }, []);
+  const playBadge = (
+    <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Get it on Google Play" className="block">
+      <img src={PLAY_BADGE} alt="Get it on Google Play" width={176} height={68} className="-m-2.5 h-[68px] w-[176px] max-w-none" draggable={false} />
+    </a>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-hidden selection:bg-primary-500/30 font-sans">
+    <div className="landing min-h-screen overflow-x-hidden bg-[#070B1A] font-sans text-[#C9D2EA] selection:bg-[#4F7CFF]/30">
+      <style>{`
+        .landing .font-display { font-family: "Bricolage Grotesque", "Plus Jakarta Sans", sans-serif; }
+        .landing a:focus-visible, .landing button:focus-visible { outline: 2px solid #7FA2FF; outline-offset: 3px; }
+        .orbit { max-width: 540px; }
+        .orbit-layer-1 { animation: orbit-spin 80s linear infinite; }
+        .orbit-layer-2 { animation: orbit-spin 120s linear infinite reverse; }
+        .orbit-layer-3 { animation: orbit-spin 170s linear infinite; }
+        .orbit-upright-1 { animation: orbit-spin 80s linear infinite reverse; }
+        .orbit-upright-2 { animation: orbit-spin 120s linear infinite; }
+        .orbit-upright-3 { animation: orbit-spin 170s linear infinite reverse; }
+        @keyframes orbit-spin { to { transform: rotate(360deg); } }
+        .orbit-upright { transform-origin: 0 0; }
+        .orbit-sweep { background: conic-gradient(from 0deg, rgba(79,124,255,0.18), transparent 20%); animation: orbit-spin 10s linear infinite; -webkit-mask: radial-gradient(circle, #000 0 49.6%, transparent 50%); mask: radial-gradient(circle, #000 0 49.6%, transparent 50%); }
+        .wave-ping { opacity: 0; animation: wave-in 5s cubic-bezier(.2,.7,.2,1) infinite 1s; }
+        @keyframes wave-in { 0% { transform: scale(4.4); opacity: 0; } 12% { opacity: .9; } 60% { transform: scale(1); opacity: .55; } 75%, 100% { transform: scale(1); opacity: 0; } }
+        .wave-card { opacity: 0; animation: card-in 5s ease-out infinite 1s; }
+        @keyframes card-in { 0%, 50% { opacity: 0; transform: translateY(8px); } 60%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+        .map-grid { background-image: linear-gradient(rgba(127,162,255,0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(127,162,255,0.07) 1px, transparent 1px); background-size: 28px 28px; }
+        @media (max-width: 640px) {
+          .orbit { max-width: 300px; }
+          .orbit-chip { font-size: 12px; padding-right: 10px; }
+          .orbit-chip > span { width: 22px; height: 22px; font-size: 13px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .orbit-layer-1, .orbit-layer-2, .orbit-layer-3, .orbit-upright-1, .orbit-upright-2, .orbit-upright-3, .orbit-sweep { animation: none; }
+          .wave-ping { animation: none; }
+          .wave-card { animation: none; opacity: 1; }
+        }
+      `}</style>
+
       {/* Navigation */}
-      <nav className="fixed top-0 inset-x-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-          <div
-            className="flex items-center cursor-pointer group"
-            onClick={() => navigate("/")}
-          >
-            <img
-              draggable={false}
-              src={MainLogo}
-              alt="Orbyt Logo"
-              className="h-12 w-auto object-contain group-hover:scale-105 transition-transform duration-300 drop-shadow-[0_0_15px_rgba(139,92,246,0.3)]"
-            />
+      <nav className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#070B1A]/70 backdrop-blur-xl">
+        <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-5 sm:px-8">
+          <button onClick={() => navigate("/")} aria-label="Orbyt home" className="flex items-center rounded-lg">
+            <img src={MainLogo} alt="Orbyt" className="h-9 w-auto object-contain" draggable={false} />
+          </button>
+
+          <div className="hidden items-center gap-8 text-sm font-medium text-[#AEB8D6] md:flex">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} className="rounded transition-colors hover:text-white">
+                {l.label}
+              </a>
+            ))}
+            <button
+              onClick={openWebApp}
+              className="rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-[#0A1030] transition hover:bg-[#DCE6FF]"
+            >
+              {user ? "Open Orbyt" : "Open web app"}
+            </button>
           </div>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:flex gap-8 text-slate-400 text-sm font-medium items-center">
-            <a href="#features" className="hover:text-white transition-colors">
-              Features
-            </a>
-            <a
-              href="#how-it-works"
-              className="hover:text-white transition-colors"
-            >
-              How it Works
-            </a>
-            <a
-              href="/guidelines"
-              className="hover:text-white transition-colors"
-            >
-              Safety
-            </a>
-            <a href="#faq" className="hover:text-white transition-colors">
-              FAQ
-            </a>
-            <Button
-              variant="primary"
-              onClick={handleLaunchApp}
-              className="rounded-full px-6 h-10 text-sm ml-4"
-            >
-              Enter Orbyt
-            </Button>
-          </div>
-
-          {/* Mobile Menu Button (Visible on tablet/small laptops that trigger desktop view but have narrow screens) */}
           <button
-            className="md:hidden text-slate-300"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="rounded-xl p-2 text-[#DCE3F5] md:hidden"
+            onClick={() => setMobileMenuOpen((v) => !v)}
+            aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X /> : <Menu />}
           </button>
         </div>
+
+        {mobileMenuOpen && (
+          <div className="border-t border-white/5 bg-[#070B1A] px-5 pb-6 pt-2 md:hidden">
+            {navLinks.map((l) => (
+              <a key={l.href} href={l.href} onClick={() => setMobileMenuOpen(false)} className="block py-3 text-base text-[#DCE3F5]">
+                {l.label}
+              </a>
+            ))}
+            <button onClick={openWebApp} className="mt-3 w-full rounded-full bg-white py-3 text-sm font-semibold text-[#0A1030]">
+              {user ? "Open Orbyt" : "Open web app"}
+            </button>
+          </div>
+        )}
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full max-w-7xl pointer-events-none">
-          <div className="absolute top-[20%] left-[10%] w-72 h-72 bg-purple-600/20 rounded-full blur-[100px] animate-pulse"></div>
-          <div
-            className="absolute top-[30%] right-[10%] w-96 h-96 bg-primary-600/20 rounded-full blur-[100px] animate-pulse"
-            style={{ animationDelay: "1s" }}
-          ></div>
-        </div>
-
-        <div className="max-w-7xl mx-auto px-6 flex flex-col lg:flex-row items-center gap-16 relative z-10">
-          <div className="flex-1 space-y-8 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-primary-400 text-xs font-bold uppercase tracking-wider animate-fade-in">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Strictly 18+ • A Growing Social Discovery App</span>
-            </div>
-
-            <h1 className="text-6xl lg:text-8xl font-black leading-[1] tracking-tighter text-white animate-fade-in-up">
-              Your World, <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary-400 via-pink-400 to-purple-500 drop-shadow-sm">
-                Connected Live
-              </span>
+      {/* Hero */}
+      <header className="relative pt-28 sm:pt-36">
+        <div className="pointer-events-none absolute left-1/2 top-24 h-[620px] w-[620px] -translate-x-1/2 rounded-full bg-[#2F5BEA]/10 blur-[120px] lg:left-[72%]" />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 px-5 sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-6">
+          <div className="text-center lg:text-left">
+            <h1 className="font-display text-[44px] font-bold leading-[1.02] tracking-[-0.03em] text-white sm:text-6xl lg:text-[74px]">
+              Meet the people already around you.
             </h1>
-
-            <p className="text-xl text-slate-400 leading-relaxed max-w-2xl mx-auto lg:mx-0">
-              Orbyt is an adult-only social discovery platform that bridges the
-              gap between digital interactions and real-world connections.
-              Discover who's nearby, join local conversations, and make
-              meaningful connections instantly.
+            <p className="mx-auto mt-6 max-w-[34rem] text-lg leading-relaxed text-[#AEB8D6] lg:mx-0">
+              Orbyt shows you people nearby who share your interests, and the plans they're making tonight. Wave hello, join a meetup, and turn the strangers around you into friends.
             </p>
 
-            <div
-              className="flex flex-col sm:flex-row sm:flex-wrap gap-5 justify-center lg:justify-start pt-10 animate-slide-up"
-              style={{ animationDelay: "0.4s" }}
-            >
-              {/* Launch Web */}
-              <Button
-                variant="primary"
-                onClick={handleLaunchApp}
-                className="group flex items-center justify-center gap-3 
-    rounded-2xl px-10 py-6 text-lg font-bold
-    bg-gradient-to-r from-primary-600 to-primary-400
-    shadow-2xl shadow-primary-500/30
-    hover:shadow-primary-500/50
-    transition-all duration-300
-    active:scale-95 border-none"
+            <div className="mt-9 flex flex-col items-center gap-5 sm:flex-row sm:justify-center lg:justify-start">
+              {playBadge}
+              <button
+                onClick={openWebApp}
+                className="h-12 whitespace-nowrap rounded-full border border-white/15 px-6 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/5"
               >
-                Launch&nbsp;Orbyt Web
-                <ArrowRight className="w-6 h-6 transition-transform duration-200 group-hover:translate-x-1" />
-              </Button>
-
-              {/* Play Store */}
-              <a
-                href={PLAY_STORE_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-center gap-4 
-    px-8 py-5 min-w-[220px]
-    bg-slate-900/60 backdrop-blur-xl
-    border border-white/10 rounded-2xl
-    hover:bg-slate-800
-    hover:border-slate-700
-    shadow-xl transition-all duration-300
-    active:scale-95 no-underline"
-              >
-                <div
-                  className="w-12 h-12 flex items-center justify-center
-      bg-primary-500/10 border border-primary-500/20
-      rounded-xl transition-colors
-      group-hover:bg-primary-500/20 shrink-0"
-                >
-                  <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M3.18 1.07 13.36 12 3.18 22.93A2 2 0 0 1 2 21.13V2.87a2 2 0 0 1 1.18-1.8z" fill="#EA4335"/>
-                    <path d="M21.14 10.28 18.3 8.67l-3.18 3.33 3.18 3.33 2.87-1.63a2 2 0 0 0 0-3.42z" fill="#FBBC04"/>
-                    <path d="M13.36 12 3.18 1.07a2 2 0 0 1 2.1.2l10.8 6.16L13.36 12z" fill="#4285F4"/>
-                    <path d="M13.36 12l2.72 4.57-10.8 6.16a2 2 0 0 1-2.1.2L13.36 12z" fill="#34A853"/>
-                  </svg>
-                </div>
-
-                <div className="text-left">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-slate-500">
-                    {latestVersion ? `Latest: v${latestVersion}` : "Android App"}
-                  </p>
-                  <p className="font-bold text-white text-base transition-colors group-hover:text-primary-400">
-                    Get it on Play Store
-                  </p>
-                </div>
-              </a>
-
-              {/* QR Button */}
+                {webAppLabel}
+              </button>
               <button
                 onClick={() => setIsQrModalOpen(true)}
-                className="group flex items-center gap-4 
-    px-8 py-5 min-w-[220px]
-    bg-slate-900/40 backdrop-blur-xl
-    border border-white/5 rounded-2xl
-    hover:bg-slate-800
-    hover:border-slate-700
-    shadow-xl transition-all duration-300
-    active:scale-95"
+                className="hidden h-12 items-center gap-2 whitespace-nowrap rounded-full px-2 text-sm font-medium text-[#AEB8D6] transition hover:text-white xl:inline-flex"
               >
-                <div
-                  className="w-12 h-12 flex items-center justify-center
-      bg-white/5 border border-white/10
-      rounded-xl transition-colors
-      group-hover:bg-white/10"
-                >
-                  <QrCode className="w-8 h-8 text-white/50 transition-colors group-hover:text-white" />
-                </div>
-
-                <div className="text-left">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-slate-500">
-                    Mobile Hub
-                  </p>
-                  <p className="font-bold text-white text-base transition-colors group-hover:text-primary-400">
-                    Scan for App
-                  </p>
-                </div>
+                <QrCode className="h-4 w-4" />
+                Scan to get the app
               </button>
             </div>
-
-            <div className="flex flex-col justify-center text-left space-y-2">
-              <div className="flex -space-x-2">
-                {realUsers.length > 0
-                  ? realUsers.map((u) => (
-                      <div
-                        key={u.uid}
-                        className={`w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden`}
-                      >
-                        <img
-                          draggable={false}
-                          src={u.photoURL}
-                          alt={u.displayName}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))
-                  : [1, 2, 3, 4].map((i) => (
-                      <div
-                        key={i}
-                        className={`w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 overflow-hidden`}
-                      >
-                        <img
-                          draggable={false}
-                          src={`https://i.pravatar.cc/100?img=${10 + i}`}
-                          alt="User"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                <div className="w-8 h-8 rounded-full border-2 border-slate-950 bg-slate-800 flex items-center justify-center text-[8px] font-bold text-slate-400 leading-none px-1">
-                  JOIN US
-                </div>
-              </div>
-            </div>
+            <p className="mt-6 text-sm text-[#7D88AB]">Free · Adults 18+ only · Your exact location is never shown</p>
           </div>
 
-          {/* Phone Mockup with Live Preview */}
-          <div className="flex-1 relative w-full max-w-[400px] lg:max-w-none group/phone">
-            <div className="absolute -inset-4 bg-primary-500/10 rounded-[4rem] blur-2xl opacity-0 group-hover/phone:opacity-100 transition-opacity duration-700"></div>
-
-            <div className="relative mx-auto border-slate-800 bg-slate-950 border-[12px] rounded-[3.5rem] h-[720px] w-[350px] shadow-2xl flex flex-col overflow-hidden ring-1 ring-slate-700/50 scale-95 hover:scale-100 transition-transform duration-500 z-10">
-              {/* Notch */}
-              <div className="absolute top-0 inset-x-0 h-7 bg-slate-950 z-30 rounded-b-2xl w-36 mx-auto flex items-center justify-center gap-2">
-                <div className="w-10 h-1 bg-slate-800 rounded-full"></div>
-                <div className="w-2 h-2 bg-slate-800 rounded-full"></div>
-              </div>
-
-              {/* StatusBar Mock */}
-              <div className="absolute top-0 inset-x-0 h-12 bg-transparent z-20 flex justify-between items-end px-8 pb-1 text-[10px] font-bold text-white/40">
-                <span>9:41</span>
-                <div className="flex gap-1.5">
-                  <div className="w-3.5 h-2 border border-white/20 rounded-[2px]"></div>
-                  <Zap className="w-2 h-2 fill-current" />
-                </div>
-              </div>
-
-              <div className="rounded-[2.5rem] overflow-hidden w-full h-full bg-slate-900 relative">
-                {/* Live App Iframe */}
-                <iframe
-                  src="/app"
-                  className="w-full h-full border-none"
-                  title="Orbyt Web App Preview"
-                  loading="lazy"
-                />
-
-                {/* Interactive Overlay (removes itself on first click to allow interaction) */}
-                <div
-                  className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] z-40 flex flex-col items-center justify-center text-center p-8 transition-opacity duration-300 hover:opacity-0 pointer-events-none group-hover/phone:opacity-100"
-                  id="preview-overlay"
-                >
-                  <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mb-4 border border-white/10">
-                    <Sparkles className="w-8 h-8 text-primary-400 animate-pulse" />
-                  </div>
-                  <h4 className="text-white font-bold text-lg mb-2">
-                    Live App Preview
-                  </h4>
-                  <p className="text-slate-300 text-sm">
-                    Experience Orbyt directly from your browser. Try the feed
-                    and explore the map.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Floating Badge */}
-            {/* <div className="absolute top-20 -right-12 bg-slate-800 p-4 rounded-2xl border border-slate-700 shadow-xl animate-slide-up" style={{ animationDelay: '0.5s' }}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
-                                    <MessageCircle className="w-5 h-5 fill-current" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-white text-sm">New Message</p>
-                                    <p className="text-xs text-slate-400">Sarah wants to connect</p>
-                                </div>
-                            </div>
-                        </div> */}
+          <div className="relative px-6 pb-6 sm:px-10">
+            <OrbitHero />
           </div>
         </div>
-      </section>
+      </header>
 
-      {/* Stats Section */}
-      <section className="border-y border-slate-800 bg-slate-900/30">
-        <div className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
-          {[
-            { label: "Community", value: "Real People", icon: Users },
-            { label: "Platform", value: "Starting Fresh", icon: Globe },
-            { label: "Growth", value: "Growing Daily", icon: Zap },
-            { label: "Quality", value: "Handcrafted", icon: Star },
-          ].map((stat, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-4 justify-center md:justify-start"
-            >
-              <div className="w-12 h-12 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-400">
-                <stat.icon className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-white">
-                  {stat?.value}
-                </div>
-                <div className="text-sm text-slate-500 font-medium">
-                  {stat?.label}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Features Grid */}
-      <section id="features" className="py-24 relative">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="text-center mb-16 max-w-3xl mx-auto">
-            <h2 className="text-sm font-bold text-primary-500 uppercase tracking-wider mb-2">
-              Why Orbyt?
-            </h2>
-            <h3 className="text-3xl md:text-5xl font-bold text-white mb-6">
-              Designed for real life.
-            </h3>
-            <p className="text-slate-400 text-lg">
-              Most social apps keep you glued to your screen. Orbyt uses
-              technology to get you out into the world and meeting people
-              face-to-face.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: MapPin,
-                title: "Live Location Map",
-                desc: "See who's hanging out at your favorite coffee shop or park in real-time. Privacy controls ensure you're only visible when you want to be.",
-              },
-              {
-                icon: Users,
-                title: "Instant Connections",
-                desc: "Break the ice easily. Send a wave to someone nearby or join a public group chat based on your location.",
-              },
-              {
-                icon: Shield,
-                title: "Adults Only (18+)",
-                desc: "Strictly for adults. We use advanced verification and community reporting to ensure Orbyt remains a safe, 18+ environment for everyone.",
-              },
-              {
-                icon: Heart,
-                title: "Interest Matching",
-                desc: "Find your tribe. Filter the map to show people who share your passion for hiking, photography, or gaming.",
-              },
-              {
-                icon: MessageCircle,
-                title: "Ephemeral Chat",
-                desc: "Chats that encourage meeting up. Share your live location temporarily to meet up with friends easily.",
-              },
-              {
-                icon: Globe,
-                title: "Local Events",
-                desc: "Discover impromptu gatherings and events happening right now around you. Never miss out on the action.",
-              },
-            ].map((feat, i) => (
-              <div
-                key={i}
-                className="bg-slate-900/50 p-8 rounded-3xl border border-slate-800 hover:border-primary-500/30 transition-all hover:bg-slate-800 hover:-translate-y-1 group"
-              >
-                <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mb-6 border border-slate-700 group-hover:bg-primary-500/10 group-hover:border-primary-500/50 transition-colors">
-                  <feat.icon className="w-7 h-7 text-slate-300 group-hover:text-primary-500 transition-colors" />
-                </div>
-                <h3 className="text-xl font-bold mb-3 text-white">
-                  {feat?.title}
-                </h3>
-                <p className="text-slate-400 leading-relaxed">{feat?.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section
-        id="how-it-works"
-        className="py-24 bg-slate-900 border-y border-slate-800"
-      >
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center gap-16">
-            <div className="flex-1 space-y-12">
-              <div>
-                <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
-                  Start connecting in minutes
-                </h2>
-                <p className="text-slate-400">
-                  No complicated setup. Just create a profile and start
-                  exploring your neighborhood.
-                </p>
-              </div>
-
-              <div className="space-y-8">
-                {[
-                  {
-                    step: "01",
-                    title: "Create your profile",
-                    desc: "Sign up, add a photo, and select your interests.",
-                  },
-                  {
-                    step: "02",
-                    title: "Enable location",
-                    desc: "Let us know where you are to find people nearby.",
-                  },
-                  {
-                    step: "03",
-                    title: "Start exploring",
-                    desc: "Browse the map, send requests, and meet up!",
-                  },
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-6">
-                    <div className="flex-shrink-0 w-12 h-12 rounded-full border border-slate-700 bg-slate-800 flex items-center justify-center font-bold text-slate-500">
-                      {item?.step}
-                    </div>
-                    <div>
-                      <h4 className="text-xl font-bold text-white mb-2">
-                        {item?.title}
-                      </h4>
-                      <p className="text-slate-400">{item?.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="flex-1 relative">
-              <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-purple-500 rounded-3xl blur-2xl opacity-20 transform rotate-3"></div>
-              <img
-                draggable={false}
-                src="https://images.unsplash.com/photo-1543269865-cbf427effbad?q=80&w=1000&auto=format&fit=crop"
-                alt="Friends meeting"
-                className="relative rounded-3xl shadow-2xl border border-slate-700 grayscale hover:grayscale-0 transition-all duration-500"
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Why Orbyt — feature highlights. (This used to show invented reviews under real
-          members' names and photos, which misled visitors and misrepresented members.) */}
-      <section className="py-24">
-        <div className="max-w-7xl mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-16">
-            Why people use Orbyt
+      {/* Features: bento */}
+      <section id="features" className="mx-auto max-w-6xl scroll-mt-24 px-5 pb-24 pt-20 sm:px-8 sm:pt-28">
+        <div className="max-w-3xl">
+          <h2 className="font-display text-4xl font-bold tracking-[-0.02em] text-white sm:text-5xl">
+            Less scrolling. More going out.
           </h2>
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                icon: MapPin,
-                title: "New in town?",
-                text: "See people nearby who share your interests and find your crowd faster.",
-              },
-              {
-                icon: Zap,
-                title: "Plans, not just chats",
-                text: "Join or host local meetups — coffee, a run, a game night — and meet in person.",
-              },
-              {
-                icon: Shield,
-                title: "Privacy built in",
-                text: "Your exact location is never shown, and you can block or report anyone in one tap.",
-              },
-            ].map(({ icon: Icon, title, text }) => (
-              <div
-                key={title}
-                className="bg-slate-900 p-8 rounded-3xl border border-slate-800 hover:border-primary-500/50 transition-all duration-300"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-primary-500/10 flex items-center justify-center mb-6">
-                  <Icon className="w-6 h-6 text-primary-400" />
-                </div>
-                <p className="font-bold text-white text-lg mb-3">{title}</p>
-                <p className="text-slate-300 leading-relaxed">{text}</p>
+          <p className="mt-4 text-lg leading-relaxed text-[#AEB8D6]">
+            Everything in Orbyt points at the same thing: the people and plans within reach of where you are right now.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-4 md:grid-cols-6">
+          {/* Nearby (lead tile) */}
+          <article className="relative min-h-[420px] overflow-hidden rounded-[28px] border border-white/[0.07] bg-[#0D1430] p-7 sm:p-9 md:col-span-4 md:row-span-2">
+            <div className="map-grid absolute inset-0" />
+            <div className="absolute right-[-60px] top-[-40px] h-72 w-72 rounded-full bg-[#4F7CFF]/15 blur-3xl" />
+            <div className="relative flex h-full flex-col">
+              <MapPin className="h-6 w-6 text-[#7FA2FF]" />
+              <h3 className="font-display mt-4 text-2xl font-semibold text-white sm:text-3xl">See who's nearby</h3>
+              <p className="mt-2 max-w-md leading-relaxed text-[#AEB8D6]">
+                A live map of people around you, filtered by what you're into. Choose your own radius, from your street to your whole city.
+              </p>
+              <div className="relative mt-8 min-h-[190px] flex-1">
+                {[
+                  { e: "🎵", l: "Live music", x: "4%", y: "16%" },
+                  { e: "☕", l: "Coffee", x: "40%", y: "0%" },
+                  { e: "🏸", l: "Badminton", x: "62%", y: "48%" },
+                  { e: "📚", l: "Books", x: "14%", y: "66%" },
+                ].map((p) => (
+                  <span
+                    key={p.l}
+                    className="absolute flex items-center gap-2 rounded-full border border-white/10 bg-[#111A3A]/90 py-1.5 pl-1.5 pr-3 text-sm text-[#DCE3F5]"
+                    style={{ left: p.x, top: p.y }}
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1B2550]">{p.e}</span>
+                    {p.l}
+                  </span>
+                ))}
+                <span className="absolute left-[44%] top-[42%] h-4 w-4 rounded-full bg-[#4F7CFF] shadow-[0_0_0_8px_rgba(79,124,255,0.18),0_0_0_20px_rgba(79,124,255,0.08)]" />
               </div>
+            </div>
+          </article>
+
+          {/* Meetups */}
+          <article className="flex flex-col rounded-[28px] border border-white/[0.07] bg-[#0D1430] p-7 md:col-span-2 md:row-span-2">
+            <CalendarDays className="h-6 w-6 text-[#7FA2FF]" />
+            <h3 className="font-display mt-4 text-2xl font-semibold text-white">Join plans tonight</h3>
+            <p className="mt-2 leading-relaxed text-[#AEB8D6]">
+              Post a plan or ask to join one. The host says yes, and a group chat opens for everyone going.
+            </p>
+            <div className="mt-auto pt-6">
+              <div className="rounded-2xl border border-white/10 bg-[#121B40] p-4">
+                <p className="text-xs font-medium text-[#7FA2FF]">Sunday, 6:30 AM</p>
+                <p className="mt-1 font-semibold text-white">Easy 5K run, then chai</p>
+                <p className="mt-1 text-sm text-[#AEB8D6]">Near the lake · 2 spots left</p>
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="flex -space-x-2">
+                    {["🏃", "🙂", "😎"].map((e, i) => (
+                      <span key={i} className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-[#121B40] bg-[#1B2550] text-xs">
+                        {e}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="rounded-full bg-[#4F7CFF] px-3 py-1 text-xs font-semibold text-white">Ask to join</span>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          {/* Wave — the one rose tile */}
+          <article className="rounded-[28px] border border-[#F43F5E]/25 bg-gradient-to-br from-[#2A1030] to-[#150F2C] p-7 md:col-span-2">
+            <Hand className="h-6 w-6 text-[#FB7185]" />
+            <h3 className="font-display mt-4 text-xl font-semibold text-white">Send a wave</h3>
+            <p className="mt-2 leading-relaxed text-[#D8C6DA]">
+              Feeling social? Wave to people around you. If they wave back, it's a match.
+            </p>
+          </article>
+
+          <article className="rounded-[28px] border border-white/[0.07] bg-[#0D1430] p-7 md:col-span-2">
+            <Footprints className="h-6 w-6 text-[#7FA2FF]" />
+            <h3 className="font-display mt-4 text-xl font-semibold text-white">Crossed paths</h3>
+            <p className="mt-2 leading-relaxed text-[#AEB8D6]">
+              Get a nudge when you pass someone with the same interests, so next time you can say hi.
+            </p>
+          </article>
+
+          <article className="rounded-[28px] border border-white/[0.07] bg-[#0D1430] p-7 md:col-span-2">
+            <div className="flex gap-3">
+              <MessageCircle className="h-6 w-6 text-[#7FA2FF]" />
+              <Sparkles className="h-6 w-6 text-[#7FA2FF]" />
+            </div>
+            <h3 className="font-display mt-4 text-xl font-semibold text-white">Rooms and moments</h3>
+            <p className="mt-2 leading-relaxed text-[#AEB8D6]">
+              Chat in local rooms for your interests, and share 24-hour moments of what you're up to.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      {/* How it works — a real sequence, so numbered */}
+      <section id="how-it-works" className="scroll-mt-24 border-y border-white/5 bg-[#0A0F24]">
+        <div className="mx-auto max-w-6xl px-5 py-24 sm:px-8">
+          <h2 className="font-display max-w-xl text-4xl font-bold tracking-[-0.02em] text-white sm:text-5xl">
+            From sign-up to hello in three steps
+          </h2>
+          <ol className="mt-14 grid gap-10 md:grid-cols-3 md:gap-8">
+            {[
+              { t: "Make your profile", d: "Add a few photos and pick your interests. It takes about two minutes." },
+              { t: "Turn on location", d: "Orbyt uses it to find people and plans near you. Others only see a rough area." },
+              { t: "Say hello", d: "Wave, message someone, or ask to join a plan. Then put the phone away and go." },
+            ].map((s, i) => (
+              <li key={s.t} className="border-t border-white/10 pt-6">
+                <span className="font-display text-5xl font-bold text-[#2D3E80]">{i + 1}</span>
+                <h3 className="mt-3 text-xl font-semibold text-white">{s.t}</h3>
+                <p className="mt-2 leading-relaxed text-[#AEB8D6]">{s.d}</p>
+              </li>
             ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Privacy */}
+      <section id="privacy" className="mx-auto max-w-6xl scroll-mt-24 px-5 py-24 sm:px-8">
+        <div className="relative overflow-hidden rounded-[32px] border border-white/10 bg-[#0B1230]">
+          <div className="map-grid absolute inset-0" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_45%,rgba(79,124,255,0.22),transparent_55%)]" />
+          <div className="absolute right-[10%] top-1/2 hidden h-60 w-60 -translate-y-1/2 items-center justify-center rounded-full border border-dashed border-[#7FA2FF]/40 bg-[#4F7CFF]/10 md:flex">
+            <span className="text-sm font-medium text-[#AEB8D6]">What others see</span>
+          </div>
+          <div className="relative p-8 sm:p-12 md:max-w-[58%]">
+            <Shield className="h-7 w-7 text-[#7FA2FF]" />
+            <h2 className="font-display mt-5 text-3xl font-bold tracking-[-0.02em] text-white sm:text-4xl">
+              Nearby, not exposed
+            </h2>
+            <p className="mt-4 text-lg leading-relaxed text-[#AEB8D6]">
+              Orbyt is built around location, so it's built around protecting yours.
+            </p>
+            <ul className="mt-8 space-y-5">
+              {[
+                { icon: MapPin, t: "Only a rough area is shown", d: "Your position is blurred before anyone sees it. Your exact location is never shared." },
+                { icon: EyeOff, t: "Go invisible any time", d: "Turn off discoverability and you disappear from the map and nearby lists." },
+                { icon: Flag, t: "Block and report in one tap", d: "Blocked people can't see you, message you or find you." },
+              ].map(({ icon: Icon, t, d }) => (
+                <li key={t} className="flex gap-4">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/5">
+                    <Icon className="h-[18px] w-[18px] text-[#DCE3F5]" />
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white">{t}</p>
+                    <p className="mt-1 leading-relaxed text-[#AEB8D6]">{d}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </section>
 
       {/* FAQ */}
-      <section
-        id="faq"
-        className="py-24 bg-slate-900 border-t border-slate-800"
-      >
-        <div className="max-w-3xl mx-auto px-6">
-          <h2 className="text-3xl font-bold text-center mb-12">
-            Frequently Asked Questions
-          </h2>
-          <div className="space-y-4">
-            {[
-              {
-                q: "Is Orbyt free to use?",
-                a: "Yes! Orbyt is completely free to download and use. Every feature is unlocked for everyone by default. We may introduce optional enhancements in the future, but the core experience will always remain accessible.",
-              },
-              {
-                q: "How does the location privacy work?",
-                a: "Your privacy is our priority. You can choose to be visible only to friends, or pause your discoverability to be completely invisible on the map whenever you want.",
-              },
-              {
-                q: "Is it available on iOS and Android?",
-                a: "Yes. Orbyt is available in your mobile browser on both iOS and Android, with full core features accessible without app installation.",
-              },
-              {
-                q: "How do you verify users?",
-                a: "We use a combination of email verification, community reporting, and strict age verification. Orbyt is a platform exclusively for users aged 18 and over. We have a zero-tolerance policy for underage accounts.",
-              },
-            ].map((item, i) => (
-              <div
-                key={i}
-                className="border border-slate-800 rounded-2xl bg-slate-950 overflow-hidden"
-              >
+      <section id="faq" className="mx-auto max-w-3xl scroll-mt-24 px-5 pb-24 sm:px-8">
+        <h2 className="font-display text-center text-4xl font-bold tracking-[-0.02em] text-white">Questions</h2>
+        <div className="mt-10 divide-y divide-white/10 border-y border-white/10">
+          {FAQ.map((item, i) => {
+            const open = openFaq === i;
+            return (
+              <div key={item.q}>
                 <button
-                  className="w-full flex items-center justify-between p-6 text-left hover:bg-slate-900 transition-colors"
-                  onClick={() => toggleFaq(i)}
+                  onClick={() => setOpenFaq(open ? null : i)}
+                  aria-expanded={open}
+                  className="flex w-full items-center justify-between gap-6 py-5 text-left"
                 >
-                  <span className="font-bold text-white">{item?.q}</span>
-                  <ChevronDown
-                    className={`w-5 h-5 text-slate-500 transition-transform ${activeFaq === i ? "rotate-180" : ""}`}
-                  />
+                  <span className="text-lg font-semibold text-white">{item.q}</span>
+                  <ChevronDown className={`h-5 w-5 shrink-0 text-[#7D88AB] transition-transform ${open ? "rotate-180" : ""}`} />
                 </button>
-                {activeFaq === i && (
-                  <div className="px-6 pb-6 text-slate-400 leading-relaxed animate-fade-in">
-                    {item?.a}
-                  </div>
-                )}
+                {open && <p className="-mt-1 pb-6 pr-10 leading-relaxed text-[#AEB8D6]">{item.a}</p>}
               </div>
-            ))}
-          </div>
+            );
+          })}
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950 to-primary-900/20"></div>
-        <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
-            Ready to explore your world?
+      {/* Closing CTA */}
+      <section className="px-5 pb-24 sm:px-8">
+        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-[32px] bg-gradient-to-br from-[#2F5BEA] to-[#1B2E8C] px-8 py-14 text-center sm:py-20">
+          <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full border border-white/15" />
+          <div className="pointer-events-none absolute -right-40 -top-40 h-[28rem] w-[28rem] rounded-full border border-white/10" />
+          <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full border border-white/10" />
+          <Users className="mx-auto h-8 w-8 text-white/80" />
+          <h2 className="font-display mx-auto mt-5 max-w-2xl text-4xl font-bold tracking-[-0.02em] text-white sm:text-5xl">
+            Someone near you is free tonight.
           </h2>
-          <p className="text-xl text-slate-400 mb-10 max-w-2xl mx-auto">
-            Join the fastest growing social discovery community today. Your next
-            adventure is just around the corner.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              variant="primary"
-              onClick={handleLaunchApp}
-              className="rounded-full px-8 h-12 text-base shadow-xl shadow-primary-500/25"
+          <p className="mx-auto mt-4 max-w-lg text-lg text-[#DCE6FF]">Get Orbyt and see who's in your orbit.</p>
+          <div className="mt-9 flex flex-col items-center justify-center gap-5 sm:flex-row">
+            {playBadge}
+            <button
+              onClick={openWebApp}
+              className="h-12 whitespace-nowrap rounded-full bg-white px-6 text-sm font-semibold text-[#1B2E8C] transition hover:bg-[#DCE6FF]"
             >
-              Launch Web App
-              <ArrowRight className="w-5 h-5 ml-2" />
-            </Button>
+              {webAppLabel}
+            </button>
           </div>
-          <p className="mt-6 text-sm text-slate-500">
-            No download required • Works on all devices
-          </p>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-950 border-t border-slate-800 pt-16 pb-8">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12 mb-16">
-            <div className="col-span-2 md:col-span-1">
-              <div className="flex py-4 items-center">
-                <img
-                  draggable={false}
-                  src={MainLogo}
-                  alt="Orbyt Logo"
-                  className="h-12 w-auto object-contain hover:scale-105 transition-transform duration-200"
-                />
-              </div>
-              <p className="text-slate-500 text-sm leading-relaxed">
-                Connecting the world, one neighborhood at a time. Built for the
-                mobile generation.{" "}
-                <span className="text-slate-400 font-bold italic">
-                  Strictly 18+ Only.
-                </span>
-              </p>
-            </div>
-
-            <div>
-              <h4 className="font-bold text-white mb-6">Product</h4>
-              <ul className="space-y-4 text-sm text-slate-400">
-                <li>
-                  <a
-                    href="/about"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    About Us
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/blog"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Blog
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/contact"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Contact
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href={PLAY_STORE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Download App
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold text-white mb-6">Company</h4>
-              <ul className="space-y-4 text-sm text-slate-400">
-                <li>
-                  <a
-                    href="/guidelines"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Community Guidelines
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-bold text-white mb-6">Legal</h4>
-              <ul className="space-y-4 text-sm text-slate-400">
-                <li>
-                  <a
-                    href="/privacy"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Privacy Policy
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/terms"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Terms of Service
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/child-policy"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Child Safety Policy
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/cookies"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Cookie Policy
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/delete-account"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Account Deletion
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="/guidelines"
-                    className="hover:text-primary-400 transition-colors"
-                  >
-                    Guidelines
-                  </a>
-                </li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-800 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-slate-600">
-            <p>
-              &copy; {new Date().getFullYear()} Orbyt Inc. All rights reserved.
+      <footer className="border-t border-white/5">
+        <div className="mx-auto grid max-w-6xl gap-10 px-5 py-14 sm:grid-cols-2 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+          <div>
+            <img src={MainLogo} alt="Orbyt" className="h-9 w-auto object-contain" draggable={false} />
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-[#7D88AB]">
+              Meet the people already around you. For adults 18 and over.
             </p>
-            <div className="flex gap-6">
-              <a href="#" className="hover:text-slate-400">
-                Twitter
-              </a>
-              <a href="#" className="hover:text-slate-400">
-                Instagram
-              </a>
-              <a href="#" className="hover:text-slate-400">
-                LinkedIn
-              </a>
-            </div>
           </div>
+          {[
+            {
+              h: "Product",
+              links: [
+                { l: "About", href: "/about" },
+                { l: "Blog", href: "/blog" },
+                { l: "Get the app", href: PLAY_STORE_URL, ext: true },
+              ],
+            },
+            {
+              h: "Support",
+              links: [
+                { l: "Contact", href: "/contact" },
+                { l: "Community guidelines", href: "/guidelines" },
+                { l: "Delete your account", href: "/delete-account" },
+              ],
+            },
+            {
+              h: "Legal",
+              links: [
+                { l: "Privacy policy", href: "/privacy" },
+                { l: "Terms of service", href: "/terms" },
+                { l: "Child safety policy", href: "/child-policy" },
+                { l: "Cookie policy", href: "/cookies" },
+              ],
+            },
+          ].map((col) => (
+            <div key={col.h}>
+              <p className="font-semibold text-white">{col.h}</p>
+              <ul className="mt-4 space-y-3 text-sm">
+                {col.links.map((lnk: { l: string; href: string; ext?: boolean }) => (
+                  <li key={lnk.l}>
+                    <a
+                      href={lnk.href}
+                      {...(lnk.ext ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                      className="rounded text-[#AEB8D6] transition-colors hover:text-white"
+                    >
+                      {lnk.l}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+        <div className="mx-auto max-w-6xl border-t border-white/5 px-5 py-6 text-sm text-[#5E6A8E] sm:px-8">
+          © {new Date().getFullYear()} Orbyt
         </div>
       </footer>
 
-      <AppModal
-        isOpen={isQrModalOpen}
-        onClose={() => setIsQrModalOpen(false)}
-        title="Download on Android"
-      >
-        <div className="flex flex-col items-center text-center space-y-6">
-          <div className="bg-white p-4 rounded-3xl shadow-2xl">
+      <AppModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} title="Get Orbyt on your phone">
+        <div className="flex flex-col items-center text-center">
+          <div className="rounded-2xl bg-white p-4">
             <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(PLAY_STORE_URL)}`}
-              alt="Scan QR Code to open Play Store"
-              className="w-64 h-64"
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(PLAY_STORE_URL)}`}
+              alt="QR code linking to Orbyt on Google Play"
+              className="h-[220px] w-[220px]"
+              draggable={false}
             />
           </div>
-          <div className="space-y-2">
-            <p className="text-slate-200 font-bold text-lg">Scan to Open Play Store</p>
-            {latestVersion && (
-              <p className="text-primary-400 text-sm font-semibold">Latest version: v{latestVersion}</p>
-            )}
-            <p className="text-slate-400 text-sm">
-              Point your phone's camera at this QR code to open the Orbyt listing on the Google Play Store.
-            </p>
-          </div>
-          <a
-            href={PLAY_STORE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="w-full py-4 bg-primary-600 hover:bg-primary-500 text-white font-bold rounded-2xl transition-colors shadow-lg shadow-primary-500/20 no-underline"
-          >
-            Open Play Store
-          </a>
+          <p className="mt-5 text-sm text-[#AEB8D6]">Scan with your Android phone's camera to open Orbyt on Google Play.</p>
         </div>
       </AppModal>
     </div>
   );
-};
-
-export default DesktopLanding;
+}
