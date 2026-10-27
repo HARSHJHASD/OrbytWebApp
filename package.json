@@ -10,9 +10,7 @@
     "start": "nodemon server.js"
   },
   "dependencies": {
-    "@tensorflow/tfjs": "^4.22.0",
     "bcrypt": "^6.0.0",
-    "buffer": "^6.0.3",
     "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
@@ -23,15 +21,12 @@
     "leaflet.markercluster": "^1.5.3",
     "lucide-react": "^0.563.0",
     "mongodb": "^7.5.0",
-    "nsfwjs": "^4.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-easy-crop": "^5.5.6",
     "react-leaflet": "^5.0.0",
-    "react-leaflet-cluster": "^4.0.0",
     "react-leaflet-markercluster": "^5.0.0-rc.0",
     "react-router-dom": "^7.13.0",
-    "unimported": "^1.31.0",
     "web-push": "^3.6.7",
     "ws": "^8.19.0",
     "zod": "^4.4.3"

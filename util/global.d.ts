@@ -1,1 +1,1 @@
-declare module "nsfwjs";
+// Global type declarations (none needed currently).

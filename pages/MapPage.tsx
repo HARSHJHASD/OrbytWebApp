@@ -229,6 +229,13 @@ const MapPage: React.FC = () => {
 
   /* ---------------- USER ICON ---------------- */
 
+  // Marker HTML is built from other users' data: escape it, or a crafted photo URL /
+  // name becomes script running in every viewer's browser (stored XSS).
+  const escapeHtml = (v: unknown) =>
+    String(v ?? "").replace(/[&<>"'`]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const safePhoto = (url?: string | null) =>
+    typeof url === "string" && /^(https?:\/\/|data:image\/(png|jpe?g|webp|gif);base64,)/i.test(url) ? escapeHtml(url) : "";
+
   const createUserIcon = useCallback(
     (user: NearbyUser) =>
       L.divIcon({
@@ -238,9 +245,9 @@ const MapPage: React.FC = () => {
             <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-slate-200 dark:border-t-slate-800"></div>
             <div class="absolute bottom-1.5 left-0 right-0 top-0 rounded-full bg-white dark:bg-slate-800 p-0.5 overflow-hidden border border-slate-200 dark:border-slate-700 shadow-md">
               ${
-                user.photoURL
-                  ? `<img src="${user.photoURL}" class="w-full h-full object-cover rounded-full" />`
-                  : `<div class="w-full h-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold">${user.displayName[0]}</div>`
+                safePhoto(user.photoURL)
+                  ? `<img src="${safePhoto(user.photoURL)}" class="w-full h-full object-cover rounded-full" />`
+                  : `<div class="w-full h-full bg-slate-100 dark:bg-slate-900 flex items-center justify-center text-slate-400 dark:text-slate-500 font-bold">${escapeHtml(user.displayName?.[0] ?? "?")}</div>`
               }
             </div>
           </div>

@@ -2,10 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import './tailwind.css';
-import { Buffer } from "buffer";
 import { showGlobalToast } from './context/NotificationContext';
 
-(window as any).Buffer = Buffer;
 
 // Global error toasts for failed API calls.
 // Previously every non-OK response (from any URL) raised a toast: background polls,

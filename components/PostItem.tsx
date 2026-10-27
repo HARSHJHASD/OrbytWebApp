@@ -432,7 +432,7 @@ const PostItem: React.FC<any> = ({
               {post?.content}
             </p>
 
-            {post?.meetupDetails?.meetingUrl && (
+            {post?.meetupDetails?.meetingUrl && /^https?:\/\//i.test(post.meetupDetails.meetingUrl) && (
               <a
                 href={post?.meetupDetails?.meetingUrl}
                 target="_blank"

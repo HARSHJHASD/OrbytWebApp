@@ -17,7 +17,25 @@ export function usePushNotifications() {
 
         if (supported) {
             navigator.serviceWorker.register('/sw.js')
-                .then(registration => registration.pushManager.getSubscription())
+                .then(async registration => {
+                    const existing = await registration.pushManager.getSubscription();
+                    // If the server's push keys were rotated, a subscription made with the
+                    // old key can never receive pushes again. Re-subscribe with the current
+                    // key (permission is already granted, so there is no prompt).
+                    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+                    if (existing && vapidKey && Notification.permission === 'granted' && !sameKey(existing, vapidKey)) {
+                        try {
+                            await existing.unsubscribe();
+                            return await registration.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
+                            });
+                        } catch {
+                            return null;
+                        }
+                    }
+                    return existing;
+                })
                 .then(subscription => {
                     setIsSubscribed(!!subscription);
                     // Re-send an existing subscription after login: the server detaches
@@ -75,6 +93,14 @@ export function usePushNotifications() {
     };
 
     return { isSupported, isSubscribed, subscribe };
+}
+
+function sameKey(subscription: PushSubscription, vapidKey: string): boolean {
+    const current = subscription.options?.applicationServerKey;
+    if (!current) return true; // browser doesn't expose it: assume unchanged
+    const a = new Uint8Array(current);
+    const b = urlBase64ToUint8Array(vapidKey);
+    return a.length === b.length && a.every((v, i) => v === b[i]);
 }
 
 function urlBase64ToUint8Array(value: string): Uint8Array {

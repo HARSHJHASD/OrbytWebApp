@@ -20,6 +20,41 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express();
+const IS_PROD = process.env.NODE_ENV === "production";
+app.disable("x-powered-by"); // don't advertise the framework
+
+// --- SECURITY HEADERS ---
+// Content-Security-Policy lists exactly where the web app may load code and data from,
+// so injected markup can't pull in or run third-party scripts. Google Sign-In, Google
+// Fonts, map tiles and avatar images (https:/data:/blob:) are allowed.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://accounts.google.com/gsi/client",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' data: blob: https:",
+  // http://localhost only for local testing of a production build.
+  `connect-src 'self' https: wss:${IS_PROD ? "" : " ws: http://localhost:* http://127.0.0.1:*"}`,
+  "frame-src https://accounts.google.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY"); // no clickjacking via iframes
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(self), camera=(self), microphone=(self), payment=()");
+  // Google Sign-In opens a popup that must be able to message back.
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  if (IS_PROD) res.setHeader("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  if (!req.path.startsWith("/api/")) res.setHeader("Content-Security-Policy", CSP);
+  next();
+});
 
 // --- Web Push Configuration ---
 const publicVapidKey = process.env.VITE_VAPID_PUBLIC_KEY;
@@ -108,6 +143,11 @@ app.get("/post/:id", (req, res) => {
   const appStoreUrl = "https://apps.apple.com/app/orbyt/id6740371671";
 
   res.setHeader("Content-Type", "text/html");
+  // This small page needs its inline redirect script; the id in it is validated above.
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' https: data:; base-uri 'none'; frame-ancestors 'none'",
+  );
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -291,15 +331,20 @@ const port = process.env.PORT || 5000;
 const server = http.createServer(app);
 
 // Initialize WebSocket Server
-const wss = new WebSocketServer({ server });
+// Clients only ever send small pings; the default 100 MB message limit let anyone push
+// huge frames at the server.
+const wss = new WebSocketServer({ server, maxPayload: 64 * 1024 });
+const MAX_SOCKETS_PER_USER = 10;
 
 // Enable CORS - FIXED: Only allow specific domains
 const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5000",
   "https://backend.strangerchat.space",
   "https://orbyt.strangerchat.space",
   "https://sociall-sigma.vercel.app",
+  // Extra origins from the environment (comma-separated), e.g. a staging site.
+  ...(process.env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean),
+  // Local development servers are only trusted outside production.
+  ...(IS_PROD ? [] : ["http://localhost:3000", "http://localhost:5000", "http://localhost:4173"]),
 ];
 
 app.use(
@@ -373,6 +418,50 @@ const vibeLimiter = rateLimit({
 });
 
 app.use("/api/", apiLimiter);
+
+// Spam limits for things other people see. Generous for real use, but one account can
+// no longer flood the feed, inboxes or the report queue.
+const contentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  keyGenerator: rateLimitKey,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "You're doing that too fast. Please wait a moment." },
+});
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  keyGenerator: rateLimitKey,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "You're sending messages too fast. Please slow down." },
+});
+// Successful signups weren't limited at all (the auth limiter only counts failures),
+// so scripts could mass-create accounts. Per IP, with headroom for shared mobile IPs.
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many new accounts from this network. Please try again later." },
+});
+app.post(
+  [
+    "/api/posts",
+    "/api/posts/:id/comment",
+    "/api/stories",
+    "/api/communities",
+    "/api/report",
+    "/api/report-community",
+    "/api/friends/request",
+    "/api/profile/endorse",
+    "/api/meetups/:id/join",
+  ],
+  contentLimiter,
+);
+app.post("/api/chat/send", chatLimiter);
+app.post("/api/auth/signup", signupLimiter);
 
 // --- AUDIT LOGGING MIDDLEWARE ---
 const auditLogs = [];
@@ -541,18 +630,48 @@ app.get("/api/admin/audit-logs", requireAdmin, (req, res) => {
 });
 
 // Input Validation Schemas
+// bcrypt only uses the first 72 bytes of a password; cap length so long inputs can't be
+// used to burn CPU, and so two long passwords sharing a prefix aren't the same password.
 const signupSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  email: z.string().email("Invalid email format").max(254),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .max(72, "Password must be at most 72 characters"),
 });
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email format"),
-  password: z.string().min(1, "Password is required"),
+  email: z.string().email("Invalid email format").max(254),
+  password: z.string().min(1, "Password is required").max(200),
 });
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+// Photos are compressed on the device before upload (a few hundred KB each); 50 MB per
+// request let anyone tie up memory and bandwidth with giant bodies.
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
+
+// MongoDB operator injection: JSON bodies can carry objects such as {"$gt": ""} where a
+// string id is expected, which turns an exact match into "match anything". No client
+// ever sends keys starting with "$" or containing ".", so drop them everywhere.
+function stripMongoOperators(value, depth = 0) {
+  if (depth > 20 || value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i++) value[i] = stripMongoOperators(value[i], depth + 1);
+    return value;
+  }
+  for (const key of Object.keys(value)) {
+    if (key.startsWith("$") || key.includes(".") || key === "__proto__" || key === "constructor" || key === "prototype") {
+      delete value[key];
+    } else {
+      value[key] = stripMongoOperators(value[key], depth + 1);
+    }
+  }
+  return value;
+}
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === "object") stripMongoOperators(req.body);
+  next();
+});
 
 // ============================================================
 // --- USER AUTHENTICATION (signed session tokens) ---
@@ -639,6 +758,20 @@ function getBearerToken(req) {
 const UID_RE = /^[a-f0-9]{24}$/i;
 const isUid = (v) => typeof v === "string" && UID_RE.test(v);
 
+// Image fields (avatars, post/story photos, chat images) end up inside HTML on the web
+// map and in other clients. Any text used to be accepted, so a "photo URL" containing
+// quotes and an event handler became stored XSS for everyone viewing the map. Allow
+// only http(s) links or base64 raster images, with no characters that can break out of
+// an attribute.
+const SAFE_HTTP_IMAGE_RE = /^https?:\/\/[^\s"'<>`\\]+$/i;
+const SAFE_DATA_IMAGE_RE = /^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/=\r\n]+$/i;
+const MAX_IMAGE_CHARS = 12 * 1024 * 1024;
+function isSafeImageUrl(v, { allowEmpty = false } = {}) {
+  if (v === "" && allowEmpty) return true;
+  if (typeof v !== "string" || !v || v.length > MAX_IMAGE_CHARS) return false;
+  return SAFE_HTTP_IMAGE_RE.test(v) || SAFE_DATA_IMAGE_RE.test(v);
+}
+
 // Body/query fields that always name the *caller*. If present they must match the token.
 const IDENTITY_FIELDS = [
   "uid",
@@ -714,22 +847,42 @@ function selfParam(param = "uid") {
 }
 
 // Blocks writes from suspended accounts. Admin suspension used to be cosmetic only.
-const suspensionCache = new Map(); // uid -> { suspended, at }
-async function isUserSuspended(uid) {
-  if (!db || !uid) return false;
+const suspensionCache = new Map(); // uid -> { suspended, exists, at }
+async function getAccountState(uid) {
+  if (!db || !uid) return { suspended: false, exists: true };
   const cached = suspensionCache.get(uid);
-  if (cached && Date.now() - cached.at < 60 * 1000) return cached.suspended;
+  if (cached && Date.now() - cached.at < 60 * 1000) return cached;
   const p = await db
     .collection("profiles")
     .findOne({ uid }, { projection: { isSuspended: 1 } });
-  const suspended = !!p?.isSuspended;
-  suspensionCache.set(uid, { suspended, at: Date.now() });
-  return suspended;
+  // No profile yet can also mean an old account that never finished onboarding, so
+  // only treat the account as gone when the user record is gone too.
+  let exists = !!p;
+  if (!exists && ObjectId.isValid(uid)) {
+    exists = !!(await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(uid) }, { projection: { _id: 1 } }));
+  }
+  const state = { suspended: !!p?.isSuspended, exists, at: Date.now() };
+  if (suspensionCache.size > 50000) suspensionCache.clear();
+  suspensionCache.set(uid, state);
+  return state;
+}
+async function isUserSuspended(uid) {
+  return (await getAccountState(uid)).suspended;
 }
 app.use("/api", async (req, res, next) => {
   if (req.method === "GET" || isPublicApiPath(req.path) || !req.authUid) return next();
   try {
-    if (await isUserSuspended(req.authUid)) {
+    const state = await getAccountState(req.authUid);
+    // Every account gets a profile at signup, so no profile means the account was
+    // deleted. Its 90-day token stayed valid and could even recreate the profile.
+    if (!state.exists && !req.legacyAuth) {
+      return res
+        .status(401)
+        .json({ error: "This account no longer exists. Please log in again.", code: "AUTH_INVALID" });
+    }
+    if (state.suspended) {
       return res
         .status(403)
         .json({ error: "Your account has been suspended.", code: "SUSPENDED" });
@@ -778,7 +931,13 @@ const client = new MongoClient(uri, {
 let db;
 const DB_NAME = "socially_db";
 const clients = new Map(); // uid -> Set<WebSocket>
-const BCRYPT_ROUNDS = 10;
+// 12 rounds ≈ 250 ms per hash: slow enough to make offline cracking of a leaked
+// database impractical, fast enough for login. Older 10-round hashes are upgraded
+// transparently at the user's next login.
+const BCRYPT_ROUNDS = 12;
+// Compared against when the email doesn't exist, so a login for an unknown email takes
+// as long as a wrong password (otherwise timing reveals which emails are registered).
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("orbyt-timing-equaliser", BCRYPT_ROUNDS);
 
 // --- WebSocket Logic ---
 wss.on("connection", (ws, req) => {
@@ -806,6 +965,12 @@ wss.on("connection", (ws, req) => {
     });
     if (!clients.has(uid)) {
       clients.set(uid, new Set());
+    }
+    // Cap connections per account (each one costs memory and a heartbeat).
+    if (clients.get(uid).size >= MAX_SOCKETS_PER_USER) {
+      const oldest = clients.get(uid).values().next().value;
+      oldest?.close(4429, "Too many connections");
+      clients.get(uid).delete(oldest);
     }
     clients.get(uid).add(ws);
 
@@ -1207,6 +1372,7 @@ async function cleanupOrphanedData() {
 
 async function purgeUserCompletely(uid) {
   if (!uid || !db) return;
+  suspensionCache.delete(uid);
 
   const collections = {
     users: db.collection("users"),
@@ -1801,7 +1967,8 @@ app.post("/api/push/test", async (req, res) => {
       ...result,
     });
   } catch (error) {
-    res.status(500).json({ error: "Test push failed", detail: error?.message });
+    console.error("[PUSH] test failed:", error);
+    res.status(500).json({ error: "Test push failed" });
   }
 });
 
@@ -1968,15 +2135,22 @@ app.post("/api/auth/login", authLimiter, async (req, res) => {
 
     const users = db.collection("users");
     const user = await users.findOne({ email }, { collation: EMAIL_COLLATION });
-    if (!user || !user.password)
-      return res.status(401).json({ error: "Invalid email or password" });
-
-    // Compare password with hashed password using bcrypt
-    const passwordMatch = await bcrypt.compare(password, user.password);
-    if (!passwordMatch)
+    const hash = typeof user?.password === "string" ? user.password : DUMMY_PASSWORD_HASH;
+    // Always run bcrypt (see DUMMY_PASSWORD_HASH).
+    const passwordMatch = await bcrypt.compare(password, hash);
+    if (!user || !user.password || !passwordMatch)
       return res.status(401).json({ error: "Invalid email or password" });
 
     const uid = user._id.toString();
+    // Upgrade hashes made with fewer rounds.
+    try {
+      if (bcrypt.getRounds(user.password) < BCRYPT_ROUNDS) {
+        const upgraded = await bcrypt.hash(password, BCRYPT_ROUNDS);
+        await users.updateOne({ _id: user._id }, { $set: { password: upgraded } });
+      }
+    } catch (_) {
+      /* never block a login on the upgrade */
+    }
     const profile = await db.collection("profiles").findOne({ uid });
     if (profile?.isSuspended) {
       return res
@@ -2146,6 +2320,18 @@ app.get("/api/profile/:uid", async (req, res) => {
       profile.passedUsers = [];
       const myMsg = profile.friendRequestMessages?.[viewerUid];
       profile.friendRequestMessages = myMsg ? { [viewerUid]: myMsg } : {};
+      // Exact birth dates are personal data; other people only ever see an age. Keep
+      // the field (older app versions compute the age from it) but replace it with a
+      // mid-year date that yields the same age.
+      if (profile.dob) {
+        const age = calculateAge(profile.dob);
+        if (Number.isFinite(age) && age >= 0 && age < 130) {
+          profile.age = age;
+          profile.dob = new Date(Date.now() - (age * 365.25 + 182) * 86400000).toISOString().slice(0, 10);
+        } else {
+          delete profile.dob;
+        }
+      }
     }
 
     // Hide precise coordinates unless this is the owner's own profile request.
@@ -2411,7 +2597,7 @@ app.post("/api/profiles/batch", async (req, res) => {
 // "Verified" badge, lift their own suspension or edit their friend list.
 const EDITABLE_PROFILE_FIELDS = {
   displayName: (v) => typeof v === "string" && v.trim().length > 0 && v.length <= 60,
-  photoURL: (v) => typeof v === "string",
+  photoURL: (v) => isSafeImageUrl(v, { allowEmpty: true }),
   jobRole: (v) => typeof v === "string" && v.length <= 80,
   liveStatusMode: (v) => typeof v === "string" && v.length <= 60,
   isFuzzed: (v) => typeof v === "boolean",
@@ -2424,7 +2610,7 @@ const EDITABLE_PROFILE_FIELDS = {
   dob: (v) => typeof v === "string" && !Number.isNaN(new Date(v).getTime()),
   isDiscoverable: (v) => typeof v === "boolean",
   discoveryRadius: (v) => typeof v === "number" && v > 0 && v <= 20000,
-  thatsMePhotos: (v) => Array.isArray(v) && v.length <= 6 && v.every((i) => typeof i === "string"),
+  thatsMePhotos: (v) => Array.isArray(v) && v.length <= 6 && v.every((i) => isSafeImageUrl(i, { allowEmpty: true })),
   gender: (v) => ["male", "female", "other", "prefer_not_to_say"].includes(v),
   onboardingStep: (v) => typeof v === "number",
 };
@@ -2664,15 +2850,17 @@ app.post("/api/user/unpass", async (req, res) => {
 app.post("/api/report", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const {
-      reporterUid,
-      targetUid,
-      reason,
-      postId,
-      storyId,
-      communityId,
-      type,
-    } = req.body;
+    const { reason, type } = req.body;
+    const reporterUid = req.authUid;
+    // Every id must be a plain id string. An object such as {"$gt": ""} here used to
+    // match arbitrary documents (and could auto-suspend a random user).
+    const optId = (v) => (v === undefined || v === null || v === "" ? null : isUid(String(v)) && typeof v === "string" ? v : false);
+    const targetUid = optId(req.body.targetUid);
+    const postId = optId(req.body.postId);
+    const storyId = optId(req.body.storyId);
+    const communityId = optId(req.body.communityId);
+    if ([targetUid, postId, storyId, communityId].includes(false))
+      return res.status(400).json({ error: "Invalid id" });
     if (!reporterUid || typeof reason !== "string" || !reason.trim())
       return res
         .status(400)
@@ -2749,7 +2937,8 @@ app.post("/api/report", async (req, res) => {
 app.post("/api/friends/request", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { fromUid, toUid, message } = req.body;
+    const { toUid, message } = req.body;
+    const fromUid = req.authUid; // never trust an id from the body
     if (!fromUid || !isUid(toUid) || fromUid === toUid)
       return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
@@ -2816,7 +3005,8 @@ async function acceptFriendship(userUid, requesterUid) {
 app.post("/api/friends/accept", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { userUid, requesterUid } = req.body;
+    const { requesterUid } = req.body;
+    const userUid = req.authUid;
     if (!userUid || !isUid(requesterUid))
       return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
@@ -2841,7 +3031,8 @@ app.post("/api/friends/accept", async (req, res) => {
 app.post("/api/friends/reject", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { userUid, requesterUid } = req.body;
+    const { requesterUid } = req.body;
+    const userUid = req.authUid;
     if (!userUid || !isUid(requesterUid))
       return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
@@ -2865,7 +3056,8 @@ app.post("/api/friends/reject", async (req, res) => {
 app.post("/api/friends/remove", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { uid1, uid2 } = req.body;
+    const { uid2 } = req.body;
+    const uid1 = req.authUid;
     if (!uid1 || !isUid(uid2)) return res.status(400).json({ error: "Invalid user" });
     const profiles = db.collection("profiles");
     await profiles.updateOne({ uid: uid1 }, { $pull: { friends: uid2 } });
@@ -2904,6 +3096,23 @@ app.post("/api/posts", async (req, res) => {
       return res.status(400).json({ error: "Post is too long" });
     }
     if (postData.type !== "meetup") delete postData.meetupDetails;
+    // Meeting links are opened by other users: only plain web links (a javascript: or
+    // custom-scheme link here is a click-to-run attack). Bare domains get https://.
+    if (postData.meetupDetails && typeof postData.meetupDetails === "object") {
+      const raw = postData.meetupDetails.meetingUrl;
+      if (raw !== undefined && raw !== null && raw !== "") {
+        const u = typeof raw === "string" ? raw.trim().slice(0, 500) : "";
+        if (/^https?:\/\/[^\s"'<>`]+$/i.test(u)) postData.meetupDetails.meetingUrl = u;
+        else if (/^[a-z0-9-]+(\.[a-z0-9-]+)+(\/[^\s"'<>`]*)?$/i.test(u)) postData.meetupDetails.meetingUrl = `https://${u}`;
+        else delete postData.meetupDetails.meetingUrl;
+      }
+    } else {
+      delete postData.meetupDetails;
+    }
+    if (postData.content !== undefined && postData.content !== null && typeof postData.content !== "string")
+      return res.status(400).json({ error: "Invalid content" });
+    if (postData.imageURL !== undefined && postData.imageURL !== null && postData.imageURL !== "" && !isSafeImageUrl(postData.imageURL))
+      return res.status(400).json({ error: "Invalid image" });
 
     // Author info comes from the stored profile, not the request (it was spoofable).
     const poster = await db.collection("profiles").findOne({ uid: postData.uid });
@@ -3081,6 +3290,10 @@ app.put("/api/posts/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid ID" });
     if (typeof content === "string" && content.length > 5000)
       return res.status(400).json({ error: "Post is too long" });
+    if (content !== undefined && content !== null && typeof content !== "string")
+      return res.status(400).json({ error: "Invalid content" });
+    if (imageURL !== undefined && imageURL !== null && imageURL !== "" && !isSafeImageUrl(imageURL))
+      return res.status(400).json({ error: "Invalid image" });
     const posts = db.collection("posts");
     const post = await posts.findOne({ _id: new ObjectId(postId) });
     if (!post) return res.status(404).json({ error: "Post not found" });
@@ -3882,6 +4095,15 @@ app.post("/api/chat/send", async (req, res) => {
       return res.status(400).json({ error: "Message is empty" });
     if (mediaType && !["image", "emoji", "audio"].includes(mediaType))
       return res.status(400).json({ error: "Invalid media type" });
+    if (mediaUrl !== undefined && mediaUrl !== null && mediaUrl !== "") {
+      const okMedia =
+        mediaType === "image"
+          ? isSafeImageUrl(mediaUrl)
+          : typeof mediaUrl === "string" &&
+            mediaUrl.length <= MAX_IMAGE_CHARS &&
+            (SAFE_HTTP_IMAGE_RE.test(mediaUrl) || /^data:audio\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+$/i.test(mediaUrl) || (mediaType === "emoji" && mediaUrl.length <= 32 && !/[<>"'`]/.test(mediaUrl)));
+      if (!okMedia) return res.status(400).json({ error: "Invalid attachment" });
+    }
 
     const messages = db.collection("messages");
     const profiles = db.collection("profiles");
@@ -4338,6 +4560,7 @@ app.post("/api/stories", async (req, res) => {
     const uid = req.authUid;
     if (!uid || !imageURL || typeof imageURL !== "string")
       return res.status(400).json({ error: "Missing required fields" });
+    if (!isSafeImageUrl(imageURL)) return res.status(400).json({ error: "Invalid image" });
 
     // Author details from the stored profile (they were taken from the request body).
     const profile = await db.collection("profiles").findOne({ uid });
@@ -4639,7 +4862,8 @@ app.get("/api/communities/:id", async (req, res) => {
       return res.status(400).json({ error: "Invalid ID" });
     const communities = db.collection("communities");
     const community = await communities.findOne({ _id: new ObjectId(id) });
-    if (!community)
+    // Private rooms (and their member lists) are only visible to members.
+    if (!community || (community.isPrivate && !(community.members || []).includes(req.authUid)))
       return res.status(404).json({ error: "Community not found" });
     res.json(community);
   } catch (e) {
@@ -4865,9 +5089,40 @@ function safeSecretEquals(provided) {
   return crypto.timingSafeEqual(a, b);
 }
 
+// Admin sessions are short-lived signed tokens. The admin login used to hand back the
+// master secret itself, which then lived in the browser: anyone who saw it once (XSS,
+// shared computer, screenshot) had permanent admin access. Tokens are tied to the
+// current SUPER_ADMIN_SECRET, so changing the secret logs every admin out.
+const ADMIN_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+function adminTokenKey() {
+  return crypto
+    .createHmac("sha256", AUTH_TOKEN_SECRET)
+    .update(`orbyt-admin:${SUPER_ADMIN_SECRET}`)
+    .digest();
+}
+function signAdminToken() {
+  const payload = b64url(JSON.stringify({ adm: 1, iat: Date.now(), exp: Date.now() + ADMIN_TOKEN_TTL_MS }));
+  const sig = crypto.createHmac("sha256", adminTokenKey()).update(payload).digest("base64url");
+  return `adm.${payload}.${sig}`;
+}
+function verifyAdminToken(token) {
+  if (!SUPER_ADMIN_SECRET || typeof token !== "string" || !token.startsWith("adm.")) return false;
+  const [, payload, sig] = token.split(".");
+  if (!payload || !sig) return false;
+  const expected = crypto.createHmac("sha256", adminTokenKey()).update(payload).digest("base64url");
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  try {
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return data?.adm === 1 && typeof data.exp === "number" && data.exp > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 function requireAdmin(req, res, next) {
-  const provided = req.headers["x-admin-secret"];
-  if (!safeSecretEquals(provided)) {
+  if (!verifyAdminToken(req.headers["x-admin-secret"])) {
     return res.status(403).json({ error: "Forbidden" });
   }
   next();
@@ -4879,9 +5134,10 @@ app.post("/api/admin/login", authLimiter, (req, res) => {
   if (!safeSecretEquals(secret)) {
     return res.status(403).json({ error: "Invalid admin credentials" });
   }
-  // Return the secret itself as the "token" — the client stores it
-  // and sends it back as X-Admin-Secret on every subsequent request.
-  res.json({ success: true, token: SUPER_ADMIN_SECRET });
+  // A signed 8-hour token (never the secret itself); the admin pages send it back as
+  // X-Admin-Secret.
+  console.warn(`[ADMIN] login from ${req.ip}`);
+  res.json({ success: true, token: signAdminToken() });
 });
 
 // GET /api/admin/users — server-side search / filter / sort / pagination
@@ -6333,7 +6589,7 @@ app.get("/api/admin/analytics", requireAdmin, async (req, res) => {
     console.error("Analytics error:", e);
     res
       .status(500)
-      .json({ error: "Failed to fetch analytics", detail: e.message });
+      .json({ error: "Failed to fetch analytics" });
   }
 });
 
