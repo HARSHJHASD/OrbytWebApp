@@ -135,6 +135,8 @@ const EditProfile: React.FC = () => {
     try {
       for (let i = 0; i < picked.length; i++) {
         const file = picked[i];
+        const slot = targets[i];
+        if (!file || slot === undefined) continue;
         if (!file.type.startsWith("image/")) {
           problems.push(`${file.name} isn't an image`);
           continue;
@@ -145,7 +147,6 @@ const EditProfile: React.FC = () => {
         }
         try {
           const compressed = await compressImage(file, 1080, 0.7);
-          const slot = targets[i];
           setThatsMePhotos((prev) => {
             const next = [0, 1, 2].map((s) => prev[s] || "");
             next[slot] = compressed;

@@ -312,7 +312,10 @@ const Feed: React.FC = () => {
   useEffect(() => {
     fetchPosts();
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    // Skip polls while the tab is hidden; the visibility handler below refreshes on return.
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchNotifications();
+    }, 30000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {

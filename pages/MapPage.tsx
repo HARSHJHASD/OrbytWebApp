@@ -143,7 +143,11 @@ const MapPage: React.FC = () => {
   useEffect(() => { fetchMapData(); }, [fetchMapData]);
 
   useEffect(() => {
-    const interval = setInterval(() => fetchMapData(), 60_000);
+    // Background tabs don't need live map refreshes (and they count toward the
+    // per-user map rate limit).
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") fetchMapData();
+    }, 60_000);
     return () => clearInterval(interval);
   }, [fetchMapData]);
 

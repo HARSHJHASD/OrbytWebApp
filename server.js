@@ -376,6 +376,7 @@ app.use("/api/", apiLimiter);
 
 // --- AUDIT LOGGING MIDDLEWARE ---
 const auditLogs = [];
+const AUDIT_LOG_VERBOSE = process.env.AUDIT_LOG_VERBOSE === "true";
 function createAuditLog(req, res, next) {
   const startTime = Date.now();
   const originalJson = res.json;
@@ -399,7 +400,9 @@ function createAuditLog(req, res, next) {
       console.warn(
         `[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`,
       );
-    } else {
+    } else if (AUDIT_LOG_VERBOSE) {
+      // Logging every successful request synchronously to stdout is a measurable cost
+      // under load; errors are always logged, successes only when asked for.
       console.log(
         `[AUDIT] ${res.statusCode} ${req.method} ${req.path} - UID: ${logEntry.uid} - ${duration}ms`,
       );
@@ -795,6 +798,12 @@ wss.on("connection", (ws, req) => {
   }
 
   if (uid) {
+    // Heartbeat: sockets from phones that lost signal never send a close frame, so
+    // without this they stayed in `clients` forever (memory leak + wasted sends).
+    ws.isAlive = true;
+    ws.on("pong", () => {
+      ws.isAlive = true;
+    });
     if (!clients.has(uid)) {
       clients.set(uid, new Set());
     }
@@ -834,6 +843,7 @@ wss.on("connection", (ws, req) => {
       try {
         const data = JSON.parse(message);
         if (data.type === "ping") {
+          ws.isAlive = true;
           ws.send(JSON.stringify({ type: "pong" }));
         }
       } catch (e) {
@@ -843,14 +853,36 @@ wss.on("connection", (ws, req) => {
   }
 });
 
-function sendToUser(uid, data) {
-  if (clients.has(uid)) {
-    clients.get(uid).forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(data));
-      }
-    });
+const WS_HEARTBEAT_MS = 30000;
+const wsHeartbeat = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      ws.terminate(); // fires "close", which removes it from `clients`
+      continue;
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch {
+      /* socket already gone */
+    }
   }
+}, WS_HEARTBEAT_MS);
+wss.on("close", () => clearInterval(wsHeartbeat));
+
+function sendToUser(uid, data) {
+  const sockets = clients.get(uid);
+  if (!sockets || sockets.size === 0) return;
+  const payload = JSON.stringify(data); // once, not once per socket
+  sockets.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      try {
+        client.send(payload);
+      } catch {
+        /* socket closing */
+      }
+    }
+  });
 }
 
 // A push payload is consumed by two clients with different route structures.  Keep
@@ -1021,7 +1053,12 @@ async function createNotification(
       data: { url: notifUrl.expo, notificationId: notifResult.insertedId.toString(), notificationType: type },
     };
 
-    await sendPushNotification(toUid, payload, expoPayload);
+    // Push delivery (Expo / web-push round trips + retries) used to be awaited here,
+    // so every like, comment and friend request waited on a third-party API before
+    // responding. The notification is already stored and sent over WebSocket.
+    sendPushNotification(toUid, payload, expoPayload).catch((err) =>
+      console.error("[PUSH] send failed:", err?.message || err),
+    );
   } catch (e) {
     console.error("Error creating notification", e);
   }
@@ -1050,6 +1087,12 @@ async function cleanupOrphanedData() {
     const allUsers = await users.find({}).project({ _id: 1 }).toArray();
     const validUids = new Set(allUsers.map((u) => u._id.toString()));
     const validUidArray = Array.from(validUids);
+    // Safety: an empty/unreadable users collection (wrong DB, auth hiccup, restore in
+    // progress) would make every profile, post and message look orphaned and delete it.
+    if (validUids.size === 0) {
+      console.warn("[CLEANUP] users collection is empty — skipping orphan cleanup.");
+      return;
+    }
 
     // 2. Delete Orphaned Profiles
     const profRes = await profiles.deleteMany({ uid: { $nin: validUidArray } });
@@ -1084,10 +1127,14 @@ async function cleanupOrphanedData() {
       { $pull: { comments: { uid: { $nin: validUidArray } } } },
     );
 
-    // Iterate Posts to clean string arrays (likedBy, attendees, etc.)
-    const allPosts = await posts.find({}).toArray();
+    // Iterate Posts to clean string arrays (likedBy, attendees, etc.). Projected so we
+    // don't pull every post's images into memory, and streamed instead of toArray().
+    const postOps = [];
+    const allPosts = posts
+      .find({})
+      .project({ likedBy: 1, attendees: 1, pendingRequests: 1 });
     let postUpdates = 0;
-    for (const post of allPosts) {
+    for await (const post of allPosts) {
       let changed = false;
       const updates = {};
 
@@ -1115,15 +1162,19 @@ async function cleanupOrphanedData() {
       }
 
       if (changed) {
-        await posts.updateOne({ _id: post._id }, { $set: updates });
+        postOps.push({ updateOne: { filter: { _id: post._id }, update: { $set: updates } } });
         postUpdates++;
       }
     }
+    if (postOps.length) await posts.bulkWrite(postOps, { ordered: false });
 
     // Iterate Profiles to clean friend lists
-    const allProfiles = await profiles.find({}).toArray();
+    const profileOps = [];
+    const allProfiles = profiles
+      .find({})
+      .project({ friends: 1, incomingRequests: 1, outgoingRequests: 1, blockedUsers: 1 });
     let profileUpdates = 0;
-    for (const p of allProfiles) {
+    for await (const p of allProfiles) {
       let changed = false;
       const updates = {};
       const fields = [
@@ -1143,10 +1194,12 @@ async function cleanupOrphanedData() {
         }
       }
       if (changed) {
-        await profiles.updateOne({ _id: p._id }, { $set: updates });
+        profileOps.push({ updateOne: { filter: { _id: p._id }, update: { $set: updates } } });
         profileUpdates++;
       }
     }
+    if (profileOps.length) await profiles.bulkWrite(profileOps, { ordered: false });
+    console.log(`[CLEANUP] done: ${postUpdates} posts, ${profileUpdates} profiles repaired.`);
   } catch (e) {
     console.error("Error during cleanup:", e);
   }
@@ -1200,7 +1253,16 @@ async function purgeUserCompletely(uid) {
   });
 
   await collections.profiles.updateMany(
-    {},
+    {
+      $or: [
+        { friends: uid },
+        { incomingRequests: uid },
+        { outgoingRequests: uid },
+        { blockedUsers: uid },
+        { passedUsers: uid },
+        { likedBy: uid },
+      ],
+    },
     {
       $pull: {
         friends: uid,
@@ -1214,33 +1276,28 @@ async function purgeUserCompletely(uid) {
   );
 
   await collections.communities.updateMany(
-    {},
+    { members: uid },
     {
       $pull: { members: uid },
     },
   );
 
+  // Decrement like counters only on posts this user liked. This used to load every
+  // post in the database (images included) and rewrite each one's counter.
   await collections.posts.updateMany(
-    {},
+    { likedBy: uid },
+    { $pull: { likedBy: uid }, $inc: { likes: -1 } },
+  );
+  await collections.posts.updateMany(
+    { $or: [{ "comments.uid": uid }, { attendees: uid }, { pendingRequests: uid }] },
     {
       $pull: {
         comments: { uid },
-        likedBy: uid,
         attendees: uid,
         pendingRequests: uid,
       },
     },
   );
-
-  const affectedPosts = await collections.posts
-    .find({ likedBy: { $exists: true } })
-    .toArray();
-  for (const post of affectedPosts) {
-    await collections.posts.updateOne(
-      { _id: post._id },
-      { $set: { likes: (post.likedBy || []).length } },
-    );
-  }
 }
 
 async function createIndexes() {
@@ -1283,6 +1340,10 @@ async function createIndexes() {
     ["messages", { fromUid: 1, toUid: 1, createdAt: -1 }],
     ["messages", { groupId: 1, createdAt: -1 }],
     ["stories", { expiresAt: 1, createdAt: -1 }],
+    ["posts", { attendees: 1 }], // inbox: meetups the user attends
+    ["posts", { "comments.uid": 1 }], // profile rename propagation + account purge
+    ["posts", { likedBy: 1 }], // account purge
+    ["notifications", { fromUid: 1 }], // profile rename propagation + account purge
   ];
   for (const [collName, spec] of compound) {
     db.collection(collName)
@@ -1452,8 +1513,9 @@ async function run() {
       });
     }
 
-    // Run cleanup on startup to sync state
-    await cleanupOrphanedData();
+    // Run cleanup on startup to sync state — in the background, so a large database
+    // doesn't hold up the first requests.
+    cleanupOrphanedData();
   } catch (e) {
     console.error("MongoDB connection error:", e);
   }
@@ -1478,15 +1540,12 @@ async function getMutualBlockedUids(viewerUid) {
     return [];
   try {
     const profiles = db.collection("profiles");
-    const viewer = await profiles.findOne(
-      { uid: viewerUid },
-      { projection: { blockedUsers: 1 } },
-    );
+    // Independent queries — run them together (this sits on almost every read path).
+    const [viewer, blockers] = await Promise.all([
+      profiles.findOne({ uid: viewerUid }, { projection: { blockedUsers: 1 } }),
+      profiles.find({ blockedUsers: viewerUid }).project({ uid: 1 }).toArray(),
+    ]);
     const blockedByViewer = viewer?.blockedUsers || [];
-    const blockers = await profiles
-      .find({ blockedUsers: viewerUid })
-      .project({ uid: 1 })
-      .toArray();
     const blockingViewer = blockers.map((b) => b.uid);
     return [...new Set([...blockedByViewer, ...blockingViewer])];
   } catch (e) {
@@ -2385,6 +2444,15 @@ app.post("/api/profile/:uid", selfParam("uid"), async (req, res) => {
       $setOnInsert: { uid, createdAt: Date.now() },
     };
 
+    // Read the previous name/photo so we only rewrite denormalised copies when they
+    // actually changed. Clients send displayName + photoURL on every save (onboarding
+    // steps, location pings), and each save used to rewrite every post, comment,
+    // message and notification the user ever authored.
+    const wantsIdentityCheck = !!data.displayName || data.photoURL !== undefined;
+    const previous = wantsIdentityCheck
+      ? await profiles.findOne({ uid }, { projection: { displayName: 1, photoURL: 1 } })
+      : null;
+
     await profiles.updateOne({ uid }, updateDoc, { upsert: true });
 
     // 3. Crossed Paths Logic (Feature 4)
@@ -2433,7 +2501,9 @@ app.post("/api/profile/:uid", selfParam("uid"), async (req, res) => {
 
     // 2. Propagate updates to related collections (Posts, Comments, Messages, Notifications)
     // This ensures that old posts/comments reflect the new username/photo
-    if (data.displayName || data.photoURL !== undefined) {
+    const nameChanged = !!data.displayName && data.displayName !== previous?.displayName;
+    const photoChanged = data.photoURL !== undefined && data.photoURL !== previous?.photoURL;
+    if (nameChanged || photoChanged) {
       const posts = db.collection("posts");
       const messages = db.collection("messages");
       const notifications = db.collection("notifications");
@@ -2442,43 +2512,28 @@ app.post("/api/profile/:uid", selfParam("uid"), async (req, res) => {
       const commentUpdates = {};
       const notifUpdates = {};
 
-      if (data.displayName) {
+      if (nameChanged) {
         updates.authorName = data.displayName;
         commentUpdates["comments.$[elem].authorName"] = data.displayName;
         notifUpdates.fromName = data.displayName;
       }
-      if (data.photoURL !== undefined) {
+      if (photoChanged) {
         updates.authorPhoto = data.photoURL;
         commentUpdates["comments.$[elem].authorPhoto"] = data.photoURL;
         notifUpdates.fromPhoto = data.photoURL;
       }
 
-      // Update Posts (where user is author)
-      if (Object.keys(updates).length > 0) {
-        await posts.updateMany({ uid }, { $set: updates });
-      }
-
-      // Update Comments (where user is author)
-      if (Object.keys(commentUpdates).length > 0) {
-        await posts.updateMany(
+      // In parallel and off the request path: the profile itself is already saved.
+      Promise.all([
+        posts.updateMany({ uid }, { $set: updates }),
+        posts.updateMany(
           { "comments.uid": uid },
           { $set: commentUpdates },
           { arrayFilters: [{ "elem.uid": uid }] },
-        );
-      }
-
-      // Update Messages (where user is sender)
-      if (Object.keys(updates).length > 0) {
-        await messages.updateMany({ fromUid: uid }, { $set: updates });
-      }
-
-      // Update Notifications (where user is sender)
-      if (Object.keys(notifUpdates).length > 0) {
-        await notifications.updateMany(
-          { fromUid: uid },
-          { $set: notifUpdates },
-        );
-      }
+        ),
+        messages.updateMany({ fromUid: uid }, { $set: updates }),
+        notifications.updateMany({ fromUid: uid }, { $set: notifUpdates }),
+      ]).catch((e) => console.error("Profile propagation failed:", e?.message || e));
     }
 
     res.json({ success: true });
@@ -2847,17 +2902,18 @@ app.post("/api/posts", async (req, res) => {
     // Notify all friends about the new post/event (fire-and-forget)
     setImmediate(async () => {
       try {
-        if (poster?.friends?.length) {
-          for (const friendUid of poster.friends) {
-            await createNotification(
-              notifType,
-              postData.uid,
-              friendUid,
-              postIdStr,
-              extra,
-            ).catch(() => { });
+        // Small parallel batches: one-at-a-time took minutes for users with many
+        // friends; unbounded Promise.all would flood the DB pool.
+        const notifyAll = async (uids, type) => {
+          for (let i = 0; i < uids.length; i += 10) {
+            await Promise.all(
+              uids
+                .slice(i, i + 10)
+                .map((to) => createNotification(type, postData.uid, to, postIdStr, extra).catch(() => { })),
+            );
           }
-        }
+        };
+        if (poster?.friends?.length) await notifyAll(poster.friends, notifType);
         // For meetup posts: also notify discoverable users who are actually NEAR the
         // event (the push says "near you"; it used to go to the same arbitrary 80 users
         // every time regardless of where they were).
@@ -2878,15 +2934,7 @@ app.post("/api/posts", async (req, res) => {
             .project({ uid: 1 })
             .limit(80)
             .toArray();
-          for (const p of nearbyProfiles) {
-            await createNotification(
-              "new_event",
-              postData.uid,
-              p.uid,
-              postIdStr,
-              extra,
-            ).catch(() => { });
-          }
+          await notifyAll(nearbyProfiles.map((p) => p.uid), "new_event");
         }
       } catch (e) {
         console.error("Post notification error:", e);
@@ -3007,10 +3055,12 @@ app.put("/api/posts/:id", async (req, res) => {
     if (!post) return res.status(404).json({ error: "Post not found" });
     if (post.uid !== uid)
       return res.status(403).json({ error: "Unauthorized" });
-    await posts.updateOne(
-      { _id: new ObjectId(postId) },
-      { $set: { content, imageURL, updatedAt: Date.now() } },
-    );
+    // Only touch fields the client sent: an edit of just the text used to null out
+    // the post's image (and vice versa).
+    const set = { updatedAt: Date.now() };
+    if (content !== undefined) set.content = content;
+    if (imageURL !== undefined) set.imageURL = imageURL;
+    await posts.updateOne({ _id: new ObjectId(postId) }, { $set: set });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to update post" });
@@ -3967,6 +4017,10 @@ app.get("/api/chat/inbox/:uid", selfParam("uid"), async (req, res) => {
           $or: [{ fromUid: uid }, { toUid: uid }],
         },
       },
+      // The list only shows a text preview. Dropping base64 media before $group keeps
+      // the stage small (it holds every conversation's last message in memory and
+      // fails past 100MB) and keeps the response light.
+      { $project: { mediaUrl: 0, authorPhoto: 0, replyTo: 0 } },
       { $sort: { createdAt: -1 } },
       {
         $group: {
@@ -3989,6 +4043,10 @@ app.get("/api/chat/inbox/:uid", selfParam("uid"), async (req, res) => {
           from: "profiles",
           localField: "_id",
           foreignField: "uid",
+          // Fetch only what is shown; the full profile carries photo arrays etc.
+          pipeline: [
+            { $project: { uid: 1, displayName: 1, photoURL: 1, badgeTitle: 1, jobRole: 1 } },
+          ],
           as: "otherUser",
         },
       },
@@ -4035,6 +4093,7 @@ app.get("/api/chat/inbox/:uid", selfParam("uid"), async (req, res) => {
           ],
         },
       },
+      { $project: { mediaUrl: 0, authorPhoto: 0, replyTo: 0 } },
       { $sort: { createdAt: -1 } },
       // Normalize groupId to string for grouping to avoid duplicate entries for same group
       {
@@ -4350,6 +4409,8 @@ app.post("/api/chats/:chatId/revive", requireAuth, async (req, res) => {
 
   if (!db) return res.status(500).json({ error: "Database not initialized" });
 
+  if (!ObjectId.isValid(chatId))
+    return res.status(400).json({ error: "Invalid chat ID" });
   try {
     const chats = db.collection("chats");
     const chat = await chats.findOne({ _id: new ObjectId(chatId) });

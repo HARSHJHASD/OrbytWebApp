@@ -206,11 +206,11 @@ const SwipeableCard: React.FC<SwipeableCardProps> = ({ profile, distText, onSwip
                         </div>
                     )}
 
-                    {profile?.thatsMePhotos?.filter(Boolean).length > 0 && (
+                    {(profile?.thatsMePhotos?.filter(Boolean).length ?? 0) > 0 && (
                         <div className="mt-5">
                             <h3 className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500 mb-2">That's me</h3>
                             <div className="space-y-3">
-                                {profile.thatsMePhotos.filter(Boolean).map((photo, index) => (
+                                {(profile.thatsMePhotos ?? []).filter(Boolean).map((photo, index) => (
                                     <img
                                         key={`${photo}-${index}`}
                                         src={photo}
