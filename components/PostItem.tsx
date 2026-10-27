@@ -241,6 +241,8 @@ const PostItem: React.FC<any> = ({
                 <img
                   src={post?.authorPhoto}
                   alt={post?.authorName}
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               ) : (
@@ -367,6 +369,8 @@ const PostItem: React.FC<any> = ({
               <img
                 src={post?.imageURL}
                 alt="Meetup"
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>
@@ -504,6 +508,8 @@ const PostItem: React.FC<any> = ({
               <img
                 src={post?.imageURL}
                 alt="Post"
+                loading="lazy"
+                decoding="async"
                 className="w-full h-full object-cover"
               />
             </div>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -6,40 +6,40 @@ import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ConfigProvider } from './context/ConfigContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import { api } from './services/api';
-import AuthPage from './pages/Auth';
-import Onboarding from './pages/Onboarding';
-import Profile from './pages/Profile';
-import EditProfile from './pages/EditProfile';
-import Feed from './pages/Feed';
-import CreatePost from './pages/CreatePost';
-import EditPost from './pages/EditPost';
-import PostDetail from './pages/PostDetail';
-import MapPage from './pages/MapPage';
-import Chat from './pages/Chat';
-import Inbox from './pages/Inbox';
-import NotificationsPage from './pages/Notifications';
-import Discover from './pages/Discover';
-import Layout from './components/Layout';
 import LocationGuard from './components/LocationGuard';
-import Settings from './pages/Settings';
 import { Loader2 } from 'lucide-react';
-import DesktopLanding from './pages/DeskTopLandingPage';
-import TermsOfService from './pages/TermsOfService';
-import PrivacyPolicy from './pages/PrivacyPolicy';
-import ChildPolicy from './pages/ChildPolicy';
-import DeveloperProfile from './pages/DeveloperProfile';
-import Guidelines from './pages/Guidelines';
-import CookiePolicy from './pages/CookiePolicy';
-import About from './pages/About';
-import Blog from './pages/Blog';
-import Contact from './pages/Contact';
-import DeleteAccount from './pages/DeleteAccount';
-import Communities from './pages/Communities';
-import CommunityRoom from './pages/CommunityRoom';
-import AdminLogin from './pages/AdminLogin';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminUserDetails from './pages/AdminUserDetails';
 
+const Layout = lazy(() => import('./components/Layout'));
+const AuthPage = lazy(() => import('./pages/Auth'));
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const Profile = lazy(() => import('./pages/Profile'));
+const EditProfile = lazy(() => import('./pages/EditProfile'));
+const Feed = lazy(() => import('./pages/Feed'));
+const CreatePost = lazy(() => import('./pages/CreatePost'));
+const EditPost = lazy(() => import('./pages/EditPost'));
+const PostDetail = lazy(() => import('./pages/PostDetail'));
+const MapPage = lazy(() => import('./pages/MapPage'));
+const Chat = lazy(() => import('./pages/Chat'));
+const Inbox = lazy(() => import('./pages/Inbox'));
+const NotificationsPage = lazy(() => import('./pages/Notifications'));
+const Discover = lazy(() => import('./pages/Discover'));
+const Settings = lazy(() => import('./pages/Settings'));
+const DesktopLanding = lazy(() => import('./pages/DeskTopLandingPage'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const ChildPolicy = lazy(() => import('./pages/ChildPolicy'));
+const DeveloperProfile = lazy(() => import('./pages/DeveloperProfile'));
+const Guidelines = lazy(() => import('./pages/Guidelines'));
+const CookiePolicy = lazy(() => import('./pages/CookiePolicy'));
+const About = lazy(() => import('./pages/About'));
+const Blog = lazy(() => import('./pages/Blog'));
+const Contact = lazy(() => import('./pages/Contact'));
+const DeleteAccount = lazy(() => import('./pages/DeleteAccount'));
+const Communities = lazy(() => import('./pages/Communities'));
+const CommunityRoom = lazy(() => import('./pages/CommunityRoom'));
+const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminUserDetails = lazy(() => import('./pages/AdminUserDetails'));
 
 // Guard component to protect routes and check profile existence
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -108,6 +108,13 @@ const AppRoutes = () => {
   return (
     <NotificationProvider>
       <div className={`antialiased ${isDark ? 'dark' : ''} bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300 min-h-screen`}>
+        <Suspense
+          fallback={
+            <div className="h-screen w-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+              <Loader2 className="w-8 h-8 text-primary-500 animate-spin" />
+            </div>
+          }
+        >
         <Routes>
           {/* Admin — completely isolated, no auth provider dependency */}
           <Route path="/admin" element={<AdminLogin />} />
@@ -204,6 +211,7 @@ const AppRoutes = () => {
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
+        </Suspense>
       </div>
     </NotificationProvider>
   );
