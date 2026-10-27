@@ -43,7 +43,10 @@
     "@types/react-dom": "^19.2.3",
     "@types/react-leaflet-markercluster": "^3.0.4",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.20",
     "nodemon": "^3.1.14",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   },

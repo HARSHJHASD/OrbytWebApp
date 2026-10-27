@@ -1344,6 +1344,8 @@ async function createIndexes() {
     ["posts", { "comments.uid": 1 }], // profile rename propagation + account purge
     ["posts", { likedBy: 1 }], // account purge
     ["notifications", { fromUid: 1 }], // profile rename propagation + account purge
+    ["profiles", { expoPushTokens: 1 }], // detach a phone's token from other accounts
+    ["profiles", { "webPushSubscriptions.endpoint": 1 }], // same for browsers
   ];
   for (const [collName, spec] of compound) {
     db.collection(collName)
@@ -1711,33 +1713,44 @@ app.post("/api/push/subscribe", async (req, res) => {
     }
 
     const profiles = db.collection("profiles");
-    const update =
-      resolvedPlatform === "expo"
-        ? { $set: { expoPushToken: subscription } }
-        : { $set: { webPushSubscription: subscription } };
 
-    await profiles.updateOne({ uid }, update);
-
-    // A device token belongs to one account at a time. If this phone/browser was
-    // previously logged in as someone else, detach it from that profile so the
-    // old account's notifications stop arriving here.
+    // Several devices per account (phone + tablet, two browsers...). Each device is
+    // stored once; the newest MAX_PUSH_DEVICES are kept. Previously a single token
+    // field meant only the most recently opened device ever got notifications.
     if (resolvedPlatform === "expo") {
-      await profiles.updateMany(
-        { uid: { $ne: uid }, $or: [{ expoPushToken: subscription }, { pushSubscription: subscription }] },
-        { $unset: { expoPushToken: "" }, $set: { pushSubscription: null } },
-      );
-    } else if (subscription?.endpoint) {
-      await profiles.updateMany(
-        { uid: { $ne: uid }, "webPushSubscription.endpoint": subscription.endpoint },
-        { $unset: { webPushSubscription: "" } },
-      );
-    }
-
-    // Keep backwards compatibility while migrating old clients.
-    if (resolvedPlatform === "expo") {
+      if (!isExpoToken) return res.status(400).json({ error: "Invalid Expo push token" });
+      // A device token belongs to one account at a time: detach it from anyone else
+      // (this phone may previously have been logged in as another user).
+      await detachExpoTokenFromOthers(subscription, uid);
+      await profiles.updateOne({ uid }, { $pull: { expoPushTokens: subscription } });
       await profiles.updateOne(
         { uid },
-        { $set: { pushSubscription: subscription } },
+        {
+          $push: { expoPushTokens: { $each: [subscription], $slice: -MAX_PUSH_DEVICES } },
+          // Legacy single-token fields, still read by older server code paths.
+          $set: { expoPushToken: subscription, pushSubscription: subscription },
+        },
+      );
+    } else {
+      if (!subscription || typeof subscription !== "object" || typeof subscription.endpoint !== "string") {
+        return res.status(400).json({ error: "Invalid web push subscription" });
+      }
+      const endpoint = subscription.endpoint;
+      await profiles.updateMany(
+        { uid: { $ne: uid }, "webPushSubscriptions.endpoint": endpoint },
+        { $pull: { webPushSubscriptions: { endpoint } } },
+      );
+      await profiles.updateMany(
+        { uid: { $ne: uid }, "webPushSubscription.endpoint": endpoint },
+        { $unset: { webPushSubscription: "" } },
+      );
+      await profiles.updateOne({ uid }, { $pull: { webPushSubscriptions: { endpoint } } });
+      await profiles.updateOne(
+        { uid },
+        {
+          $push: { webPushSubscriptions: { $each: [subscription], $slice: -MAX_PUSH_DEVICES } },
+          $set: { webPushSubscription: subscription },
+        },
       );
     }
 
@@ -1759,7 +1772,7 @@ app.post("/api/push/test", async (req, res) => {
     const uid = req.authUid;
     const profile = await db.collection("profiles").findOne(
       { uid },
-      { projection: { expoPushToken: 1, pushSubscription: 1, webPushSubscription: 1 } },
+      { projection: PUSH_PROJECTION },
     );
     const result = await sendPushNotification(
       uid,
@@ -1777,11 +1790,14 @@ app.post("/api/push/test", async (req, res) => {
       0,
       0, // no retries for a diagnostic
     );
-    const token = profile?.expoPushToken || (typeof profile?.pushSubscription === "string" ? profile.pushSubscription : null);
+    const { expoTokens, webSubs } = collectPushTargets(profile);
+    const token = expoTokens[expoTokens.length - 1] || null;
     res.json({
       registeredExpoToken: token ? `${token.slice(0, 22)}…` : null,
-      validExpoToken: token ? Expo.isExpoPushToken(token) : false,
-      hasWebSubscription: !!profile?.webPushSubscription,
+      validExpoToken: !!token,
+      registeredPhones: expoTokens.length,
+      hasWebSubscription: webSubs.length > 0,
+      registeredBrowsers: webSubs.length,
       ...result,
     });
   } catch (error) {
@@ -1794,12 +1810,25 @@ app.post("/api/push/unsubscribe", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
     const uid = req.authUid;
-    const { platform } = req.body || {};
-    const unset =
-      platform === "web"
-        ? { webPushSubscription: "" }
-        : { expoPushToken: "", pushSubscription: "" };
-    await db.collection("profiles").updateOne({ uid }, { $unset: unset });
+    const { platform, token, endpoint } = req.body || {};
+    const profiles = db.collection("profiles");
+    if (platform === "web") {
+      if (typeof endpoint === "string" && endpoint) {
+        // Only this browser — other devices keep receiving notifications.
+        await removeDeadWebSubscription(uid, endpoint);
+      } else {
+        await profiles.updateOne({ uid }, { $unset: { webPushSubscription: "", webPushSubscriptions: "" } });
+      }
+    } else if (typeof token === "string" && token) {
+      // Only this phone.
+      await removeDeadExpoToken(uid, token);
+    } else {
+      // Older app builds don't say which device: previous behaviour, remove all phones.
+      await profiles.updateOne(
+        { uid },
+        { $unset: { expoPushToken: "", pushSubscription: "", expoPushTokens: "" } },
+      );
+    }
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Failed to remove push subscription" });
@@ -2088,7 +2117,9 @@ app.post("/api/profile/endorse", async (req, res) => {
 const PRIVATE_PROFILE_FIELDS = [
   "email",
   "expoPushToken",
+  "expoPushTokens",
   "webPushSubscription",
+  "webPushSubscriptions",
   "pushSubscription",
   "quests",
   "isFuzzed",
@@ -3553,13 +3584,65 @@ app.post("/api/vibe/acknowledge", async (req, res) => {
 // --- HELPER: Send Push Notification (Expo & Web) with Retry Logic ---
 // `channels` limits a retry to the channel that actually failed — previously a web-push
 // failure retried BOTH channels, so the phone got the same Expo notification 2-3 times.
-// Remove an Expo token only if it is still the one on file (it may have been
-// replaced by a fresh registration in the meantime).
+const MAX_PUSH_DEVICES = 5;
+
+// Every Expo token / browser subscription on a profile, including the legacy
+// single-value fields written by older server versions. De-duplicated.
+function collectPushTargets(p) {
+  const expo = new Set();
+  for (const t of Array.isArray(p?.expoPushTokens) ? p.expoPushTokens : []) {
+    if (typeof t === "string" && Expo.isExpoPushToken(t)) expo.add(t);
+  }
+  if (typeof p?.expoPushToken === "string" && Expo.isExpoPushToken(p.expoPushToken)) expo.add(p.expoPushToken);
+  if (typeof p?.pushSubscription === "string" && Expo.isExpoPushToken(p.pushSubscription)) expo.add(p.pushSubscription);
+
+  const web = new Map(); // endpoint -> subscription
+  const addWeb = (sub) => {
+    if (sub && typeof sub === "object" && typeof sub.endpoint === "string") web.set(sub.endpoint, sub);
+  };
+  for (const sub of Array.isArray(p?.webPushSubscriptions) ? p.webPushSubscriptions : []) addWeb(sub);
+  addWeb(p?.webPushSubscription);
+  if (p?.pushSubscription && typeof p.pushSubscription === "object") addWeb(p.pushSubscription);
+  return { expoTokens: [...expo], webSubs: [...web.values()] };
+}
+
+const PUSH_PROJECTION = {
+  expoPushToken: 1,
+  expoPushTokens: 1,
+  pushSubscription: 1,
+  webPushSubscription: 1,
+  webPushSubscriptions: 1,
+};
+
+// Remove one Expo token from a profile (dead token, or that phone logged out).
+// Only that token: the user's other devices, or a fresh token registered since, stay.
 async function removeDeadExpoToken(uid, token) {
   if (!db || !uid || !token) return;
   const profiles = db.collection("profiles");
+  await profiles.updateOne({ uid }, { $pull: { expoPushTokens: token } });
   await profiles.updateOne({ uid, expoPushToken: token }, { $unset: { expoPushToken: "" } });
   await profiles.updateOne({ uid, pushSubscription: token }, { $set: { pushSubscription: null } });
+}
+
+async function removeDeadWebSubscription(uid, endpoint) {
+  if (!db || !uid || !endpoint) return;
+  const profiles = db.collection("profiles");
+  await profiles.updateOne({ uid }, { $pull: { webPushSubscriptions: { endpoint } } });
+  await profiles.updateOne({ uid, "webPushSubscription.endpoint": endpoint }, { $unset: { webPushSubscription: "" } });
+  // Legacy clients stored the browser subscription object in pushSubscription.
+  await profiles.updateOne({ uid, "pushSubscription.endpoint": endpoint }, { $set: { pushSubscription: null } });
+}
+
+async function detachExpoTokenFromOthers(token, uid) {
+  const profiles = db.collection("profiles");
+  await profiles.updateMany(
+    { uid: { $ne: uid }, expoPushTokens: token },
+    { $pull: { expoPushTokens: token } },
+  );
+  await profiles.updateMany(
+    { uid: { $ne: uid }, $or: [{ expoPushToken: token }, { pushSubscription: token }] },
+    { $unset: { expoPushToken: "" }, $set: { pushSubscription: null } },
+  );
 }
 
 async function sendPushNotification(
@@ -3575,29 +3658,24 @@ async function sendPushNotification(
     const profiles = db.collection("profiles");
     const receiver = await profiles.findOne(
       { uid: receiverUid },
-      { projection: { expoPushToken: 1, pushSubscription: 1, webPushSubscription: 1 } },
+      { projection: PUSH_PROJECTION },
     );
     if (!receiver) {
       console.log(`[PUSH] Receiver profile not found: ${receiverUid}`);
       return;
     }
 
-    const expoPushToken =
-      (typeof receiver.expoPushToken === "string" && receiver.expoPushToken) ||
-      (typeof receiver.pushSubscription === "string" &&
-        Expo.isExpoPushToken(receiver.pushSubscription)
-        ? receiver.pushSubscription
-        : null);
+    const { expoTokens, webSubs } = collectPushTargets(receiver);
 
-    const webPushSubscription =
-      receiver.webPushSubscription ||
-      (receiver.pushSubscription &&
-        typeof receiver.pushSubscription === "object"
-        ? receiver.pushSubscription
-        : null);
-
-    const result = { expoToken: !!expoPushToken, webSubscription: !!webPushSubscription, expoTicket: null, webStatus: null };
-    if (!expoPushToken && !webPushSubscription) {
+    const result = {
+      expoToken: expoTokens.length > 0,
+      expoDevices: expoTokens.length,
+      webSubscription: webSubs.length > 0,
+      webDevices: webSubs.length,
+      expoTicket: null,
+      webStatus: null,
+    };
+    if (expoTokens.length === 0 && webSubs.length === 0) {
       console.log(`[PUSH] No push token registered for ${receiverUid} — the app never sent one (see /api/push/test)`);
       return result;
     }
@@ -3621,7 +3699,7 @@ async function sendPushNotification(
       );
     };
 
-    if (expoPushToken && channels.expo && expoPayload) {
+    if (expoTokens.length && channels.expo && expoPayload) {
       try {
         // Calculate total unread count for the badge
         const [msgCount, notifCount] = await Promise.all([
@@ -3634,32 +3712,33 @@ async function sendPushNotification(
         ]);
         const totalBadge = msgCount + notifCount;
 
-        const tickets = await expo.sendPushNotificationsAsync([
-          {
-            to: expoPushToken,
-            sound: "default",
-            priority: "high",
-            channelId: "default",
-            ttl: 2419200, // 4 weeks
-            _displayInForeground: true,
-            ...expoPayload,
-            // Must come AFTER the spread: callers used to pass `badge: 1`, which
-            // overwrote the real count and pinned the app badge at 1.
-            badge: totalBadge,
-          },
-        ]);
+        // One message per device, sent in Expo's recommended chunks.
+        const messages = expoTokens.map((to) => ({
+          to,
+          sound: "default",
+          priority: "high",
+          channelId: "default",
+          ttl: 2419200, // 4 weeks
+          ...expoPayload,
+          // Must come AFTER the spread: callers used to pass `badge: 1`, which
+          // overwrote the real count and pinned the app badge at 1.
+          badge: totalBadge,
+        }));
+        const tickets = [];
+        for (const chunk of expo.chunkPushNotifications(messages)) {
+          tickets.push(...((await expo.sendPushNotificationsAsync(chunk)) || []));
+        }
 
-        result.expoTicket = tickets?.[0] || null;
-        for (const ticket of tickets || []) {
-          if (ticket?.id) scheduleReceiptCheck(ticket.id, receiverUid, expoPushToken);
+        result.expoTicket = tickets[0] || null;
+        result.expoTickets = tickets;
+        for (let i = 0; i < tickets.length; i++) {
+          const ticket = tickets[i];
+          const token = messages[i]?.to;
+          if (ticket?.id) scheduleReceiptCheck(ticket.id, receiverUid, token);
           if (ticket?.status === "error") {
-            const errorCode = ticket?.details?.error;
-            console.error(
-              `[PUSH] Expo Push Ticket Error for ${receiverUid}:`,
-              ticket,
-            );
-            if (errorCode === "DeviceNotRegistered") {
-              await removeDeadExpoToken(receiverUid, expoPushToken);
+            console.error(`[PUSH] Expo Push Ticket Error for ${receiverUid}:`, ticket);
+            if (ticket?.details?.error === "DeviceNotRegistered") {
+              await removeDeadExpoToken(receiverUid, token);
             }
           }
         }
@@ -3675,33 +3754,30 @@ async function sendPushNotification(
       }
     }
 
-    if (webPushSubscription && webPushConfigured && channels.web && payloadStr) {
-      try {
-        await webpush.sendNotification(webPushSubscription, payloadStr);
-        result.webStatus = "ok";
-      } catch (err) {
-        result.webStatus = `error: ${err.statusCode || err.message}`;
-        console.error(
-          `[PUSH] Web Push failed for ${receiverUid}:`,
-          err.message,
-        );
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          // Expired browser subscription. Only clear that exact one, and don't touch
-          // the Expo token (pushSubscription doubles as the legacy Expo token field —
-          // nulling it here used to break phone pushes for people who also use web).
-          await profiles.updateOne(
-            { uid: receiverUid, "webPushSubscription.endpoint": webPushSubscription.endpoint },
-            { $unset: { webPushSubscription: "" } },
-          );
-          // Legacy clients stored the browser subscription object in pushSubscription.
-          await profiles.updateOne(
-            { uid: receiverUid, "pushSubscription.endpoint": webPushSubscription.endpoint },
-            { $set: { pushSubscription: null } },
-          );
-        } else {
-          retry("web");
-        }
-      }
+    if (webSubs.length && webPushConfigured && channels.web && payloadStr) {
+      const statuses = [];
+      let retryWeb = false;
+      await Promise.all(
+        webSubs.map(async (sub) => {
+          try {
+            await webpush.sendNotification(sub, payloadStr);
+            statuses.push("ok");
+          } catch (err) {
+            statuses.push(`error: ${err.statusCode || err.message}`);
+            console.error(`[PUSH] Web Push failed for ${receiverUid}:`, err.message);
+            if (err.statusCode === 410 || err.statusCode === 404) {
+              // Expired browser subscription: remove just that browser.
+              await removeDeadWebSubscription(receiverUid, sub.endpoint);
+            } else {
+              retryWeb = true;
+            }
+          }
+        }),
+      );
+      result.webStatus = statuses.join(", ");
+      // (A retry re-sends to every browser; duplicates are collapsed by the
+      // notification tag in sw.js.)
+      if (retryWeb) retry("web");
     }
     return result;
   } catch (e) {
@@ -5989,6 +6065,8 @@ app.get("/api/admin/stats", requireAdmin, async (req, res) => {
       $or: [
         { webPushSubscription: { $exists: true, $ne: null } },
         { expoPushToken: { $exists: true, $ne: null } },
+        { "expoPushTokens.0": { $exists: true } },
+        { "webPushSubscriptions.0": { $exists: true } },
       ],
     });
     res.json({

@@ -76,6 +76,17 @@ const authFetch = async (input: string, init: RequestInit = {}): Promise<Respons
   return response;
 };
 
+// Endpoint of this browser's push subscription, if any (identifies the device).
+const currentPushEndpoint = async (): Promise<string | undefined> => {
+  try {
+    if (!("serviceWorker" in navigator)) return undefined;
+    const reg = await navigator.serviceWorker.getRegistration("/sw.js");
+    return (await reg?.pushManager.getSubscription())?.endpoint;
+  } catch {
+    return undefined;
+  }
+};
+
 export const api = {
   auth: {
     signup: async (email: string, password: string) => {
@@ -128,6 +139,14 @@ export const api = {
         console.error("Failed to fetch profile:", error);
         throw error; // Let caller handle offline/error state
       }
+    },
+
+    // Like get(), but throws when the request fails instead of returning null, so callers
+    // can tell "this user has no profile yet" (null) from "the server is unreachable".
+    getStrict: async (uid: string) => {
+      const response = await authFetch(`${API_BASE}/profile/${uid}`);
+      if (!response.ok) throw new Error(`Profile request failed (${response.status})`);
+      return await response.json();
     },
 
     getBatch: async (uids: string[]) => {
@@ -584,7 +603,8 @@ export const api = {
         await authFetch(`${API_BASE}/push/unsubscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ platform: "web" }),
+          // Only this browser's subscription is removed; other devices keep theirs.
+          body: JSON.stringify({ platform: "web", endpoint: await currentPushEndpoint() }),
         });
       } catch {
         /* best effort */

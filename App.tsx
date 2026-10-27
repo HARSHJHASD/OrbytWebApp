@@ -45,18 +45,33 @@ const AdminUserDetails = lazy(() => import('./pages/AdminUserDetails'));
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, status } = useAuth();
   const location = useLocation();
-  const [profileChecked, setProfileChecked] = useState(false);
-  const [hasProfile, setHasProfile] = useState(false);
+  // A profile that was complete last time almost always still is: render straight away
+  // (no loader flash on every screen change) and confirm with the server in the background.
+  const cacheKey = user ? `profileComplete:${user.uid}` : '';
+  const cachedComplete = (() => {
+    try { return !!cacheKey && localStorage.getItem(cacheKey) === '1'; } catch { return false; }
+  })();
+  const [profileChecked, setProfileChecked] = useState(cachedComplete);
+  const [hasProfile, setHasProfile] = useState(cachedComplete);
 
   useEffect(() => {
     const checkProfile = async () => {
       if (user) {
         try {
-          const profile = await api.profile.get(user.uid);
+          // getStrict throws on failure. get() returned null for any error (rate limit,
+          // server restart, offline), which was read as "no profile" and sent signed-in
+          // users back to onboarding.
+          const profile = await api.profile.getStrict(user.uid);
           const isOnboarded = !!profile && !!profile.displayName && !!profile.photoURL && !!profile.dob && !!profile.gender && Array.isArray(profile.interests) && profile.interests.length > 0 && Array.isArray(profile.thatsMePhotos) && profile.thatsMePhotos.filter(Boolean).length >= 3;
           setHasProfile(isOnboarded);
+          try {
+            if (isOnboarded) localStorage.setItem(`profileComplete:${user.uid}`, '1');
+            else localStorage.removeItem(`profileComplete:${user.uid}`);
+          } catch { /* storage unavailable */ }
         } catch (e) {
-          console.error("Error checking profile", e);
+          // Server unreachable: keep the user in the app rather than in onboarding.
+          console.error("Error checking profile — assuming it exists", e);
+          setHasProfile(true);
         } finally {
           setProfileChecked(true);
         }
