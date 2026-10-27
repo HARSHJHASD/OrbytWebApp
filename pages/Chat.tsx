@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { Message, UserProfile, Post } from '../types';
 import { triggerHaptic } from '../util/haptics';
 import ConfirmModal from '../components/ui/ConfirmModal';
+import { safeBack } from "../util/safeBack";
 
 export default function Chat() {
     const { user } = useAuth();
@@ -322,7 +323,7 @@ export default function Chat() {
             {/* Header */}
             <div className="flex items-center px-4 py-3 bg-slate-900 border-b border-slate-800 shadow-sm shrink-0 sticky top-0 z-10">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => safeBack(navigate, "/app/inbox")}
                     className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
                 >
                     <ChevronLeft className="w-6 h-6" />

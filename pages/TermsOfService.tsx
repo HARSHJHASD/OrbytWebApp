@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, FileText } from 'lucide-react';
+import { safeBack } from "../util/safeBack";
 
 const TermsOfService: React.FC = () => {
     const navigate = useNavigate();
@@ -10,7 +11,7 @@ const TermsOfService: React.FC = () => {
             {/* Header */}
             <div className="bg-slate-900/80 backdrop-blur-md px-4 py-3 shadow-sm z-30 sticky top-0 border-b border-slate-800 flex items-center justify-between">
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => safeBack(navigate, "/")}
                     className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
                 >
                     <ChevronLeft className="w-6 h-6" />

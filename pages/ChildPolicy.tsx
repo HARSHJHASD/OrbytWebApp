@@ -1,13 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Baby } from 'lucide-react';
+import { safeBack } from "../util/safeBack";
 
 const ChildPolicy: React.FC = () => {
     const navigate = useNavigate();
 
     const handleBack = () => {
         if (window.history.length > 1) {
-            navigate(-1);
+            safeBack(navigate, "/");
         } else {
             navigate('/');
         }

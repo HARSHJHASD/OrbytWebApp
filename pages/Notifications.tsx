@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Bell, Heart, MessageCircle, UserPlus, UserCheck, Calendar, CalendarCheck, ChevronLeft, CheckCheck, Zap, Megaphone, MapPin, Hand } from 'lucide-react';
 import { useNotifications } from '../context/NotificationContext';
 import { Notification } from '../types';
+import { safeBack } from "../util/safeBack";
 
 /* ---------- Helpers ---------- */
 
@@ -220,7 +221,7 @@ const NotificationsPage: React.FC = () => {
             <div className="sticky top-0 z-30 bg-slate-900/90 backdrop-blur-md border-b border-slate-800">
                 <div className="max-w-md mx-auto flex items-center justify-between px-4 py-3">
                     <button
-                        onClick={() => navigate(-1)}
+                        onClick={() => safeBack(navigate, "/app")}
                         className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
                     >
                         <ChevronLeft className="w-6 h-6" />

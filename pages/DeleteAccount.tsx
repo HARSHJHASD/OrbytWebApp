@@ -1,13 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Trash2, Mail, Info, Smartphone } from 'lucide-react';
+import { safeBack } from "../util/safeBack";
 
 const DeleteAccount: React.FC = () => {
     const navigate = useNavigate();
 
     const handleBack = () => {
         if (window.history.length > 1) {
-            navigate(-1);
+            safeBack(navigate, "/");
         } else {
             navigate('/');
         }

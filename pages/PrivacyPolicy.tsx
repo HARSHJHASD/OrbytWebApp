@@ -1,13 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Shield } from 'lucide-react';
+import { safeBack } from "../util/safeBack";
 
 const PrivacyPolicy: React.FC = () => {
     const navigate = useNavigate();
 
     const handleBack = () => {
         if (window.history.length > 1) {
-            navigate(-1);
+            safeBack(navigate, "/");
         } else {
             navigate('/');
         }

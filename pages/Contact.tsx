@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, MessageSquare, Mail, MapPin, Send, CheckCircle, Loader2 } from 'lucide-react';
+import { safeBack } from "../util/safeBack";
 
 const Contact: React.FC = () => {
     const navigate = useNavigate();
@@ -15,7 +16,7 @@ const Contact: React.FC = () => {
     return (
         <div className="min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans">
             <nav className="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800 px-6 h-16 flex items-center gap-4">
-                <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-slate-400 hover:text-white">
+                <button onClick={() => safeBack(navigate, "/")} className="p-2 -ml-2 text-slate-400 hover:text-white">
                     <ArrowLeft className="w-5 h-5" />
                 </button>
                 <h1 className="font-bold text-lg">Contact Us</h1>

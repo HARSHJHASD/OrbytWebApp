@@ -112,6 +112,8 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     const [unreadRooms, setUnreadRooms] = useState(0);
     const nearbyIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const lastNearbyUidsRef = useRef<Set<string>>(new Set());
+    // Notification ids already alerted, so a WS event can't toast twice.
+    const seenNotificationIdsRef = useRef<Set<string>>(new Set());
 
     const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -140,6 +142,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     const checkNearbyPeople = useCallback(async () => {
         if (!user || !navigator.geolocation) return;
+        // Results are only used during the notification windows; skip the location
+        // request and two API calls otherwise (and while the tab is in the background).
+        if (!isActiveHour() || document.visibilityState !== 'visible') return;
         navigator.geolocation.getCurrentPosition(
             async (position) => {
                 try {
@@ -149,6 +154,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                         api.profile.getAllWithLocation(user.uid),
                     ]);
                     const radius: number = (myProfile as any)?.discoveryRadius ?? 10;
+                    if (!Array.isArray(allProfiles)) return;
                     const nearbyUsers = (allProfiles as any[]).filter((p: any) => {
                         if (p.uid === user.uid) return false;
                         if (!p.lastLocation?.lat || !p.lastLocation?.lng) return false;
@@ -194,7 +200,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         if (!user) return;
         try {
             const data = await api.notifications.get(user.uid);
-            setNotifications(data.filter((n: Notification) => KNOWN_NOTIFICATION_TYPES.includes(n.type as any)));
+            const list = (Array.isArray(data) ? data : []).filter((n: Notification) => KNOWN_NOTIFICATION_TYPES.includes(n.type as any));
+            list.forEach((n: Notification) => seenNotificationIdsRef.current.add(String(n._id)));
+            setNotifications(list);
         } catch (e) {
             console.error('Failed to fetch notifications', e);
         }
@@ -237,9 +245,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                 // Skip own actions (announcements have no fromUid, so only skip when fromUid matches)
                 if (data.notification.fromUid && data.notification.fromUid === user.uid) return;
 
-                setNotifications(prev => {
-                    if (prev.find(n => n._id === data?.notification?._id)) return prev;
+                const id = String(data.notification._id);
+                if (seenNotificationIdsRef.current.has(id)) return;
+                seenNotificationIdsRef.current.add(id);
 
+                // Side effects stay outside the state updater: React may run updaters
+                // twice (StrictMode), which showed every toast/sound twice.
+                setNotifications(prev =>
+                    prev.some(n => n._id === data.notification._id) ? prev : [data.notification as Notification, ...prev],
+                );
+                {
                     if (data.notification.type === 'announcement') {
                         addToast({
                             title: data.notification.title || 'Orbyt',
@@ -261,25 +276,41 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
                     }
 
                     playSound('notification');
-                    return [data?.notification as Notification, ...prev];
-                });
-            } else if (data?.text || data?.type === 'message') {
+                }
+            } else if (data?.text || data?.mediaUrl || data?.type === 'message') {
                 const fromUidStr = String(data?.fromUid || '');
                 const userUidStr = String(user?.uid || '');
                 
                 if (fromUidStr !== userUidStr && fromUidStr !== 'system') {
                     const path = window.location.pathname;
                     if (data?.groupId) {
+                        if (data.groupKind === 'meetup') {
+                            // Meetup group chats live in the Inbox (they were counted as
+                            // Rooms before, so the Inbox badge never showed them).
+                            if (path === `/app/chat/group/${data.groupId}`) return;
+                            if (!path.startsWith('/app/inbox')) setUnreadMessages(prev => prev + 1);
+                            addToast({
+                                title: `💬 ${data.groupTitle || 'Meetup group'}`,
+                                body: `${data.authorName || 'Someone'}: ${data.text || 'sent a message'}`,
+                                icon: data.authorPhoto,
+                                url: `/app/chat/group/${data.groupId}`,
+                                type: 'message',
+                            });
+                            playSound('message');
+                            return;
+                        }
                         // Room message — only bump the Rooms tab badge, no toast
                         const onRooms = path.startsWith('/app/rooms') || path.startsWith('/app/communities');
                         if (!onRooms) setUnreadRooms(prev => prev + 1);
                     } else {
+                        // Already reading this conversation: no badge, toast or sound.
+                        if (path === `/app/chat/${fromUidStr}`) return;
                         // Direct message — badge + toast
                         const onChat = path.startsWith('/app/inbox') || path.startsWith('/app/chat');
                         if (!onChat) setUnreadMessages(prev => prev + 1);
                         addToast({
                             title: data.authorName || 'New Message',
-                            body: data.text,
+                            body: data.text || (data.mediaType === 'image' ? 'sent a photo' : data.mediaType === 'audio' ? 'sent a voice note' : 'sent a message'),
                             icon: data.authorPhoto,
                             url: `/app/chat/${data.fromUid}`,
                             type: 'message'

@@ -1,5 +1,6 @@
 import { ArrowLeft, Briefcase, Heart, Instagram, Linkedin, Smartphone } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { safeBack } from "../util/safeBack";
 
 export default function DeveloperProfile() {
   const navigate = useNavigate();
@@ -9,7 +10,7 @@ export default function DeveloperProfile() {
       {/* Header */}
       <div className="flex items-center gap-4 py-4 mb-4 border-b border-slate-800">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => safeBack(navigate, "/app/settings")}
           className="p-2 hover:bg-slate-800 rounded-full transition-colors"
         >
           <ArrowLeft className="w-6 h-6 text-slate-400" />

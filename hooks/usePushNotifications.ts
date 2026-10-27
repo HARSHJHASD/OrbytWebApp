@@ -18,13 +18,40 @@ export function usePushNotifications() {
         if (supported) {
             navigator.serviceWorker.register('/sw.js')
                 .then(registration => registration.pushManager.getSubscription())
-                .then(subscription => setIsSubscribed(!!subscription))
+                .then(subscription => {
+                    setIsSubscribed(!!subscription);
+                    // Re-send an existing subscription after login: the server detaches
+                    // a browser from its previous account and drops expired ones, and
+                    // nothing ever sent it again, so pushes stopped silently.
+                    if (subscription && user?.uid && Notification.permission === 'granted') {
+                        api.push.subscribe(user.uid, subscription).catch(() => {});
+                    }
+                })
                 .catch(error => console.error('Failed to initialize web push:', error));
         }
+    }, [user?.uid]);
+
+    // A notification click on a tab the worker doesn't control arrives as a message.
+    useEffect(() => {
+        if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+        const onMessage = (event: MessageEvent) => {
+            if (event.data?.type === 'navigate' && typeof event.data.url === 'string') {
+                const url = new URL(event.data.url, window.location.origin);
+                if (url.origin === window.location.origin) window.location.assign(url.href);
+            }
+        };
+        navigator.serviceWorker.addEventListener('message', onMessage);
+        return () => navigator.serviceWorker.removeEventListener('message', onMessage);
     }, []);
 
     const subscribe = async () => {
         if (!isSupported || !user) return false;
+
+        const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+            console.error('VITE_VAPID_PUBLIC_KEY is not set in this build — web push is unavailable.');
+            return false;
+        }
 
         try {
             const permission = await Notification.requestPermission();
@@ -34,7 +61,7 @@ export function usePushNotifications() {
             const existing = await registration.pushManager.getSubscription();
             const subscription = existing || await registration.pushManager.subscribe({
                 userVisibleOnly: true,
-                applicationServerKey: urlBase64ToUint8Array(import.meta.env.VITE_VAPID_PUBLIC_KEY),
+                applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
             });
 
             await api.push.subscribe(user.uid, subscription);

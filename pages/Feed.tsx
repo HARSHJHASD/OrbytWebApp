@@ -527,9 +527,10 @@ const Feed: React.FC = () => {
     if (unreadCount > 0) {
       const unreadIds = notifications?.filter((n) => !n?.read).map((n) => n?._id);
       if (unreadIds?.length > 0) {
-        await api.notifications.markRead(unreadIds);
+        // Update the UI right away; a failed sync is retried next time it opens.
         setUnreadCount(0);
         setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        api.notifications.markRead(unreadIds).catch(() => {});
       }
     }
   };

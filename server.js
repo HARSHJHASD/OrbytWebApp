@@ -3507,10 +3507,11 @@ app.post("/api/vibe/send", vibeLimiter, async (req, res) => {
       .map((p) => p.uid)
       .slice(0, 100);
 
-    const notifPromises = nearbyUids.map((toUid) =>
-      createNotification("vibe_wave", uid, toUid)
-    );
-    await Promise.allSettled(notifPromises);
+    for (let i = 0; i < nearbyUids.length; i += 20) {
+      await Promise.allSettled(
+        nearbyUids.slice(i, i + 20).map((toUid) => createNotification("vibe_wave", uid, toUid)),
+      );
+    }
 
     res.json({ sent: nearbyUids.length });
   } catch (error) {
@@ -3552,6 +3553,15 @@ app.post("/api/vibe/acknowledge", async (req, res) => {
 // --- HELPER: Send Push Notification (Expo & Web) with Retry Logic ---
 // `channels` limits a retry to the channel that actually failed — previously a web-push
 // failure retried BOTH channels, so the phone got the same Expo notification 2-3 times.
+// Remove an Expo token only if it is still the one on file (it may have been
+// replaced by a fresh registration in the meantime).
+async function removeDeadExpoToken(uid, token) {
+  if (!db || !uid || !token) return;
+  const profiles = db.collection("profiles");
+  await profiles.updateOne({ uid, expoPushToken: token }, { $unset: { expoPushToken: "" } });
+  await profiles.updateOne({ uid, pushSubscription: token }, { $set: { pushSubscription: null } });
+}
+
 async function sendPushNotification(
   receiverUid,
   payloadStr,
@@ -3641,7 +3651,7 @@ async function sendPushNotification(
 
         result.expoTicket = tickets?.[0] || null;
         for (const ticket of tickets || []) {
-          if (ticket?.id) scheduleReceiptCheck(ticket.id, receiverUid);
+          if (ticket?.id) scheduleReceiptCheck(ticket.id, receiverUid, expoPushToken);
           if (ticket?.status === "error") {
             const errorCode = ticket?.details?.error;
             console.error(
@@ -3649,13 +3659,7 @@ async function sendPushNotification(
               ticket,
             );
             if (errorCode === "DeviceNotRegistered") {
-              await profiles.updateOne(
-                { uid: receiverUid },
-                {
-                  $unset: { expoPushToken: "" },
-                  $set: { pushSubscription: null },
-                },
-              );
+              await removeDeadExpoToken(receiverUid, expoPushToken);
             }
           }
         }
@@ -3682,12 +3686,17 @@ async function sendPushNotification(
           err.message,
         );
         if (err.statusCode === 410 || err.statusCode === 404) {
+          // Expired browser subscription. Only clear that exact one, and don't touch
+          // the Expo token (pushSubscription doubles as the legacy Expo token field —
+          // nulling it here used to break phone pushes for people who also use web).
           await profiles.updateOne(
-            { uid: receiverUid },
-            {
-              $unset: { webPushSubscription: "" },
-              $set: { pushSubscription: null },
-            },
+            { uid: receiverUid, "webPushSubscription.endpoint": webPushSubscription.endpoint },
+            { $unset: { webPushSubscription: "" } },
+          );
+          // Legacy clients stored the browser subscription object in pushSubscription.
+          await profiles.updateOne(
+            { uid: receiverUid, "pushSubscription.endpoint": webPushSubscription.endpoint },
+            { $set: { pushSubscription: null } },
           );
         } else {
           retry("web");
@@ -3708,10 +3717,10 @@ async function sendPushNotification(
 // is available ~15 minutes after sending. Receipt errors are where problems like
 // "InvalidCredentials" (FCM key not uploaded to Expo) or "DeviceNotRegistered"
 // (app uninstalled) show up, so check them in batches and act on them.
-const pendingReceipts = new Map(); // receiptId -> uid
+const pendingReceipts = new Map(); // receiptId -> { uid, token }
 let receiptTimer = null;
-function scheduleReceiptCheck(receiptId, uid) {
-  pendingReceipts.set(receiptId, uid);
+function scheduleReceiptCheck(receiptId, uid, token) {
+  pendingReceipts.set(receiptId, { uid, token });
   if (receiptTimer) return;
   receiptTimer = setTimeout(checkPushReceipts, 15 * 60 * 1000);
 }
@@ -3725,14 +3734,14 @@ async function checkPushReceipts() {
       const receipts = await expo.getPushNotificationReceiptsAsync(chunk);
       for (const [id, receipt] of Object.entries(receipts || {})) {
         if (receipt?.status !== "error") continue;
-        const uid = batch.get(id);
+        const { uid, token } = batch.get(id) || {};
         const code = receipt?.details?.error;
         console.error(`[PUSH] Delivery failed for ${uid}: ${code} — ${receipt.message}`);
-        if (code === "DeviceNotRegistered" && uid) {
-          await db.collection("profiles").updateOne(
-            { uid },
-            { $unset: { expoPushToken: "" }, $set: { pushSubscription: null } },
-          );
+        if (code === "DeviceNotRegistered" && uid && token) {
+          // Receipts arrive ~15 min later. Only remove the token that actually failed:
+          // the user may have registered a new one since, and wiping that silently
+          // stopped all their pushes.
+          await removeDeadExpoToken(uid, token);
         }
       }
     }
@@ -3884,12 +3893,21 @@ app.post("/api/chat/send", async (req, res) => {
         data: { url: notifUrl.web },
       });
 
+      const pushTargets = [];
       for (const uid of recipients) {
         sendToUser(uid, fullMessage);
         // Push only — no notification document, badge is driven client-side from the WS message
-        if (uid !== fromUid)
-          sendPushNotification(uid, webPayloadStr, expoPayload).catch(() => { });
+        if (uid !== fromUid) pushTargets.push(uid);
       }
+      // Batched in the background: a big room used to fire every member's push at
+      // once (3 DB queries each), starving the connection pool.
+      (async () => {
+        for (let i = 0; i < pushTargets.length; i += 25) {
+          await Promise.allSettled(
+            pushTargets.slice(i, i + 25).map((uid) => sendPushNotification(uid, webPayloadStr, expoPayload)),
+          );
+        }
+      })().catch(() => { });
 
       return res.json(fullMessage);
     } else {
@@ -4240,7 +4258,7 @@ app.get("/api/chat/unread-count/:uid", selfParam("uid"), async (req, res) => {
 app.post("/api/stories", async (req, res) => {
   if (!db) return res.status(503).json({ error: "Database not connected" });
   try {
-    const { imageURL, location } = req.body;
+    const { imageURL, location, visibility } = req.body;
     const uid = req.authUid;
     if (!uid || !imageURL || typeof imageURL !== "string")
       return res.status(400).json({ error: "Missing required fields" });
@@ -4256,6 +4274,9 @@ app.post("/api/stories", async (req, res) => {
         location && typeof location.lat === "number" && typeof location.lng === "number"
           ? { lat: location.lat, lng: location.lng, name: location.name }
           : null,
+      // Clients always sent this, but it was never stored, so "Friends only" stories
+      // were shown to everyone nearby.
+      visibility: visibility === "friends" ? "friends" : "public",
       createdAt: Date.now(),
       expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
       views: [], // Track uids of viewers
@@ -4276,8 +4297,12 @@ app.get("/api/stories", async (req, res) => {
     const profile = viewerUid
       ? await db
           .collection("profiles")
-          .findOne({ uid: viewerUid }, { projection: { lastLocation: 1, discoveryRadius: 1 } })
+          .findOne(
+            { uid: viewerUid },
+            { projection: { lastLocation: 1, discoveryRadius: 1, friends: 1 } },
+          )
       : null;
+    const viewerFriends = new Set(profile?.friends || []);
     const myLocation = profile?.lastLocation;
     const radius = profile?.discoveryRadius || 10; // km
 
@@ -4298,6 +4323,11 @@ app.get("/api/stories", async (req, res) => {
 
     // Group by User
     const groupedStories = stories.reduce((acc, story) => {
+      const isAuthor = story.uid === viewerUid;
+      // Friends-only stories: author and their friends only.
+      if (story.visibility === "friends" && !isAuthor && !viewerFriends.has(story.uid)) {
+        return acc;
+      }
       // Geo-filtering
       if (myLocation && story.location && story.uid !== viewerUid) {
         const dist =
@@ -4311,10 +4341,16 @@ app.get("/api/stories", async (req, res) => {
       }
 
       // Only the author sees who viewed; others just get a count.
-      const safeStory =
-        story.uid === viewerUid
-          ? story
-          : { ...story, views: (story.views || []).includes(viewerUid) ? [viewerUid] : [], viewCount: (story.views || []).length };
+      // `location` is the author's raw GPS position at posting time — never send it
+      // to other people.
+      const { location: _authorPosition, ...publicStory } = story;
+      const safeStory = isAuthor
+        ? story
+        : {
+            ...publicStory,
+            views: (story.views || []).includes(viewerUid) ? [viewerUid] : [],
+            viewCount: (story.views || []).length,
+          };
 
       if (!acc[story.uid]) {
         acc[story.uid] = {
@@ -5559,7 +5595,9 @@ app.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
       return res.status(400).json({ error: "Message is required" });
     let query = {};
     if (segment === "new") {
-      query = { createdAt: { $gte: new Date(Date.now() - 7 * 86400000) } };
+      const since = Date.now() - 7 * 86400000;
+      // Accounts store createdAt as a Date or a number depending on how they signed up.
+      query = { $or: [{ createdAt: { $gte: new Date(since) } }, { createdAt: { $gte: since } }] };
     }
     let allUsers = await db
       .collection("users")
@@ -5595,18 +5633,20 @@ app.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
       const result = await db
         .collection("notifications")
         .insertMany(notifications);
-      // Push real-time WebSocket notification to every online user + Expo push for offline users
+      // WebSocket for online users right away; pushes in small batches in the
+      // background. Firing one push per user all at once (each doing 3 DB queries)
+      // exhausted the DB connection pool for everyone and hit Expo's rate limit, so
+      // large broadcasts partly failed and slowed the whole app.
       notifications.forEach((notif, i) => {
-        const insertedId = result.insertedIds[i];
-        const fullNotif = { ...notif, _id: insertedId };
-        // WebSocket for online users
         sendToUser(notif.toUid, {
           type: "notification",
-          notification: fullNotif,
+          notification: { ...notif, _id: result.insertedIds[i] },
         });
-        // Expo push notification for offline / background users
+      });
+      const sendOne = (notif, i) => {
+        const insertedId = result.insertedIds[i];
         // Web push used to receive a null payload (blank notification).
-        sendPushNotification(
+        return sendPushNotification(
           notif.toUid,
           JSON.stringify({
             title: notif.title || "Orbyt",
@@ -5624,7 +5664,15 @@ app.post("/api/admin/broadcast", requireAdmin, async (req, res) => {
             },
           },
         );
-      });
+      };
+      (async () => {
+        for (let i = 0; i < notifications.length; i += 25) {
+          await Promise.allSettled(
+            notifications.slice(i, i + 25).map((n, j) => sendOne(n, i + j)),
+          );
+        }
+        console.log(`[BROADCAST] pushes sent to ${notifications.length} users`);
+      })().catch((e) => console.error("[BROADCAST] push loop failed:", e?.message || e));
     }
     res.json({ success: true, sent: notifications.length });
   } catch (e) {
@@ -6628,6 +6676,61 @@ app.get("/api/highlights", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch highlights" });
   }
 });
+
+// --- ERROR HANDLING ---
+// Unknown API routes answer in JSON (clients parse every response as JSON; Express's
+// default HTML 404 page made them throw "Unexpected token <").
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Last-resort error handler. Without one, malformed JSON bodies, uploads over the size
+// limit and CORS rejections came back as HTML error pages (with stack traces outside
+// production) instead of a JSON error the apps can show.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  let status = err?.status || err?.statusCode || 500;
+  let message = "Something went wrong. Please try again.";
+  if (err?.type === "entity.parse.failed") message = "Invalid request body.";
+  else if (err?.type === "entity.too.large") message = "That upload is too large.";
+  else if (err?.message === "Not allowed by CORS") {
+    status = 403;
+    message = "Origin not allowed.";
+  } else if (status < 500 && err?.expose && err?.message) message = err.message;
+  if (status >= 500) console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err);
+  res.status(status).json({ error: message });
+});
+
+// In Node 15+ a single unhandled promise rejection terminates the process, taking the
+// API and every WebSocket down. Log it and keep serving instead.
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL-AVOIDED] Unhandled promise rejection:", reason);
+});
+// A synchronous throw outside any request leaves the process in an unknown state:
+// log it and exit so the host restarts a clean instance.
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] Uncaught exception — exiting:", err);
+  process.exit(1);
+});
+
+// Graceful shutdown on deploy/restart (Render, Docker and PM2 send SIGTERM): stop
+// accepting connections, let in-flight requests finish, then close MongoDB.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[SHUTDOWN] ${signal} received, closing...`);
+  clearInterval(wsHeartbeat);
+  for (const ws of wss.clients) ws.close(1012, "Server restarting");
+  server.close(() => {
+    client.close().finally(() => process.exit(0));
+  });
+  // Don't hang forever on a stuck connection.
+  setTimeout(() => process.exit(0), 10000).unref();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 server.listen(port, "0.0.0.0", () => {
   console.log(`Server + WebSocket running on port ${port}`);

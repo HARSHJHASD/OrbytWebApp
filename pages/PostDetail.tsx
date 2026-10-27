@@ -12,6 +12,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { safeBack } from "../util/safeBack";
 
 const PostDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -164,7 +165,7 @@ const PostDetail: React.FC = () => {
     <div className="min-h-screen bg-slate-950 pb-20">
       <div className="bg-slate-900/80 backdrop-blur-md px-4 py-3 shadow-sm sticky top-0 z-20 flex items-center border-b border-slate-800">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => safeBack(navigate, "/app")}
           className="p-2 -ml-2 text-slate-400 hover:text-white rounded-full"
         >
           <ChevronLeft className="w-6 h-6" />

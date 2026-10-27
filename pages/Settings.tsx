@@ -20,6 +20,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTheme } from "../context/ThemeContext";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { api } from "../services/api";
+import { safeBack } from "../util/safeBack";
 
 const Settings: React.FC = () => {
   const { user, logout } = useAuth();
@@ -165,7 +166,7 @@ const Settings: React.FC = () => {
       {/* Header */}
       <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-4 py-3 shadow-sm z-30 sticky top-0 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => safeBack(navigate, "/app")}
           className="p-2 -ml-2 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
         >
           <ChevronLeft className="w-6 h-6" />
