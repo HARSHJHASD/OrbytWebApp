@@ -1850,7 +1850,7 @@ app.post("/api/cleanup", requireAdmin, async (req, res) => {
 
 // App Version Configuration
 const APP_CONFIG = {
-  minAppVersion: "1.8.1",
+  minAppVersion: "1.8.2",
   updateUrl:
     "https://play.google.com/store/apps/details?id=com.orbyt.official.app",
 };
